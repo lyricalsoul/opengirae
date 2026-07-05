@@ -1,0 +1,43 @@
+categories:
+  - id: 1
+    name: "Alfabeto"
+  - id: 2
+    name: "Números"
+
+subcategories:
+  - id: 1
+    categoryId: 1
+    name: "Letras Maiúsculas"
+  - id: 2
+    categoryId: 1
+    name: "Letras Minúsculas"
+  - id: 3
+    categoryId: 2
+    name: "Números do 0 ao 4"
+  - id: 4
+    categoryId: 2
+    name: "Números do 5 ao 9"
+
+cards:
+  - subcategoryId: 1
+    texts: "A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U,V,W,X,Y,Z"
+  - subcategoryId: 2
+    texts: "a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z"
+  - subcategoryId: 3
+    texts: "0,1,2,3,4"
+  - subcategoryId: 4
+    texts: "5,6,7,8,9"
+
+rarities:
+  - id: 1
+    name: "Comum"
+    emoji: "⭐"
+  - id: 2
+    name: "Raro"
+    emoji: "🌟"
+  - id: 3
+    name: "Lendário"
+    emoji: "🔥"
+  - id: 4
+    name: "Mítico"
+    emoji: "✨"

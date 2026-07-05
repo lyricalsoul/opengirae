@@ -1,0 +1,11 @@
+{
+  "name": "@girae/answerer",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@discordeno/rest": "^21.0.0",
+    "@girae/common": "workspace:*",
+    "marked": "^18.0.5"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "opengirae",
+  "type": "module",
+  "private": true,
+  "workspaces": [
+    "packages/**"
+  ],
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/pg": "^8.20.0",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.22.4"
+  },
+  "dependencies": {
+    "bullmq": "^5.79.1",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "js-yaml": "^5.1.0",
+    "pg": "^8.22.0"
+  },
+  "scripts": {
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "db:push": "drizzle-kit push",
+    "dev:all": "bun run --parallel 'dev:inbounder' 'dev:commandeer' 'dev:answerer'",
+    "dev:inbounder": "bun --watch packages/inbounder/index.ts",
+    "dev:commandeer": "bun --watch packages/commandeer/index.ts",
+    "dev:answerer": "bun --watch packages/answerer/index.ts"
+  }
+}

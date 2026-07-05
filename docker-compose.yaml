@@ -1,0 +1,21 @@
+services:
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+    ports:
+      - "6379:6379"
+    volumes:
+      - dragonfly-data:/data
+    command: --cluster_mode=emulated --lock_on_hashtags
+    restart: unless-stopped
+  queue:
+    image: ghcr.io/alexbudure/queuedash:latest
+    ports:
+      - "3000:3000"
+    environment:
+      QUEUES_CONFIG_JSON: '{"queues":[{"name":"{commands}","displayName":"Pending Commands","type":"bullmq","connectionUrl":"redis://dragonfly:6379"}, {"name":"{responses}","displayName":"Pending Responses","type":"bullmq","connectionUrl":"redis://dragonfly:6379"}]}'
+    depends_on:
+      - dragonfly
+    restart: unless-stopped
+
+volumes:
+  dragonfly-data:

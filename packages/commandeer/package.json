@@ -1,0 +1,10 @@
+{
+  "name": "@girae/commandeer",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@girae/common": "workspace:*",
+    "@girae/database": "workspace:*"
+  }
+}
