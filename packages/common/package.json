@@ -2,5 +2,7 @@
   "name": "@girae/common",
   "module": "index.ts",
   "type": "module",
-  "private": true
+  "private": true,
+  "dependencies": {
+  }
 }

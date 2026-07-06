@@ -7,13 +7,14 @@ import {
   boolean,
   doublePrecision,
   primaryKey,
+  index,
 } from "drizzle-orm/pg-core";
 
 /// The rarity a card can have. Usually Common, Rare, Legendary, Mythic
 export const rarities = pgTable("rarities", {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
   name: text().notNull().unique(),
-  chance: doublePrecision().notNull(),
+  weight: integer().notNull(),
   emoji: text().notNull(),
 });
 
@@ -33,10 +34,11 @@ export const subcategories = pgTable("subcategories", {
     .notNull()
     .references(() => categories.id),
   name: text().notNull(),
-  rarityModifier: doublePrecision().notNull().default(1),
   tags: text().array(),
   isSecondary: boolean().notNull().default(false),
   imageUrl: text(),
+
+  rarityModifier: integer().notNull().default(100),
 });
 
 export const cards = pgTable("cards", {
@@ -45,12 +47,10 @@ export const cards = pgTable("cards", {
   rarityId: integer()
     .notNull()
     .references(() => rarities.id),
-  subcategoryId: integer()
-    .notNull()
-    .references(() => subcategories.id),
   imageUrl: text(),
   updatedAt: timestamp().notNull().defaultNow(),
-  rarityModifier: doublePrecision().notNull().default(1),
+  
+  rarityModifier: integer().notNull().default(100),
 });
 
 export const cardSubcategories = pgTable(
@@ -62,8 +62,12 @@ export const cardSubcategories = pgTable(
     subcategoryId: integer()
       .notNull()
       .references(() => subcategories.id),
+    isMain: boolean().notNull().default(false),
   },
-  (table) => [primaryKey({ columns: [table.cardId, table.subcategoryId] })],
+  (table) => [
+    primaryKey({ columns: [table.cardId, table.subcategoryId] }),
+    index("card_subcategories_sub_idx").on(table.subcategoryId),
+  ],
 );
 
 export const userCards = pgTable(
@@ -80,3 +84,12 @@ export const userCards = pgTable(
   },
   (table) => [primaryKey({ columns: [table.userId, table.cardId] })],
 );
+
+export const cardDrawHistory = pgTable("card_draw_history", {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer().notNull().references(() => users.id),
+  cardId: integer().notNull().references(() => cards.id),
+  categoryId: integer().notNull().references(() => categories.id),
+  subcategoryId: integer().notNull().references(() => subcategories.id),
+  drawnAt: timestamp().notNull().defaultNow(),
+});

@@ -99,3 +99,7 @@ export const getSubcategoriesForCategory = async (categoryId: number) => {
     .from(subcategories)
     .where(eq(subcategories.categoryId, categoryId))
 }
+
+export const getSubcategoriesForCategoryDraw = async (categoryId: number) => {
+}
+

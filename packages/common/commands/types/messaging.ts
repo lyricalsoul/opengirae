@@ -34,4 +34,5 @@ export interface IncomingCommand {
   name: string
   args: string[]
   message: Message
+  workflowIDToBeAssigned: string
 }

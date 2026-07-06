@@ -1,18 +1,10 @@
 import { info } from "@girae/common/logger";
 import { readdirSync } from "fs"
 import { join } from "path"
-import type { CommandContext } from "@girae/common/commands";
-import { setAvailableCommands } from "@girae/common/consensus";
-
-interface CommandModule {
-  name: string;
-  alias?: string[];
-  description: string;
-  execute: (ctx: CommandContext) => Promise<void>;
-}
+import type { Command, CommandContext } from "@girae/common/commands";
 
 interface LoadedCommand {
-  module: CommandModule;
+  module: Command;
   category: string;
   guards: string[]
 }
@@ -28,7 +20,7 @@ const loadedCommands = await Promise.all(readdirSync(commandPath).map(async (gua
     const [name, category, _] = file.split(".");
 
     return {
-      module: module as CommandModule,
+      module: module.default as Command,
       category,
       guards
     } as LoadedCommand;
@@ -37,15 +29,13 @@ const loadedCommands = await Promise.all(readdirSync(commandPath).map(async (gua
 
 info("commandeer", `Loaded ${loadedCommands.length} commands`)
 
-const names = loadedCommands.map(cmd => cmd.module.name)
-const aliases = loadedCommands.flatMap(cmd => cmd.module.alias ?? [])
-const allNames = new Set([...names, ...aliases])
 
-setAvailableCommands([...allNames]).then(() => info("commandeer", `Registered ${allNames.size} commands`))
+const names = loadedCommands.map(cmd => cmd.module.info.name)
+const aliases = loadedCommands.flatMap(cmd => cmd.module.info.alias ?? [])
 
 export const findCommand = (name: string): LoadedCommand | undefined => {
   return loadedCommands.find(cmd =>
-    cmd.module.name === name ||
-    (cmd.module.alias && cmd.module.alias.includes(name))
+    cmd.module.info.name === name ||
+    (cmd.module.info.alias && cmd.module.info.alias.includes(name))
   );
 };

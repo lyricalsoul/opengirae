@@ -16,6 +16,10 @@ export const users = pgTable("users", {
   createdAt: timestamp().notNull().defaultNow(),
   updatedAt: timestamp().notNull().defaultNow(),
 
+  luckModifier: integer().notNull().default(100),
+  coins: integer().notNull().default(0),
+  privacyMode: boolean().notNull().default(false),
+
   displayName: text().notNull(),
   avatarUrl: text().notNull(),
 });
@@ -27,11 +31,8 @@ export const userProfiles = pgTable("user_profiles", {
     .references(() => users.id),
 
   bio: text(),
-  coins: integer().notNull().default(0),
   reputation: integer().notNull().default(0),
   favoriteColor: text().notNull().default("#FF94DB"),
-  privacyMode: boolean().notNull().default(false),
-  luckModifier: doublePrecision().notNull().default(1),
 
   isMarried: boolean().notNull().default(false),
   partnerId: integer().references(() => users.id),

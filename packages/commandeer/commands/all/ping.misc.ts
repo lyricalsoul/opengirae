@@ -1,8 +1,17 @@
-import type { CommandContext } from '@girae/common/commands'
+import { type CommandContext, Command } from '@girae/common/commands'
+import { reply } from '@girae/common/dbos/messaging'
+import { DBOS } from '@girae/common/dbos'
+import type { IncomingCommand } from '@girae/common/commands/types'
 
-export const name = 'ping'
-export const description = 'Verifica se a Giraê está online'
+export default class PingCommand extends Command {
+  static override info = {
+    name: 'ping',
+    description: 'Verifica se o bot está online',
+    aliases: ['pong'],
+    useWorkflow: false
+  }
 
-export async function execute(ctx: CommandContext) {
-  await ctx.reply('Pong!')
+  static override async execute(cmd: IncomingCommand) {
+    await reply(cmd, 'Pong!')
+  }
 }

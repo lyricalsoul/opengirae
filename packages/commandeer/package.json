@@ -5,6 +5,7 @@
   "private": true,
   "dependencies": {
     "@girae/common": "workspace:*",
-    "@girae/database": "workspace:*"
+    "@girae/database": "workspace:*",
+    "@discordeno/rest": "^21.0.0"
   }
 }

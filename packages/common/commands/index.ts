@@ -1,13 +1,38 @@
 import { getUserProfileByTelegramId, createUser, createUserProfile, type UserWithProfile } from "../../database/users"
-import { responseQueue } from "../consensus/queues";
-import type { Message, MessageAuthor } from "./types/messaging"
+import type { IncomingCommand, Message, MessageAuthor } from "./types/messaging"
+import { DBOS } from '@dbos-inc/dbos-sdk'
+
+interface CommandInfo {
+  name: string;
+  description: string;
+  aliases?: string[];
+  useWorkflow?: boolean;
+}
+
+export class Command {
+  static info: CommandInfo = {
+    name: 'unimplemented',
+    description: 'Unimplemented command',
+  }
+
+  @DBOS.workflow()
+  static async execute(ctx: IncomingCommand) {
+    throw new Error('Unimplemented')
+  }
+}
 
 export class CommandContext {
-  public constructor(
-    public readonly commandName: string,
-    public readonly args: string[],
-    public readonly message: Message,
-  ) { }
+  public readonly commandName: string
+  public readonly args: string[]
+  public readonly message: Message
+  public readonly workflowID: string
+
+  public constructor(msg: IncomingCommand) {
+    this.commandName = msg.name
+    this.args = msg.args
+    this.message = msg.message
+    this.workflowID = msg.workflowIDToBeAssigned
+  }
 
   private userWithProfile?: UserWithProfile;
 
@@ -49,23 +74,7 @@ export class CommandContext {
     return this.message.id;
   }
 
-  public async reply(content: string) {
-    const method = 'sendMessage'
-
-    await responseQueue.add(this.makeJobName(method), {
-      method,
-      chatId: this.message.chat.id,
-      content,
-      replyToMessageId: this.message.id,
-      platform: this.message.platform,
-    });
-  }
-
   private get chatName(): string {
     return this.message.chat.title;
-  }
-
-  private makeJobName(method: string): string {
-    return `${this.message.platform}: ${this.commandName} (${this.author.name} @ ${this.chatName}, ${method})`;
   }
 }

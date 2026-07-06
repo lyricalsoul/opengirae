@@ -1,6 +1,34 @@
 import type { MessageAuthor, MessageChat, Message } from '@girae/common/commands/types'
 import { avatarUrl, createBot, GatewayIntents } from 'discordeno'
 import { processCommand } from './handler'
+import { TelegramClient } from 'telegramsjs'
+
+const tg = new TelegramClient(process.env.TELEGRAM_TOKEN!)
+
+tg.on('message', async (msg) => {
+  if (!msg.content) return
+
+  const m: Message = {
+    content: msg.content!,
+    id: String(msg.id),
+    author: {
+      id: msg.author!.id.toString(),
+      name: msg.author!.firstName,
+      avatarUrl: ''
+    },
+    chat: {
+      id: String(msg.chat!.id),
+      title: msg.chat!.title || 'DM'
+    },
+    timestamp: new Date(msg.createdTimestamp),
+    platform: 'telegram'
+  }
+
+  await processCommand(m)
+})
+
+tg.on('callbackQuery', async (data) => {
+})
 
 const bot = createBot({
   token: process.env.DISCORD_TOKEN!,
@@ -56,4 +84,8 @@ const bot = createBot({
   },
 })
 
-await bot.start()
+await Promise.allSettled([
+  bot.start(),
+  tg.login()
+])
+
