@@ -1,12 +1,35 @@
 flowchart TD
     A(["Incoming message (poll/webhook)"]) --> B["@girae/inbounder"]
-    B --> C["Is it a valid command (starts with / and bot handles it)?\n\nIs user banned?\n\nIs it an inline query or actual message?"]
-    C -->|Not valid| F
-    C -->|Inline query event| E
-    C -->|Message event| E
-
-
-    F([Ignore])
-    E["@girae/commandeer"]
-
-    E --> G{Command processor}
+    B --> C{"Validation Phase\n(Is it a valid command?\nIs user banned?\nIs it an inline query or message?)"}
+    
+    C -->|Not valid| F([Ignore])
+    
+    C -->|Valid Event| MQ1[("BullMQ\n{commands} or {resume} Queues")]
+    
+    MQ1 --> E["@girae/commandeer"]
+    
+    E --> G{"Command Dispatcher"}
+    
+    G -->|Matches Subcommand| H["Extract args & invoke Static Subcommand"]
+    G -->|No Subcommand| I["Invoke Main execute()"]
+    
+    H & I --> J{"Requires DBOS Workflow?"}
+    J -->|Yes| K["DBOS.startWorkflow()"]
+    J -->|No| L["Direct Execution"]
+    
+    K & L --> M["Execute Command Logic\n(Database calls, Gacha logic, etc.)"]
+    
+    M --> N["reply() or deleteMsg()"]
+    
+    N --> MQ2[("BullMQ\n{responses} Queue")]
+    
+    MQ2 --> O["@girae/answerer\n(handler.ts)"]
+    
+    O --> P{"Platform Routing"}
+    
+    P -->|Discord| Q["discord.ts\n(Discordeno RestManager)"]
+    P -->|Telegram| R["telegram.ts\n(Telegramsjs)"]
+    
+    R --> S["marked.parseInline()\nConvert Markdown to HTML Entities"]
+    
+    S & Q --> T(["Send via Platform API"])
