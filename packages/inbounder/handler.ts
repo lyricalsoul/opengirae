@@ -1,6 +1,6 @@
 // handler.ts
 import type { Message, IncomingCommand } from "@girae/common/commands/types";
-import { client } from "@girae/common/dbos/client"
+import { commandQueue } from "@girae/common/queue"
 
 export const processCommand = async (msg: Message) => {
   if (!msg.content.startsWith("/")) return;
@@ -15,9 +15,5 @@ export const processCommand = async (msg: Message) => {
     workflowIDToBeAssigned: Bun.randomUUIDv7()
   };
 
-  await client.enqueue({
-    workflowName: 'executeCommand',
-    queueName: 'main',
-    workflowClassName: 'CommandRouterService',
-  }, cmd);
+  await commandQueue.add('executeCommand', cmd);
 };
