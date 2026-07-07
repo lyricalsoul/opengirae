@@ -2,6 +2,7 @@ import { DBOS } from '@girae/common/dbos';
 import { info } from '@girae/common/logger';
 import './services'
 import './worker'
+import { CronJobs } from './cron'
 
 DBOS.setConfig({
     name: 'openGIRAÊ',
@@ -10,5 +11,13 @@ DBOS.setConfig({
 })
 
 await DBOS.launch()
+
+await DBOS.applySchedules([
+    {
+        scheduleName: 'daily-midnight-reset',
+        workflowFn: CronJobs.runMidnightReset,
+        schedule: '0 3 * * *',
+    }
+])
 
 info('commandeer', 'Command worker is ready');

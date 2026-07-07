@@ -5,6 +5,7 @@ import {
   boolean,
   timestamp,
 } from "drizzle-orm/pg-core";
+import { cards } from "./cards";
 
 export const users = pgTable("users", {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
@@ -25,7 +26,10 @@ export const users = pgTable("users", {
   maxDraws: integer().notNull().default(12),
   usedDraws: integer().notNull().default(0),
   hasGottenDaily: boolean().notNull().default(false),
-  dailyStreak: integer().notNull().default(0)
+  dailyStreak: integer().notNull().default(0),
+  // TODO: if user loses card, this should be set to NULL. they need the card to make them their favorite.
+  favoriteCardId: integer()
+    .references(() => cards.id)
 });
 
 export const userProfiles = pgTable("user_profiles", {

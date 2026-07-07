@@ -15,7 +15,49 @@ export class UsersDB {
       .from(users)
       .where(eq(users.telegramId, telegramId))
       .limit(1)
-      .then(a => a?.[0])
+      .then(rows => rows[0]);
+  }
+
+  @dataSource.transaction()
+  static async addCoins(userId: number, amount: number) {
+    return await dataSource.client
+      .update(users)
+      .set({ coins: sql`${users.coins} + ${amount}` })
+      .where(eq(users.id, userId))
+      .returning()
+      .then(rows => rows[0]);
+  }
+
+  @dataSource.transaction()
+  static async updateUserMaxDraws(userId: number, amount: number) {
+    return await dataSource.client
+      .update(users)
+      .set({ maxDraws: sql`${users.maxDraws} + ${amount}` })
+      .where(eq(users.id, userId))
+      .returning()
+      .then(rows => rows[0]);
+  }
+
+  @dataSource.transaction()
+  static async setDailyGotten(userId: number, newStreak: number) {
+    return await dataSource.client
+      .update(users)
+      .set({ hasGottenDaily: true, dailyStreak: newStreak })
+      .where(eq(users.id, userId))
+      .returning()
+      .then(rows => rows[0]);
+  }
+
+  @dataSource.transaction()
+  static async resetMidnightStats() {
+    await dataSource.client
+      .update(users)
+      .set({ dailyStreak: 0 })
+      .where(eq(users.hasGottenDaily, false));
+
+    await dataSource.client
+      .update(users)
+      .set({ hasGottenDaily: false });
   }
 
   @dataSource.transaction()
