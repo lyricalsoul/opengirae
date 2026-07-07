@@ -10,7 +10,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 
-/// The rarity a card can have. Usually Common, Rare, Legendary, Mythic
+/// The rarity a card can have. Usually Common, Rare, Legendary
 export const rarities = pgTable("rarities", {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
   name: text().notNull().unique(),
@@ -18,7 +18,7 @@ export const rarities = pgTable("rarities", {
   emoji: text().notNull(),
 });
 
-/// The category which cards and items may belong.
+/// The category which cards and items may belong to.
 export const categories = pgTable("categories", {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
   name: text().notNull().unique(),
@@ -49,7 +49,7 @@ export const cards = pgTable("cards", {
     .references(() => rarities.id),
   imageUrl: text(),
   updatedAt: timestamp().notNull().defaultNow(),
-  
+
   rarityModifier: integer().notNull().default(100),
 });
 

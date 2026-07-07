@@ -21,13 +21,35 @@ export interface Message {
   platform: Platform
 }
 
-export interface PendingResponse {
-  method: 'sendMessage' | 'sendPhoto'
+export interface InlineOption {
+  title: string;
+  data: any;
+}
+
+export interface InlineReplyOptions {
   content: string;
+  eventName: string;
+  options: InlineOption[];
+  restricted: 'author' | 'none';
+  authorIds?: string[];
+  editMessageId?: string;
+}
+
+export interface StoredStep {
+  options: Array<{ id: string; data: any }>;
+  authorIds: string[];
+  restricted: 'author' | 'none';
+}
+
+export interface PendingResponse {
+  method: 'sendMessage' | 'sendPhoto' | 'editMessageText' | 'editMessageCaption' | 'deleteMessage';
+  content?: string;
   photoUrl?: string;
   replyToMessageId?: string;
+  messageId?: string;
   chatId: string;
-  platform: Platform
+  platform: Platform;
+  buttons?: Array<{ text: string; callbackData?: string; url?: string }>;
 }
 
 export interface IncomingCommand {

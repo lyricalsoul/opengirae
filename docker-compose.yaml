@@ -12,7 +12,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      QUEUES_CONFIG_JSON: '{"queues":[{"name":"{commands}","displayName":"Pending Commands","type":"bullmq","connectionUrl":"redis://dragonfly:6379"}, {"name":"{responses}","displayName":"Pending Responses","type":"bullmq","connectionUrl":"redis://dragonfly:6379"}]}'
+      QUEUES_CONFIG_JSON: '{"queues":[{"name":"{commands}","displayName":"Pending Commands","type":"bullmq","connectionUrl":"redis://dragonfly:6379"}, {"name":"{responses}","displayName":"Pending Responses","type":"bullmq","connectionUrl":"redis://dragonfly:6379"},{"name":"{resume}","displayName":"Pending DBOS workflow events","type":"bullmq","connectionUrl":"redis://dragonfly:6379"}]}'
     depends_on:
       - dragonfly
     restart: unless-stopped

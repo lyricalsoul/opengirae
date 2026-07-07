@@ -1,36 +1,51 @@
 import { users, userProfiles } from "./schemas/users";
-import { db } from "./index";
-import { eq } from "drizzle-orm";
+import { dataSource } from "./index";
+import { eq, sql } from "drizzle-orm";
 
-export async function getUserById(id: number) {
-  return await db.select().from(users).where(eq(users.id, id)).limit(1);
+export class UsersDB {
+  @dataSource.transaction()
+  static async getUserById(id: number) {
+    return await dataSource.client.select().from(users).where(eq(users.id, id)).limit(1).then(a => a?.[0]);
+  }
+
+  @dataSource.transaction()
+  static async getUserByTelegramId(telegramId: string) {
+    return await dataSource.client
+      .select()
+      .from(users)
+      .where(eq(users.telegramId, telegramId))
+      .limit(1)
+      .then(a => a?.[0])
+  }
+
+  @dataSource.transaction()
+  static async getUserProfileByTelegramId(telegramId: string) {
+    return await dataSource.client
+      .select()
+      .from(userProfiles)
+      .leftJoin(users, eq(userProfiles.userId, users.id))
+      .where(eq(users.telegramId, telegramId))
+      .limit(1)
+      .then(a => a?.[0])
+  }
+
+  @dataSource.transaction()
+  static async createUser(data: Omit<typeof users.$inferInsert, "id">) {
+    return await dataSource.client.insert(users).values(data).returning().then(rows => rows[0]);
+  }
+
+  @dataSource.transaction()
+  static async createUserProfile(userId: number) {
+    return await dataSource.client.insert(userProfiles).values({ userId }).returning().then(rows => rows[0]);
+  }
+
+  @dataSource.transaction()
+  static async incrementUsedDraws(userId: number) {
+    return await dataSource.client
+      .update(users)
+      .set({ usedDraws: sql`${users.usedDraws} + 1` })
+      .where(eq(users.id, userId))
+      .returning()
+      .then(rows => rows[0]);
+  }
 }
-
-export async function getUserByTelegramId(telegramId: string) {
-  return await db
-    .select()
-    .from(users)
-    .where(eq(users.telegramId, telegramId))
-    .limit(1)
-    .then(a => a?.[0])
-}
-
-export const getUserProfileByTelegramId = async (telegramId: string) => {
-  return await db
-    .select()
-    .from(userProfiles)
-    .leftJoin(users, eq(userProfiles.userId, users.id))
-    .where(eq(users.telegramId, telegramId))
-    .limit(1)
-    .then(a => a?.[0])
-};
-
-export const createUser = async (data: Omit<typeof users.$inferInsert, "id">) => {
-  return await db.insert(users).values(data).returning().then(rows => rows[0]);
-};
-
-export const createUserProfile = async (userId: number) => {
-  return await db.insert(userProfiles).values({ userId }).returning().then(rows => rows[0]);
-};
-
-export type UserWithProfile = Awaited<ReturnType<typeof getUserProfileByTelegramId>>;

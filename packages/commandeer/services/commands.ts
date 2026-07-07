@@ -1,4 +1,3 @@
-import { Command, CommandContext } from "@girae/common/commands";
 import { DBOS } from "@girae/common/dbos";
 import { findCommand } from "../loader";
 import type { IncomingCommand } from "@girae/common/commands/types";
@@ -12,19 +11,17 @@ export async function executeCommand(cmd: IncomingCommand) {
     return;
   }
 
-  const context = new CommandContext(cmd);
-  await context.populateUser();
-
   try {
     if (command.module.info.useWorkflow) {
-      await DBOS.startWorkflow<Command>(command.module, {
-        workflowID: context.workflowID,
-      }).execute(context);
+      await (DBOS.startWorkflow(command.module as any, {
+        workflowID: cmd.workflowIDToBeAssigned,
+      }) as any).execute(cmd);
     } else {
-      await command.module.execute(context);
+      await command.module.execute(cmd);
     }
   } catch (err: any) {
     error('commandeer', `Error executing command ${cmd.name}: ` + err.stack);
     throw err;
   }
 }
+

@@ -9,7 +9,8 @@
     "@types/bun": "latest",
     "@types/pg": "^8.20.0",
     "drizzle-kit": "^0.31.10",
-    "tsx": "^4.22.4"
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
   },
   "dependencies": {
     "@dbos-inc/dbos-sdk": "^4.23.6",
@@ -26,6 +27,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:push": "drizzle-kit push",
+    "db:seed": "bun packages/database/seed.ts",
     "dev:all": "bun run --parallel 'dev:inbounder' 'dev:commandeer' 'dev:answerer'",
     "dev:inbounder": "bun --watch packages/inbounder/index.ts",
     "dev:commandeer": "bun --watch packages/commandeer/index.ts",

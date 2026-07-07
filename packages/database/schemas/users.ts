@@ -4,7 +4,6 @@ import {
   text,
   boolean,
   timestamp,
-  doublePrecision,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -22,6 +21,11 @@ export const users = pgTable("users", {
 
   displayName: text().notNull(),
   avatarUrl: text().notNull(),
+
+  maxDraws: integer().notNull().default(12),
+  usedDraws: integer().notNull().default(0),
+  hasGottenDaily: boolean().notNull().default(false),
+  dailyStreak: integer().notNull().default(0)
 });
 
 export const userProfiles = pgTable("user_profiles", {

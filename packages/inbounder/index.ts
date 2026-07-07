@@ -1,6 +1,7 @@
 import type { MessageAuthor, MessageChat, Message } from '@girae/common/commands/types'
 import { avatarUrl, createBot, GatewayIntents } from 'discordeno'
 import { processCommand } from './handler'
+import { processCallback } from './callback'
 import { TelegramClient } from 'telegramsjs'
 
 const tg = new TelegramClient(process.env.TELEGRAM_TOKEN!)
@@ -28,6 +29,12 @@ tg.on('message', async (msg) => {
 })
 
 tg.on('callbackQuery', async (data) => {
+  if (!data.data) return
+  await processCallback(
+    data.data,
+    data.author.id.toString(),
+    data.message?.id?.toString()
+  )
 })
 
 const bot = createBot({
@@ -41,11 +48,11 @@ const bot = createBot({
       accentColor: true,
       discriminator: true
     },
-        message: {
-          content: true,
-          id: true,
-          channelId: true,
-          author: true,
+    message: {
+      content: true,
+      id: true,
+      channelId: true,
+      author: true,
     },
     channel: {
       id: true,

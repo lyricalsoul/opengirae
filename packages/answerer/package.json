@@ -4,6 +4,8 @@
   "private": true,
   "dependencies": {
     "@discordeno/rest": "^21.0.0",
-    "@girae/common": "workspace:^"
+    "@discordeno/types": "^21.0.0",
+    "@girae/common": "workspace:^",
+    "marked": "^18.0.5"
   }
 }

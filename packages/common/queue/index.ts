@@ -1,10 +1,12 @@
 import { createNodeRedisClient, Queue } from 'bullmq'
 import { createClient } from 'redis'
 
-const rawClient = createClient()
+export const rawClient = createClient()
+await rawClient.connect()
 
 export const connection = createNodeRedisClient(rawClient)
 
 // on dragonflydb, queue names must be between {}
 export const commandQueue = new Queue('{commands}', { connection })
 export const responseQueue = new Queue('{responses}', { connection })
+export const resumeQueue = new Queue('{resume}', { connection })
