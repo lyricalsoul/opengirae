@@ -1,4 +1,5 @@
 import type { IncomingCommand } from "./types/messaging"
+export * from "./decorators"
 
 interface CommandInfo {
   name: string;
