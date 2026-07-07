@@ -1,0 +1,9 @@
+{
+  "name": "@girae/answerer",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@discordeno/rest": "^21.0.0",
+    "@girae/common": "workspace:^"
+  }
+}

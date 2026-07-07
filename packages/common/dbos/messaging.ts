@@ -1,4 +1,3 @@
-import type { CommandContext } from "../commands/index"
 import type { IncomingCommand, PendingResponse } from "../commands/types"
 import { responseQueue } from "../queue"
 

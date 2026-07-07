@@ -1,6 +1,7 @@
 import { DBOS } from '@girae/common/dbos';
 import { info } from '@girae/common/logger';
 import './services'
+import './worker'
 
 DBOS.setConfig({
     name: 'openGIRAÊ',
@@ -9,6 +10,5 @@ DBOS.setConfig({
 })
 
 await DBOS.launch()
-await DBOS.registerQueue('main')
 
-info('commandeer', 'Command worker is ready and registered');
+info('commandeer', 'Command worker is ready');
