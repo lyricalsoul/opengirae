@@ -82,6 +82,26 @@ export class UsersDB {
   }
 
   @dataSource.transaction()
+  static async updateAvatar(userId: number, avatarUrl: string) {
+    return await dataSource.client
+      .update(users)
+      .set({ avatarUrl, avatarUpdatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning()
+      .then(rows => rows[0]);
+  }
+
+  @dataSource.transaction()
+  static async updateUserProfile(userId: number, data: Partial<typeof userProfiles.$inferInsert>) {
+    return await dataSource.client
+      .update(userProfiles)
+      .set(data)
+      .where(eq(userProfiles.userId, userId))
+      .returning()
+      .then(rows => rows[0]);
+  }
+
+  @dataSource.transaction()
   static async incrementUsedDraws(userId: number) {
     return await dataSource.client
       .update(users)

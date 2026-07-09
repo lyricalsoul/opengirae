@@ -5,7 +5,8 @@ import {
   subcategories,
   rarities,
   userCards,
-  cardDrawHistory
+  cardDrawHistory,
+  cardSubcategories
 } from "./schemas/cards";
 import { eq, and, sql } from "drizzle-orm";
 
@@ -38,6 +39,28 @@ export class CardsDB {
   @dataSource.transaction()
   static async getCard(id: number) {
     return await dataSource.client.select().from(cards).where(eq(cards.id, id)).limit(1).then(a => a?.[0]);
+  }
+
+  @dataSource.transaction()
+  static async getCardWithDetails(id: number) {
+    return await dataSource.client
+      .select({
+        id: cards.id,
+        name: cards.name,
+        imageUrl: cards.imageUrl,
+        rarityName: rarities.name,
+        rarityEmoji: rarities.emoji,
+        categoryEmoji: categories.emoji,
+        subcategoryName: subcategories.name,
+      })
+      .from(cards)
+      .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+      .leftJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.isMain, true)))
+      .leftJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
+      .leftJoin(categories, eq(categories.id, subcategories.categoryId))
+      .where(eq(cards.id, id))
+      .limit(1)
+      .then(a => a?.[0]);
   }
 
   @dataSource.transaction()

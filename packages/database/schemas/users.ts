@@ -6,12 +6,14 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 import { cards } from "./cards";
+import { storeItems } from "./vanities";
 
 export const users = pgTable("users", {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
   telegramId: text().notNull().unique(),
   isBanned: boolean().notNull().default(false),
   banMessage: text(),
+  isAdmin: boolean().notNull().default(false),
 
   createdAt: timestamp().notNull().defaultNow(),
   updatedAt: timestamp().notNull().defaultNow(),
@@ -22,6 +24,7 @@ export const users = pgTable("users", {
 
   displayName: text().notNull(),
   avatarUrl: text().notNull(),
+  avatarUpdatedAt: timestamp(),
 
   maxDraws: integer().notNull().default(12),
   usedDraws: integer().notNull().default(0),
@@ -38,7 +41,7 @@ export const userProfiles = pgTable("user_profiles", {
     .notNull()
     .references(() => users.id),
 
-  bio: text(),
+  bio: text().notNull().default("Eu ainda não defini minha bio usando /bio!"),
   reputation: integer().notNull().default(0),
   favoriteColor: text().notNull().default("#FF94DB"),
 
@@ -47,4 +50,10 @@ export const userProfiles = pgTable("user_profiles", {
 
   createdAt: timestamp().notNull().defaultNow(),
   updatedAt: timestamp().notNull().defaultNow(),
+
+  hideProfileEmojis: boolean().notNull().default(false),
+
+  equipedBackgroundId: integer().references(() => storeItems.id),
+  equipedStickerId: integer().references(() => storeItems.id),
+  equipedProfileId: integer().references(() => storeItems.id)
 });

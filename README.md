@@ -3,14 +3,14 @@
 ![](.github/image-4.png)
 
 This is the source code for Giraê, a gacha game for chat platforms.
-This is the rewrite of the original version, announced as the Kitsch project. The new version changes the visual identity and clears up the codebase by using a more resilient worker system and typings everywhere.
-Inconsistencies across executions have been remediated by enforcing a DBOS workflow-based system for mission-critical logic, while keeping the app scalable and clean.
+This repository contains a complete rewrite of the original version, previously announced as the Kitsch project. This new iteration updates the visual identity and overhauls the codebase by introducing a resilient worker architecture with comprehensive TypeScript typings.
+Inconsistencies across executions have been remediated by enforcing a DBOS workflow-based system for mission-critical logic, ensuring the application remains scalable, robust, and clean.
 
 ## Architecture
 
-Giraê is supposed to be highly modular and easy to scale. The legacy version had a rudimentary version of this, but the fact that it kept a lot of state made it hard to scale. This time, DBOS and BullMQ are used all throughout the app to enforce a worker system while keeping consistency across executions.
+Giraê is designed to be highly modular and easily scalable. While the legacy version implemented a rudimentary modular design, its reliance on heavy local state severely limited its scalability. In this rewrite, DBOS and BullMQ are heavily leveraged throughout the application to enforce a strict worker-based architecture, ensuring consistency and reliability across all executions.
 
-A view of the execution flow can be seen at flow.mermaid. In a simplified way, the event flow goes like this:
+A detailed execution flow can be found in `flow.mermaid`. At a high level, the event pipeline operates as follows:
 ```
 telegram/discord -> inbounder --bullMQ-> commandeer --bullMQ-> answerer -> telegram/discord
 ```

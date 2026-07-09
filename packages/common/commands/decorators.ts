@@ -2,6 +2,7 @@ export interface SubcommandOptions {
   name: string;
   description: string;
   isWorkflow?: boolean;
+  aliases?: string[];
 }
 
 export function Subcommand(options: SubcommandOptions) {
@@ -9,9 +10,13 @@ export function Subcommand(options: SubcommandOptions) {
     if (!target.subcommands) {
       target.subcommands = {};
     }
-    target.subcommands[options.name] = {
+    const entry = {
       ...options,
       methodName: propertyKey
     };
+    target.subcommands[options.name] = entry;
+    for (const alias of options.aliases ?? []) {
+      target.subcommands[alias] = entry;
+    }
   };
 }

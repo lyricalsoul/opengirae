@@ -9,6 +9,24 @@ const tg = new TelegramClient(process.env.TELEGRAM_TOKEN!)
 tg.on('message', async (msg) => {
   if (!msg.content) return
 
+  const chat: MessageChat = {
+    id: String(msg.chat!.id),
+    title: msg.chat!.title || 'DM'
+  }
+
+  const replyTo: Message | undefined = msg.originalMessage ? {
+    content: msg.originalMessage.content ?? '',
+    id: String(msg.originalMessage.id),
+    author: {
+      id: msg.originalMessage.author!.id.toString(),
+      name: msg.originalMessage.author!.firstName,
+      avatarUrl: ''
+    },
+    chat,
+    timestamp: new Date(msg.originalMessage.createdTimestamp),
+    platform: 'telegram'
+  } : undefined
+
   const m: Message = {
     content: msg.content!,
     id: String(msg.id),
@@ -17,12 +35,10 @@ tg.on('message', async (msg) => {
       name: msg.author!.firstName,
       avatarUrl: ''
     },
-    chat: {
-      id: String(msg.chat!.id),
-      title: msg.chat!.title || 'DM'
-    },
+    chat,
     timestamp: new Date(msg.createdTimestamp),
-    platform: 'telegram'
+    platform: 'telegram',
+    replyTo
   }
 
   await processCommand(m)
