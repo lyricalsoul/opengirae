@@ -1,6 +1,6 @@
 import { TelegramClient } from 'telegramsjs'
 import type { PendingResponse } from '@girae/common/commands/types'
-import { error } from '@girae/common/logger'
+import { error, warn } from '@girae/common/logger'
 import { marked } from 'marked'
 
 const tg = new TelegramClient(process.env.TELEGRAM_TOKEN!)
@@ -8,14 +8,32 @@ const tg = new TelegramClient(process.env.TELEGRAM_TOKEN!)
 async function processMarkdown(text?: string): Promise<string | undefined> {
   if (!text) return undefined;
 
-  const escapedText = text
-    .replace(/&(?!#?[a-zA-Z0-9]+;)/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
-  const html = await marked.parseInline(escapedText, { gfm: true });
+  const html = await marked.parseInline(text, { gfm: true });
 
   return (html as string).trim();
+}
+
+function isValidHttpUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function buildReplyMarkup(buttons?: PendingResponse['buttons']) {
+  if (!buttons?.length) return {}
+  return {
+    replyMarkup: {
+      inline_keyboard: buttons.map(row => row.map(b => {
+        const btn: any = { text: b.text }
+        if (b.callbackData) btn.callback_data = b.callbackData
+        if (b.url) btn.url = b.url
+        return btn
+      }))
+    }
+  }
 }
 
 export async function sendTelegramAnswer(response: PendingResponse) {
@@ -32,18 +50,7 @@ export async function sendTelegramAnswer(response: PendingResponse) {
           message_id: response.replyToMessageId,
           allow_sending_without_reply: false
         } : undefined,
-        ...(response.buttons?.length ? {
-          replyMarkup: {
-            inline_keyboard: [
-              response.buttons.map(b => {
-                const btn: any = { text: b.text }
-                if (b.callbackData) btn.callback_data = b.callbackData
-                if (b.url) btn.url = b.url
-                return btn
-              })
-            ]
-          }
-        } : {})
+        ...buildReplyMarkup(response.buttons)
       })
       break
     case 'editMessageText':
@@ -52,18 +59,7 @@ export async function sendTelegramAnswer(response: PendingResponse) {
         messageId: response.messageId!,
         text: formattedContent!,
         parseMode: 'HTML',
-        ...(response.buttons?.length ? {
-          replyMarkup: {
-            inline_keyboard: [
-              response.buttons.map(b => {
-                const btn: any = { text: b.text }
-                if (b.callbackData) btn.callback_data = b.callbackData
-                if (b.url) btn.url = b.url
-                return btn
-              })
-            ]
-          }
-        } : {})
+        ...buildReplyMarkup(response.buttons)
       })
       break
     case 'editMessageCaption':
@@ -72,24 +68,30 @@ export async function sendTelegramAnswer(response: PendingResponse) {
         messageId: response.messageId!,
         caption: formattedContent,
         parseMode: 'HTML',
-        ...(response.buttons?.length ? {
-          replyMarkup: {
-            inline_keyboard: [
-              response.buttons.map(b => {
-                const btn: any = { text: b.text }
-                if (b.callbackData) btn.callback_data = b.callbackData
-                if (b.url) btn.url = b.url
-                return btn
-              })
-            ]
-          }
-        } : {})
+        ...buildReplyMarkup(response.buttons)
       })
       break
-    case 'sendPhoto':
+    case 'sendPhoto': {
+      const photoUrl = response.photoUrl!
+      if (!isValidHttpUrl(photoUrl)) {
+        warn('answerer', `sendPhoto received invalid URL, falling back to sendMessage: ${photoUrl}`)
+        await tg.sendMessage({
+          chatId: response.chatId,
+          text: formattedContent ?? '',
+          parseMode: 'HTML',
+          ...(response.replyToMessageId ? {
+            replyParameters: {
+              message_id: response.replyToMessageId,
+              allow_sending_without_reply: false
+            }
+          } : {}),
+          ...buildReplyMarkup(response.buttons)
+        })
+        break
+      }
       await tg.sendPhoto({
         chatId: response.chatId,
-        photo: response.photoUrl!,
+        photo: photoUrl,
         caption: formattedContent,
         parseMode: 'HTML',
         ...(response.replyToMessageId ? {
@@ -98,23 +100,53 @@ export async function sendTelegramAnswer(response: PendingResponse) {
             allow_sending_without_reply: false
           }
         } : {}),
-        ...(response.buttons?.length ? {
-          replyMarkup: {
-            inline_keyboard: [
-              response.buttons.map(b => {
-                const btn: any = { text: b.text }
-                if (b.callbackData) btn.callback_data = b.callbackData
-                if (b.url) btn.url = b.url
-                return btn
-              })
-            ]
-          }
-        } : {})
+        ...buildReplyMarkup(response.buttons)
       })
       break
+    }
+    case 'sendAnimation': {
+      const animationUrl = response.photoUrl!
+      if (!isValidHttpUrl(animationUrl)) {
+        warn('answerer', `sendAnimation received invalid URL, falling back to sendMessage: ${animationUrl}`)
+        await tg.sendMessage({
+          chatId: response.chatId,
+          text: formattedContent ?? '',
+          parseMode: 'HTML',
+          ...(response.replyToMessageId ? {
+            replyParameters: {
+              message_id: response.replyToMessageId,
+              allow_sending_without_reply: false
+            }
+          } : {}),
+          ...buildReplyMarkup(response.buttons)
+        })
+        break
+      }
+      await tg.sendAnimation({
+        chatId: response.chatId,
+        animation: animationUrl,
+        caption: formattedContent,
+        parseMode: 'HTML',
+        ...(response.replyToMessageId ? {
+          replyParameters: {
+            message_id: response.replyToMessageId,
+            allow_sending_without_reply: false
+          }
+        } : {}),
+        ...buildReplyMarkup(response.buttons)
+      })
+      break
+    }
     case 'deleteMessage':
       await tg.deleteMessage(response.chatId,
         Number(response.messageId!))
+      break
+    case 'answerCallbackQuery':
+      await tg.answerCallbackQuery({
+        callbackQueryId: response.callbackQueryId!,
+        text: response.content,
+        showAlert: true,
+      })
       break
     default:
       error('answerer', `Unimplemented Telegram method: ${response.method}`)

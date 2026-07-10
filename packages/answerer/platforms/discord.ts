@@ -19,15 +19,15 @@ export async function sendDiscordAnswer(response: PendingResponse) {
           }
         } : {}),
         ...(response.buttons?.length ? {
-          components: [{
+          components: response.buttons.map(row => ({
             type: MessageComponentTypes.ActionRow,
-            components: response.buttons.map(b => ({
+            components: row.map(b => ({
               type: MessageComponentTypes.Button,
               style: ButtonStyles.Primary,
               label: b.text,
               customId: b.callbackData,
             })) as any
-          }]
+          }))
         } : {})
       })
       break
