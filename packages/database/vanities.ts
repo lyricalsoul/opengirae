@@ -1,6 +1,7 @@
 import { maybeTransaction } from "./decorators";
 import { storeItems, boughtItems, type storeItemTypes } from "./schemas/vanities";
-import { and, eq, ilike, inArray } from "drizzle-orm";
+import { users } from "./schemas/users";
+import { and, eq, gte, ilike, inArray, sql } from "drizzle-orm";
 
 type StoreItemType = (typeof storeItemTypes.enumValues)[number]
 
@@ -41,6 +42,18 @@ export class VanitiesDB {
 
   static addBoughtItem = maybeTransaction('addBoughtItem', async (client, userId: number, itemId: number) => {
     return await client.insert(boughtItems).values({ userId, itemId }).returning().then(a => a?.[0]);
+  })
+
+  static purchaseItem = maybeTransaction('purchaseItem', async (client, userId: number, itemId: number, price: number) => {
+    const [spendRow] = await client
+      .update(users)
+      .set({ coins: sql`${users.coins} - ${price}` })
+      .where(and(eq(users.id, userId), gte(users.coins, price)))
+      .returning();
+    if (!spendRow) return { ok: false as const, reason: 'insufficient_funds' as const };
+
+    const item = await client.insert(boughtItems).values({ userId, itemId }).returning().then(a => a?.[0]);
+    return { ok: true as const, item };
   })
 
   // bulk ownership lookup - avoids one hasBought() call per item when rendering a browse list

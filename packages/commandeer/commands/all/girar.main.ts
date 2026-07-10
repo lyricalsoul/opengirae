@@ -6,6 +6,7 @@ import { DBOS } from '@dbos-inc/dbos-sdk'
 import { reply, deleteMsg } from '@girae/common/dbos/messaging'
 import { rawClient } from '@girae/common/queue'
 import type { IncomingCommand } from '@girae/common/commands/types'
+import { escapeMarkdown } from '@girae/common/utilities/markdown'
 
 export default class GirarCommand extends Command {
   static override info = {
@@ -29,8 +30,8 @@ export default class GirarCommand extends Command {
       const url = `https://t.me/c/${cleanChatId}/${lockData.messageId}`;
 
       await reply(ctx, {
-        content: "⚠️ Você já está girando! Termine-a antes de girar novamente.",
-        buttons: [{ text: "Continuar jogada atual", url }]
+        content: "🕹 Você já está girando. Por favor, espere até que o giro atual termine.\n\nCaso a mensagem tenha sido deletada, use /cancelar para poder girar de novo.",
+        buttons: [{ text: "🔄 Ir à mensagem do giro", url }]
       });
       return;
     }
@@ -41,7 +42,7 @@ export default class GirarCommand extends Command {
     }
 
     if (user.usedDraws >= user.maxDraws) {
-      await reply(ctx, `Você atingiu seu limite diário de ${user.maxDraws} rodadas! Volte amanhã.`);
+      await reply(ctx, "Ah... sinto muito, mas você já girou os cards que podia por agora. 😣\nVocê receberá mais giros amanhã.");
       return;
     }
 
@@ -53,8 +54,9 @@ export default class GirarCommand extends Command {
 
     try {
       const categories = await CardsDB.getCategories()
+      const remainingDraws = user.maxDraws - user.usedDraws
       await reply(ctx, {
-        content: 'Escolha uma categoria...',
+        content: `🎲 Olá, **[${escapeMarkdown(ctx.message.author.name)}](tg://user?id=${ctx.message.author.id})**! Bem-vindo de volta. Pronto para girar?\n🎨 Você tem **${remainingDraws}** de **${user.maxDraws}** giros restantes.\n\n🕹 Escolha uma categoria:`,
         eventName: GirarCommand.CATEGORY_SELECTED_EVENT,
         restricted: 'author',
         options: categories.map(c => ({ title: `${c.emoji} ${c.name}`, data: c.id }))
@@ -81,12 +83,14 @@ export default class GirarCommand extends Command {
       }
 
       await reply(ctx, {
-        content: 'Escolha uma subcategoria...',
+        content: '🎲 Escolha uma subcategoria para girar:',
         eventName: GirarCommand.SUBCATEGORY_SELECTED_EVENT,
         restricted: 'author',
         options: selectedSubcategories.map(c => ({ title: c.name, data: c.id })),
         editMessageId: messageId,
       })
+
+      await UsersDB.incrementUsedDraws(user.id)
 
       const subcategorySelection = await DBOS.recv<{ value: number, messageId?: string }>(GirarCommand.SUBCATEGORY_SELECTED_EVENT)
       if (!subcategorySelection?.value) return
@@ -97,14 +101,14 @@ export default class GirarCommand extends Command {
       const drawnCard = GachaLogic.selectCard(cardPool);
 
       if (!drawnCard) {
-        await reply(ctx, "Esta subcategoria está vazia!");
+        await reply(ctx, "Não tinha nenhum card nessa categoria... menos um giro pra você...");
         return;
       }
 
       // TODO: could these be a single function call inside a transaction for better performance and stability?
       const userCard = await CardsDB.addUserCard(user.id, drawnCard.id);
       await CardsDB.addCardDrawHistory(user.id, drawnCard.id, categoryId, subcategoryId);
-      await UsersDB.incrementUsedDraws(user.id);
+      const tags = await CardsDB.getSecondarySubcategoryNames(drawnCard.id);
 
       if (messageId) {
         await deleteMsg(ctx, messageId);
@@ -113,13 +117,14 @@ export default class GirarCommand extends Command {
       const subcategory = allSubcategories.find(s => s.id === subcategoryId);
       const subcategoryName = subcategory?.name ?? 'Desconhecida';
       const count = userCard?.count ?? 1;
+      const tagExtra = tags[0] ? `\n🔖 ${escapeMarkdown(tags[0])}` : '';
 
       const text = `🎰 Parabéns, você ganhou e vai levar:
 
-${drawnCard.rarityEmoji} ${drawnCard.id}. **${drawnCard.name}** \`${count}x\`
-${category.emoji} ${subcategoryName}
+${drawnCard.rarityEmoji} \`${drawnCard.id}\`. **${escapeMarkdown(drawnCard.name)}**
+${category.emoji} _${escapeMarkdown(subcategoryName)}_${tagExtra}
 
-👾 ${user.id}. \`${ctx.message.author.name}\``;
+👾 \`${user.id}\`. [${escapeMarkdown(ctx.message.author.name)}](tg://user?id=${ctx.message.author.id}) (\`${count}x\`)`;
 
       await reply(ctx, {
         content: text,
