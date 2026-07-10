@@ -18,7 +18,9 @@ export interface Message {
   content: string;
   replyTo?: Message;
   timestamp: Date;
-  platform: Platform
+  platform: Platform;
+  photoUrl?: string;
+  isAnimatedPhoto?: boolean;
 }
 
 export interface InlineOption {
@@ -33,6 +35,8 @@ export interface InlineReplyOptions {
   restricted: 'author' | 'none';
   authorIds?: string[];
   editMessageId?: string;
+  photoUrl?: string;
+  rows?: number[];
 }
 
 export interface StoredStep {
@@ -42,14 +46,15 @@ export interface StoredStep {
 }
 
 export interface PendingResponse {
-  method: 'sendMessage' | 'sendPhoto' | 'editMessageText' | 'editMessageCaption' | 'deleteMessage';
+  method: 'sendMessage' | 'sendPhoto' | 'sendAnimation' | 'editMessageText' | 'editMessageCaption' | 'deleteMessage' | 'answerCallbackQuery';
   content?: string;
   photoUrl?: string;
   replyToMessageId?: string;
   messageId?: string;
+  callbackQueryId?: string;
   chatId: string;
   platform: Platform;
-  buttons?: Array<{ text: string; callbackData?: string; url?: string }>;
+  buttons?: Array<Array<{ text: string; callbackData?: string; url?: string }>>;
 }
 
 export interface IncomingCommand {

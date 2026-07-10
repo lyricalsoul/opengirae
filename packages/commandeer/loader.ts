@@ -39,3 +39,36 @@ export const findCommand = (name: string): LoadedCommand | undefined => {
     (cmd.module.info.aliases && cmd.module.info.aliases.includes(name))
   );
 };
+
+interface QuickViewEntry {
+  module: typeof Command;
+  methodName: string;
+}
+
+const quickViews: Record<string, QuickViewEntry> = {}
+for (const cmd of loadedCommands) {
+  const registered = (cmd.module as any).quickViews as Record<string, { methodName: string }> | undefined
+  if (!registered) continue
+  for (const [name, entry] of Object.entries(registered)) {
+    quickViews[name] = { module: cmd.module, methodName: entry.methodName }
+  }
+}
+
+export const findQuickView = (name: string): QuickViewEntry | undefined => quickViews[name];
+
+interface PageEntry {
+  module: typeof Command;
+  methodName: string;
+  restricted: boolean;
+}
+
+const pages: Record<string, PageEntry> = {}
+for (const cmd of loadedCommands) {
+  const registered = (cmd.module as any).pages as Record<string, { methodName: string, restricted: boolean }> | undefined
+  if (!registered) continue
+  for (const [name, entry] of Object.entries(registered)) {
+    pages[name] = { module: cmd.module, methodName: entry.methodName, restricted: entry.restricted }
+  }
+}
+
+export const findPage = (name: string): PageEntry | undefined => pages[name];
