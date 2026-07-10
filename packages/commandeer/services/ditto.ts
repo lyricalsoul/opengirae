@@ -1,4 +1,4 @@
-import { error } from "@girae/common/logger"
+import { error, warn } from "@girae/common/logger"
 import { DEFAULT_BACKGROUND_URL } from "@girae/database/constants"
 
 export { DEFAULT_BACKGROUND_URL }
@@ -20,7 +20,7 @@ export interface DittoProfileData {
   hideBadges: boolean
 }
 
-export async function generateProfileImage(data: DittoProfileData): Promise<{ url: string } | null> {
+export async function generateProfileImage(data: DittoProfileData, overlays?: string[]): Promise<{ url: string } | null> {
   if (!process.env.DITTO_URL) return null
 
   return fetch(`${process.env.DITTO_URL}/generate`, {
@@ -31,6 +31,7 @@ export async function generateProfileImage(data: DittoProfileData): Promise<{ ur
     },
     body: JSON.stringify({
       theme: "user_profile",
+      ...(overlays?.length ? { overlays } : {}),
       data: {
         ...data,
         position: 1
@@ -38,7 +39,20 @@ export async function generateProfileImage(data: DittoProfileData): Promise<{ ur
       image_pack: "girae",
     }),
   })
-    .then(r => r.json() as Promise<{ url: string } | null>)
+    .then(async (r) => {
+      if (!r.ok) {
+        const body = await r.text().catch(() => '<unreadable>')
+        error("ditto", `generateProfileImage HTTP ${r.status}: ${body}`)
+        return null
+      }
+      const text = await r.text()
+      try {
+        return JSON.parse(text) as { url: string } | null
+      } catch (e) {
+        error("ditto", `generateProfileImage invalid JSON: ${text}`)
+        return null
+      }
+    })
     .catch((e) => {
       error("ditto", `generateProfileImage failed: ${e}`)
       return null

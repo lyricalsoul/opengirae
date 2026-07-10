@@ -3,6 +3,7 @@ import { findCommand } from "../loader";
 import type { IncomingCommand } from "@girae/common/commands/types";
 import { info, error } from "@girae/common/logger";
 import { passesGuards } from "./guards";
+import { UsersDB } from "@girae/database/users";
 
 async function runCommand(
   targetClass: any,
@@ -26,6 +27,12 @@ export async function executeCommand(cmd: IncomingCommand) {
     info('commandeer', `Got a command I can't handle: ${cmd.name}`);
     return;
   }
+
+  await UsersDB.ensureUser({
+    telegramId: cmd.message.author.id,
+    displayName: cmd.message.author.name,
+    avatarUrl: cmd.message.author.avatarUrl,
+  });
 
   if (!(await passesGuards(command.guards, cmd))) {
     return;

@@ -7,12 +7,13 @@ import type { IncomingCommand } from '@girae/common/commands/types'
 import { resolveTargetTelegramId } from '../../utilities/mentions'
 import { refreshAvatarIfStale } from '../../services/avatar'
 import { generateProfileImage, DEFAULT_BACKGROUND_URL } from '../../services/ditto'
+import { escapeMarkdown } from '@girae/common/utilities/markdown'
 
 export default class ProfileCommand extends Command {
   static override info = {
     name: 'profile',
     description: 'Mostra seu perfil de usuário',
-    aliases: ['perfil', 'me', 'pf']
+    aliases: ['perfil', 'me', 'pf', 'pfp', 'ppc']
   }
 
   static override async execute(ctx: IncomingCommand) {
@@ -59,17 +60,20 @@ export default class ProfileCommand extends Command {
     })
 
     const favCardText = favoriteCard
-      ? `\n\n${favoriteCard.rarityEmoji} \`${favoriteCard.id}\`. **${favoriteCard.name}**\n${favoriteCard.categoryEmoji ?? ''} _${favoriteCard.subcategoryName ?? ''}_`
+      ? `\n\n${favoriteCard.rarityEmoji} \`${favoriteCard.id}\`. **${escapeMarkdown(favoriteCard.name)}**\n${favoriteCard.categoryEmoji ?? ''} _${escapeMarkdown(favoriteCard.subcategoryName ?? '')}_`
       : ''
 
     const drawsLeft = user.maxDraws - user.usedDraws
 
-    const caption = `🖼 \`${user.id}\`. **${user.displayName}**
+    const caption = `🖼 \`${user.id}\`. **${escapeMarkdown(user.displayName)}**
 
 🌠 **Reputação** - _${profile.reputation} ponto${profile.reputation === 1 ? '' : 's'}_
 🃏 **Cartas** - _${cardsCount} ${cardsCount === 1 ? 'colecionável' : 'colecionáveis'}_
 💸 **Moedas** - _${user.coins} moeda${user.coins === 1 ? '' : 's'}_
-🎲 **Giros** - _${drawsLeft} giro${drawsLeft === 1 ? '' : 's'} sobrando_${favCardText}`
+🎲 **Giros** - _${drawsLeft} giro${drawsLeft === 1 ? '' : 's'} sobrando_${favCardText}
+
+*quer editar seu perfil? use \`/profile edit\` para informações*
+`
 
     await reply(ctx, {
       content: caption,
@@ -84,7 +88,9 @@ export default class ProfileCommand extends Command {
 /bio - define sua biografia (exemplo: \`/bio eu amo a ningning\`)
 /favcolor - define a cor que aparece no seu perfil (exemplo: \`/favcolor #ff0000\`)
 /profile emoji off - esconde os emojis do seu perfil
-/profile emoji on - reativa os emojis do seu perfil`)
+/profile emoji on - reativa os emojis do seu perfil
+/fav - define sua carta favorita (exemplo: \`/fav Karol Conká\`)
+`)
   }
 
   @Subcommand({ name: 'emo', description: 'Ativa ou desativa os emojis do seu perfil', aliases: ['emoji', 'emojis'] })

@@ -4,9 +4,12 @@ import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { DrizzleDataSource } from "@dbos-inc/drizzle-datasource";
 import * as schema_cards from "./schemas/cards";
 import * as schema_users from "./schemas/users";
+import * as schema_audit from "./schemas/audit";
 
 export const config = { connectionString: process.env.DATABASE_URL! };
 const pool = new Pool(config);
 
-export const db = drizzle(pool);
-export const dataSource = new DrizzleDataSource<NodePgDatabase<typeof schema_cards & typeof schema_users>>('app-db', config);
+const schema = { ...schema_cards, ...schema_users, ...schema_audit };
+
+export const db = drizzle(pool, { schema });
+export const dataSource = new DrizzleDataSource<NodePgDatabase<typeof schema>>('app-db', config);

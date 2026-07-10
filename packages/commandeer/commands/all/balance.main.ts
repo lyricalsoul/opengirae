@@ -3,6 +3,7 @@ import { reply } from '@girae/common/dbos/messaging'
 import { UsersDB } from '@girae/database/users'
 import { CardsDB } from '@girae/database/cards'
 import type { IncomingCommand } from '@girae/common/commands/types'
+import { escapeMarkdown } from '@girae/common/utilities/markdown'
 
 export default class BalanceCommand extends Command {
   static override info = {
@@ -20,7 +21,7 @@ export default class BalanceCommand extends Command {
     const cardsCount = await CardsDB.getUserCardsCount(user.id)
     const formatter = new Intl.NumberFormat('pt-BR')
 
-    const text = `🏧 Finanças de **${ctx.message.author.name}**
+    const text = `🏧 Finanças de **${escapeMarkdown(ctx.message.author.name)}**
 
 💴 **Moedas**: \`${formatter.format(user.coins)}\`
 🃏 **Cartas**: \`${formatter.format(cardsCount)}\``

@@ -39,6 +39,7 @@ export const userProfiles = pgTable("user_profiles", {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
   userId: integer()
     .notNull()
+    .unique()
     .references(() => users.id),
 
   bio: text().notNull().default("Eu ainda não defini minha bio usando /bio!"),

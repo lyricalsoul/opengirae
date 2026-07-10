@@ -1,4 +1,4 @@
-import { dataSource } from "./index";
+import { maybeTransaction } from "./decorators";
 import { cards, subcategories, rarities, cardSubcategories } from "./schemas/cards";
 import { eq } from "drizzle-orm";
 
@@ -89,9 +89,8 @@ export class GachaLogic {
     return pool[selectedIndex]!;
   }
 
-  @dataSource.transaction()
-  static async getSubcategoriesForDraw(categoryId: number): Promise<SubcategoryForDraw[]> {
-    return await dataSource.client
+  static getSubcategoriesForDraw = maybeTransaction('getSubcategoriesForDraw', async (client, categoryId: number): Promise<SubcategoryForDraw[]> => {
+    return await client
       .select({
         id: subcategories.id,
         name: subcategories.name,
@@ -99,11 +98,10 @@ export class GachaLogic {
       })
       .from(subcategories)
       .where(eq(subcategories.categoryId, categoryId));
-  }
+  })
 
-  @dataSource.transaction()
-  static async getCardsForDraw(subcategoryId: number): Promise<CardForDraw[]> {
-    return await dataSource.client
+  static getCardsForDraw = maybeTransaction('getCardsForDraw', async (client, subcategoryId: number): Promise<CardForDraw[]> => {
+    return await client
       .select({
         id: cards.id,
         name: cards.name,
@@ -116,5 +114,5 @@ export class GachaLogic {
       .innerJoin(cardSubcategories, eq(cardSubcategories.cardId, cards.id))
       .innerJoin(rarities, eq(rarities.id, cards.rarityId))
       .where(eq(cardSubcategories.subcategoryId, subcategoryId));
-  }
+  })
 }

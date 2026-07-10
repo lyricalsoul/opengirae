@@ -5,6 +5,7 @@ import {
     boolean,
     timestamp,
     pgEnum,
+    unique,
 } from "drizzle-orm/pg-core";
 import {
     users
@@ -23,11 +24,15 @@ export const storeItems = pgTable("store_items", {
 
     isAvailable: boolean().notNull().default(true),
     isSearchable: boolean().notNull().default(true)
-});
+}, (table) => [
+    unique().on(table.title, table.type),
+]);
 
 export const boughtItems = pgTable("bought_items", {
     id: integer().primaryKey().generatedAlwaysAsIdentity(),
     userId: integer().notNull().references(() => users.id),
     itemId: integer().notNull().references(() => storeItems.id),
     boughtAt: timestamp().notNull().defaultNow(),
-});
+}, (table) => [
+    unique().on(table.userId, table.itemId),
+]);
