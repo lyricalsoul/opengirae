@@ -87,6 +87,7 @@ export default class GirarCommand extends Command {
         eventName: GirarCommand.SUBCATEGORY_SELECTED_EVENT,
         restricted: 'author',
         options: selectedSubcategories.map(c => ({ title: c.name, data: c.id })),
+        rows: Array(Math.ceil(selectedSubcategories.length / 2)).fill(2),
         editMessageId: messageId,
       })
 
