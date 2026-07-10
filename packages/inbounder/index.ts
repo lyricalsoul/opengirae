@@ -6,8 +6,38 @@ import { TelegramClient } from 'telegramsjs'
 
 const tg = new TelegramClient(process.env.TELEGRAM_TOKEN!)
 
+const resolveMedia = async (msg: any): Promise<{ photoUrl?: string, isAnimatedPhoto?: boolean }> => {
+  if (msg.animation) {
+    const file = await msg.animation.fetch()
+    return { photoUrl: file.url ?? undefined, isAnimatedPhoto: true }
+  }
+  const largest = msg.photo?.[msg.photo.length - 1]
+  if (!largest) return {}
+  const file = await largest.fetch()
+  return { photoUrl: file.url ?? undefined }
+}
+
+const stripBotMention = (content: string): string | null => {
+  if (!content.startsWith('/')) return content
+  const spaceIndex = content.indexOf(' ')
+  const firstToken = spaceIndex === -1 ? content : content.slice(0, spaceIndex)
+  const atIndex = firstToken.indexOf('@')
+  if (atIndex === -1) return content
+
+  const mentionedUsername = firstToken.slice(atIndex + 1)
+  if (mentionedUsername.toLowerCase() !== tg.user?.username?.toLowerCase()) return null
+
+  return firstToken.slice(0, atIndex) + content.slice(firstToken.length)
+}
+
 tg.on('message', async (msg) => {
-  if (!msg.content) return
+  let content = msg.content ?? msg.caption
+  if (content) {
+    const stripped = stripBotMention(content)
+    if (stripped === null) return
+    content = stripped
+  }
+  if (!content && !msg.photo?.length && !msg.animation) return
 
   const chat: MessageChat = {
     id: String(msg.chat!.id),
@@ -15,7 +45,7 @@ tg.on('message', async (msg) => {
   }
 
   const replyTo: Message | undefined = msg.originalMessage ? {
-    content: msg.originalMessage.content ?? '',
+    content: msg.originalMessage.content ?? msg.originalMessage.caption ?? '',
     id: String(msg.originalMessage.id),
     author: {
       id: msg.originalMessage.author!.id.toString(),
@@ -24,11 +54,12 @@ tg.on('message', async (msg) => {
     },
     chat,
     timestamp: new Date(msg.originalMessage.createdTimestamp),
-    platform: 'telegram'
+    platform: 'telegram',
+    ...await resolveMedia(msg.originalMessage)
   } : undefined
 
   const m: Message = {
-    content: msg.content!,
+    content: content ?? '',
     id: String(msg.id),
     author: {
       id: msg.author!.id.toString(),
@@ -38,7 +69,8 @@ tg.on('message', async (msg) => {
     chat,
     timestamp: new Date(msg.createdTimestamp),
     platform: 'telegram',
-    replyTo
+    replyTo,
+    ...await resolveMedia(msg)
   }
 
   await processCommand(m)
@@ -49,7 +81,10 @@ tg.on('callbackQuery', async (data) => {
   await processCallback(
     data.data,
     data.author.id.toString(),
-    data.message?.id?.toString()
+    data.id,
+    data.message?.chat?.id?.toString(),
+    data.message?.id?.toString(),
+    data.author.firstName
   )
 })
 
