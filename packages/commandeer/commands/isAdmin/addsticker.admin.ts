@@ -7,7 +7,7 @@ export default class AddStickerCommand extends Command {
   static override info = {
     name: 'addsticker',
     description: 'Adiciona um sticker de perfil (staff)',
-    usage: '/addsticker <preço> Nome - Descrição',
+    usage: '/addsticker [preço] [Nome - Descrição]',
     useWorkflow: true
   }
 

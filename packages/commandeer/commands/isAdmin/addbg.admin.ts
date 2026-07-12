@@ -7,7 +7,7 @@ export default class AddBackgroundCommand extends Command {
   static override info = {
     name: 'addbg',
     description: 'Adiciona um papel de parede de perfil (staff)',
-    usage: '/addbg <preço> Nome - Descrição',
+    usage: '/addbg [preço] [Nome - Descrição]',
     useWorkflow: true
   }
 
