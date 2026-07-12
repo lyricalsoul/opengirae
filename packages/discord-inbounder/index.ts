@@ -1,6 +1,7 @@
 import type { MessageAuthor, MessageChat, Message } from '@girae/common/commands/types'
 import { avatarUrl, createBot, GatewayIntents } from 'discordeno'
 import { processCommand } from '@girae/common/inbound/handler'
+import { info } from '@girae/common/logger'
 
 const bot = createBot({
   token: process.env.DISCORD_TOKEN!,
@@ -25,7 +26,7 @@ const bot = createBot({
     },
   },
   events: {
-    ready: ({ shardId, user }) => console.log(`Shard ${shardId} ready, user id: ${user.id}`),
+    ready: ({ shardId, user }) => info('discord-inbounder', `Shard ${shardId} ready, user id: ${user.id}`),
     messageCreate: async (msg) => {
       if (!msg.author) return
 

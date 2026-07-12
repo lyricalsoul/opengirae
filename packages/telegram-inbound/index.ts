@@ -2,8 +2,11 @@ import type { MessageChat, Message } from '@girae/common/commands/types'
 import { TelegramClient } from 'telegramsjs'
 import { processCommand } from '@girae/common/inbound/handler'
 import { processCallback } from '@girae/common/inbound/callback'
+import { info } from '@girae/common/logger'
 
 const tg = new TelegramClient(process.env.TELEGRAM_TOKEN!)
+
+tg.on('ready', () => info('telegram-inbound', `logged in as @${tg.user?.username}`))
 
 const resolveMedia = async (msg: any): Promise<{ photoUrl?: string, isAnimatedPhoto?: boolean }> => {
   if (msg.animation) {
@@ -95,16 +98,17 @@ tg.on('callbackQuery', async (data) => {
 const webhookUrl = process.env.TELEGRAM_WEBHOOK_URL
 
 if (webhookUrl) {
+  info('telegram-inbound', `registering webhook at ${webhookUrl}`)
   await tg.login({
     webhook: {
       url: webhookUrl,
       host: '0.0.0.0',
       port: parseInt(process.env.PORT ?? '8080', 10),
-      path: '/webhook',
       secretToken: process.env.TELEGRAM_WEBHOOK_SECRET,
       maxConnections: 100,
     }
   })
 } else {
+  info('telegram-inbound', 'TELEGRAM_WEBHOOK_URL not set, falling back to long polling')
   await tg.login()
 }
