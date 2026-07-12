@@ -30,6 +30,7 @@ export default class StickerCommand extends Command {
   static override info = {
     name: 'sticker',
     description: 'Vê ou busca stickers na loja',
+    usage: '/sticker [ID ou busca]',
     aliases: ['figurinha'],
   }
 

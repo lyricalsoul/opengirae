@@ -2,7 +2,7 @@ import Groq from "groq-sdk"
 import { debug, error } from "@girae/common/logger"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
-const MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile"
+const MODEL = process.env.GROQ_MODEL || "qwen/qwen3.6-27b"
 
 export interface InferredCardData {
   name: string
@@ -52,7 +52,7 @@ Responda SOMENTE com um objeto JSON no formato:
   - "Música": ídolos e artistas musicais de origem asiática (K-pop, J-pop, C-pop, etc.), em grupo ou solo.
   - "Variedades": qualquer coisa que não se encaixe acima - streamers, influencers digitais, participantes de reality show, atores/atrizes de dorama, política, memes, etc.
 - "subcategory": a subdivisão específica dentro da categoria. Corrija erros de digitação. Exemplos por categoria:
-  - Música: o gênero do artista (ex.: "Artistas de Pop/R&B", "Artistas de Rock", "Artistas de Sertanejo", "Artistas de MPB", "Artistas de Funk").
+  - Música: o gênero do artista (ex.: "Artistas de Pop", "Artistas de Rock", "Artistas de Sertanejo", "Artistas de MPB", "Artistas de Funk").
   - Animangá: o nome do anime/mangá (ex.: "Neon Genesis Evangelion", "Naruto").
   - Jogos: o nome do jogo (ex.: "Minecraft", "The Witcher", "Fortnite").
   - TV: o nome da série/novela/filme (ex.: "Gossip Girl", "Avenida Brasil").
@@ -60,12 +60,13 @@ Responda SOMENTE com um objeto JSON no formato:
   - Variedades: uma descrição curta em português (ex.: "Streamers de Jogos", "Influencers Digitais", "Atrizes de Dorama", "BBB", "Memes", "Política Brasileira").
   Se não for possível identificar nada, use "Geral".
 - "rarity": procure pela palavra da raridade no texto (em português) e escolha exatamente uma destas: ${knownRarities.join(", ")}. Se não houver pistas, escolha a mais comum (geralmente a primeira da lista). Bronze se refere a Comum, Prata a raro, e Ouro a Lendário.
-- "tags": subcategorias secundárias relevantes (ex.: um grupo relacionado, uma era específica), pode ser um array vazio. NUNCA repita o valor de "subcategory" aqui.
+- "tags": subcategorias secundárias relevantes (ex.: um grupo relacionado, uma era específica), pode ser um array vazio. NUNCA repita o valor de "subcategory" ou "category" aqui. Exemplos de tag: para Ariana Grande, "Atrizes de TV" (subcategoria principal é "Artistas de Pop"). Para jogadores de um time, seria o nome do Time.
 - "error": se o texto não contiver informação suficiente para identificar o personagem/artista, explique brevemente em português; caso contrário null.`
 
   const completion = await groq.chat.completions.create({
     model: MODEL,
     response_format: { type: "json_object" },
+    reasoning_effort: "none",
     temperature: 0.3,
     max_tokens: 500,
     messages: [
@@ -88,7 +89,7 @@ Responda SOMENTE com um objeto JSON no formato:
     return {
       ...rest,
       subcategory,
-      tags: []
+      tags: (tags ?? []).filter(t => t.toLowerCase() !== subcategory?.toLowerCase()),
     }
   } catch (e) {
     error("cardInference", `failed to parse groq response: ${e}`)

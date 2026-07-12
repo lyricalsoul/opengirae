@@ -11,6 +11,11 @@ const resolveMedia = async (msg: any): Promise<{ photoUrl?: string, isAnimatedPh
     const file = await msg.animation.fetch()
     return { photoUrl: file.url ?? undefined, isAnimatedPhoto: true }
   }
+
+  if (msg.document?.mimeType?.startsWith('image/')) {
+    const file = await msg.document.fetch()
+    return { photoUrl: file.url ?? undefined }
+  }
   const largest = msg.photo?.[msg.photo.length - 1]
   if (!largest) return {}
   const file = await largest.fetch()

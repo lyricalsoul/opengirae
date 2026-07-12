@@ -21,7 +21,6 @@ export const processCommand = async (msg: Message) => {
   await commandQueue.add('executeCommand', cmd);
 };
 
-// resumes a workflow waiting on `awaitTextReply` with the sender's next plain message
 const processPendingTextInput = async (msg: Message) => {
   const key = `pendingText:${msg.chat.id}:${msg.author.id}`;
   const raw = await rawClient.get(key);

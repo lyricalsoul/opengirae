@@ -17,6 +17,7 @@ export default class ComprarCommand extends Command {
   static override info = {
     name: 'comprar',
     description: 'Compra um item da loja',
+    usage: '/comprar <ID do item>',
     useWorkflow: true
   }
 

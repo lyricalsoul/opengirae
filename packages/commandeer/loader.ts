@@ -40,6 +40,8 @@ export const findCommand = (name: string): LoadedCommand | undefined => {
   );
 };
 
+export const listCommands = (): LoadedCommand[] => loadedCommands;
+
 interface QuickViewEntry {
   module: typeof Command;
   methodName: string;

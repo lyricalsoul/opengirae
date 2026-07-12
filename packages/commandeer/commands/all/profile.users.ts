@@ -13,6 +13,7 @@ export default class ProfileCommand extends Command {
   static override info = {
     name: 'profile',
     description: 'Mostra seu perfil de usuário',
+    usage: '/profile [@usuário]',
     aliases: ['perfil', 'me', 'pf', 'pfp', 'ppc']
   }
 

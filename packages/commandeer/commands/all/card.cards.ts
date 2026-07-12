@@ -38,6 +38,7 @@ export default class CardCommand extends Command {
   static override info = {
     name: 'card',
     description: 'Busca e visualiza informações de uma carta',
+    usage: '/card <nome ou ID do personagem>',
     aliases: ['view', 'ver'],
   }
 

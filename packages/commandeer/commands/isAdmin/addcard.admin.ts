@@ -12,6 +12,7 @@ export default class AddCardCommand extends Command {
   static override info = {
     name: 'addcard',
     description: 'Adiciona uma nova carta a partir de uma mensagem respondida (staff)',
+    usage: '/addcard <descrição>',
     useWorkflow: true
   }
 
@@ -50,7 +51,11 @@ export default class AddCardCommand extends Command {
 
     const cdnUrl = isAnimated ? await uploadFromUrl(photoUrl, 'cards') : await uploadCardImage(photoUrl)
 
-    await runCardWizard(ctx, {
+    const replyCtx = ctx.message.replyTo
+      ? { ...ctx, message: { ...ctx.message, id: ctx.message.replyTo.id } }
+      : ctx
+
+    await runCardWizard(replyCtx, {
       cardData: {
         name: inferred.name,
         category: inferred.category,

@@ -23,6 +23,7 @@ export default class DailyCommand extends Command {
   static override info = {
     name: 'daily',
     description: 'Coleta recompensa diária de moedas',
+    usage: '/daily',
     aliases: ['reward', 'recompensa', 'diario']
   }
 

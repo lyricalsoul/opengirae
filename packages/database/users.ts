@@ -25,8 +25,6 @@ export class UsersDB {
       .then(rows => rows[0]);
   })
 
-  // atomic balance-checked deduction - the WHERE clause makes the check and the deduct one statement,
-  // so two concurrent spends can't both pass a separate "do they have enough" read
   static spendCoins = maybeTransaction('spendCoins', async (client, userId: number, amount: number): Promise<boolean> => {
     const [row] = await client
       .update(users)

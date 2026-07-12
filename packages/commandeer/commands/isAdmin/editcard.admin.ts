@@ -11,6 +11,7 @@ export default class EditCardCommand extends Command {
   static override info = {
     name: 'editcard',
     description: 'Edita uma carta existente (staff)',
+    usage: '/editcard <ID do card>',
     useWorkflow: true
   }
 

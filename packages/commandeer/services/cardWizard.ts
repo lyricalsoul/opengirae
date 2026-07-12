@@ -5,6 +5,7 @@ import { DBOS } from '@dbos-inc/dbos-sdk'
 import { reply, deleteMsg, awaitTextReply } from '@girae/common/dbos/messaging'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import type { IncomingCommand } from '@girae/common/commands/types'
+import { EMOJI } from '../constants'
 
 export interface CardData {
   name: string
@@ -30,6 +31,11 @@ const FIELD_PROMPTS: Record<TextField | 'tags', string> = {
 
 const ACTION_EVENT = 'cardwizard:action'
 const TEXT_EVENT = 'cardwizard:text'
+
+const cardActionButtons = (cardId: number) => [
+  { text: '✏️ Editar', runCommand: { name: 'editcard', args: [String(cardId)] } },
+  { text: '🗑️ Deletar', runCommand: { name: 'delcard', args: [String(cardId)] } },
+]
 
 function diffFields(before: CardData, after: CardData): Array<{ field: string, oldValue: string, newValue: string }> {
   const changes: Array<{ field: string, oldValue: string, newValue: string }> = []
@@ -76,7 +82,8 @@ export async function runCardWizard(
 
     const rarityEmoji = rarities.find(r => r.name === cardData.rarity)?.emoji ?? '❓'
     const editingLabel = mode === 'edit' ? ` (editando \`${existingCardId}\`)` : ''
-    const preview = `**${escapeMarkdown(cardData.name)}**${editingLabel}\n📁 ${escapeMarkdown(cardData.category)}\n📂 ${escapeMarkdown(cardData.subcategory)}\n${rarityEmoji} ${escapeMarkdown(cardData.rarity)}\n🏷️ ${cardData.tags.map(escapeMarkdown).join(', ') || 'nenhuma'}${warnings}`
+    const tagsLine = cardData.tags.length > 0 ? `\n🏷 ${cardData.tags.map(escapeMarkdown).join(', ')}` : ''
+    const preview = `${EMOJI.dice} **${escapeMarkdown(cardData.name)}**${editingLabel}\n\n📁 ${escapeMarkdown(cardData.category)}\n📂 ${escapeMarkdown(cardData.subcategory)}\n${rarityEmoji} ${escapeMarkdown(cardData.rarity)}${tagsLine}${warnings}`
 
     const options = [
       ...rarities.map(r => ({ title: `${r.emoji} ${r.name}`, data: { action: 'rarity', value: r.name } as Action })),
@@ -156,8 +163,9 @@ export async function runCardWizard(
 
     if (messageId) await deleteMsg(ctx, messageId)
     await reply(ctx, {
-      content: `🃏 Card atualizado: \`${existingCardId}\`. **${escapeMarkdown(cardData.name)}**\n${rarity.emoji} ${escapeMarkdown(rarity.name)} · ${escapeMarkdown(subcategory.name)}`,
+      content: `🃏 Card atualizado: \n\n${rarity.emoji} ${existingCardId}. ${escapeMarkdown(cardData.name)}\n${category.emoji} ${escapeMarkdown(subcategory.name)}`,
       photoUrl,
+      buttons: cardActionButtons(existingCardId),
     })
     return
   }
@@ -169,7 +177,8 @@ export async function runCardWizard(
 
   if (messageId) await deleteMsg(ctx, messageId)
   await reply(ctx, {
-    content: `🃏 Carta criada: \`${card.id}\`. **${escapeMarkdown(cardData.name)}**\n${rarity.emoji} ${escapeMarkdown(rarity.name)} · ${escapeMarkdown(subcategory.name)}`,
+    content: `🃏 Carta criada: \n\n${rarity.emoji} ${card.id}. ${escapeMarkdown(cardData.name)}\n${category.emoji} ${escapeMarkdown(subcategory.name)}`,
     photoUrl,
+    buttons: cardActionButtons(card.id),
   })
 }

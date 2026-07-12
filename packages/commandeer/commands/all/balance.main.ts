@@ -9,6 +9,7 @@ export default class BalanceCommand extends Command {
   static override info = {
     name: 'balance',
     description: 'Mostra seu saldo de moedas e quantidade de cartas',
+    usage: '/balance',
     aliases: ['balanço', 'atm', 'balanco']
   }
 

@@ -11,6 +11,7 @@ export default class AddImageCategoryCommand extends Command {
   static override info = {
     name: 'addimgcat',
     description: 'Define a imagem de capa de uma categoria (staff)',
+    usage: '/addimgcat <ID ou nome da categoria>',
     aliases: ['setimagecat', 'setimgcat']
   }
 

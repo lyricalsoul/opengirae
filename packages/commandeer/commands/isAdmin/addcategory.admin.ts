@@ -10,6 +10,7 @@ export default class AddCategoryCommand extends Command {
   static override info = {
     name: 'addcategory',
     description: 'Adiciona uma nova categoria (staff)',
+    usage: '/addcategory <emoji> <nome>',
     aliases: ['addcategoria']
   }
 

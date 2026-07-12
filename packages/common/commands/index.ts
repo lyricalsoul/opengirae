@@ -4,6 +4,7 @@ export * from "./decorators"
 interface CommandInfo {
   name: string;
   description: string;
+  usage?: string;
   aliases?: string[];
   useWorkflow?: boolean;
 }

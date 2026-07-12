@@ -1,6 +1,15 @@
+import { DBOS } from "@dbos-inc/dbos-sdk"
 import type { IncomingCommand, InlineReplyOptions, PendingResponse, StoredStep } from "../commands/types"
 import { responseQueue, rawClient } from "../queue"
 import { groups } from "../utilities/groups"
+
+function maybeStep<Args extends unknown[], Return>(
+    name: string,
+    fn: (...args: Args) => Promise<Return>
+): (...args: Args) => Promise<Return> {
+    const stepWrapped = DBOS.registerStep(fn, { name })
+    return (...args: Args) => DBOS.isWithinWorkflow() ? stepWrapped(...args) : fn(...args)
+}
 
 export interface ButtonSpec {
     text: string;
@@ -42,7 +51,7 @@ const resolveButton = (cmd: IncomingCommand, b: ButtonSpec) => ({
                 : b.callbackData,
 })
 
-export const reply = async (cmd: IncomingCommand, content: MessageReply | InlineReplyOptions) => {
+export const reply = maybeStep('reply', async (cmd: IncomingCommand, content: MessageReply | InlineReplyOptions) => {
     if (typeof content === 'string' || !('options' in content)) {
         const text = typeof content === 'string' ? content : content.content;
         const photoUrl = typeof content === 'string' ? undefined : content.photoUrl;
@@ -101,21 +110,21 @@ export const reply = async (cmd: IncomingCommand, content: MessageReply | Inline
         platform: cmd.message.platform,
         buttons,
     } satisfies PendingResponse, RESPONSE_JOB_OPTIONS)
-}
+})
 
-export const awaitTextReply = async (cmd: IncomingCommand, eventName: string) => {
+export const awaitTextReply = maybeStep('awaitTextReply', async (cmd: IncomingCommand, eventName: string) => {
     const key = `pendingText:${cmd.message.chat.id}:${cmd.message.author.id}`
     await rawClient.set(key, JSON.stringify({
         workflowID: cmd.workflowIDToBeAssigned,
         eventName,
     }), { EX: PENDING_TEXT_TTL_SECONDS })
-}
+})
 
-export const deleteMsg = async (cmd: IncomingCommand, messageId: string) => {
+export const deleteMsg = maybeStep('deleteMsg', async (cmd: IncomingCommand, messageId: string) => {
     await responseQueue.add('sendMessage', {
         method: 'deleteMessage',
         chatId: cmd.message.chat.id,
         messageId,
         platform: cmd.message.platform,
     } satisfies PendingResponse, RESPONSE_JOB_OPTIONS)
-}
+})

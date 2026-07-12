@@ -40,12 +40,12 @@ export default class CategoryCommand extends Command {
   static override info = {
     name: 'cat',
     description: 'Mostra uma categoria e suas subcategorias',
+    usage: '/cat [nome ou ID da categoria]',
     aliases: ['cats', 'ctg'],
   }
 
   static override async execute(ctx: IncomingCommand) {
     const query = ctx.args.join(' ').trim()
-    // no argument -> same fallback as "category not found": list everything there is to pick from,
 
     if (!query) {
       await replyAllCategories(ctx, 'Escolha uma categoria:')

@@ -22,6 +22,12 @@ function isValidHttpUrl(url: string): boolean {
   }
 }
 
+function buildReplyParameters(replyToMessageId: string | undefined, multipart: boolean): { replyParameters?: any } {
+  if (!replyToMessageId) return {}
+  const params = { message_id: replyToMessageId, allow_sending_without_reply: false }
+  return { replyParameters: multipart ? JSON.stringify(params) : params }
+}
+
 function buildReplyMarkup(buttons?: PendingResponse['buttons']) {
   if (!buttons?.length) return {}
   return {
@@ -46,10 +52,7 @@ export async function sendTelegramAnswer(response: PendingResponse) {
         text: formattedContent ?? '',
         parseMode: 'HTML',
         disableNotification: true,
-        replyParameters: response.replyToMessageId ? {
-          message_id: response.replyToMessageId,
-          allow_sending_without_reply: false
-        } : undefined,
+        ...buildReplyParameters(response.replyToMessageId, false),
         ...buildReplyMarkup(response.buttons)
       })
       break
@@ -79,12 +82,7 @@ export async function sendTelegramAnswer(response: PendingResponse) {
           chatId: response.chatId,
           text: formattedContent ?? '',
           parseMode: 'HTML',
-          ...(response.replyToMessageId ? {
-            replyParameters: {
-              message_id: response.replyToMessageId,
-              allow_sending_without_reply: false
-            }
-          } : {}),
+          ...buildReplyParameters(response.replyToMessageId, false),
           ...buildReplyMarkup(response.buttons)
         })
         break
@@ -94,12 +92,7 @@ export async function sendTelegramAnswer(response: PendingResponse) {
         photo: photoUrl,
         caption: formattedContent,
         parseMode: 'HTML',
-        ...(response.replyToMessageId ? {
-          replyParameters: {
-            message_id: response.replyToMessageId,
-            allow_sending_without_reply: false
-          }
-        } : {}),
+        ...buildReplyParameters(response.replyToMessageId, true),
         ...buildReplyMarkup(response.buttons)
       })
       break
@@ -112,12 +105,7 @@ export async function sendTelegramAnswer(response: PendingResponse) {
           chatId: response.chatId,
           text: formattedContent ?? '',
           parseMode: 'HTML',
-          ...(response.replyToMessageId ? {
-            replyParameters: {
-              message_id: response.replyToMessageId,
-              allow_sending_without_reply: false
-            }
-          } : {}),
+          ...buildReplyParameters(response.replyToMessageId, false),
           ...buildReplyMarkup(response.buttons)
         })
         break
@@ -127,12 +115,7 @@ export async function sendTelegramAnswer(response: PendingResponse) {
         animation: animationUrl,
         caption: formattedContent,
         parseMode: 'HTML',
-        ...(response.replyToMessageId ? {
-          replyParameters: {
-            message_id: response.replyToMessageId,
-            allow_sending_without_reply: false
-          }
-        } : {}),
+        ...buildReplyParameters(response.replyToMessageId, true),
         ...buildReplyMarkup(response.buttons)
       })
       break

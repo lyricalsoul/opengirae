@@ -11,7 +11,6 @@ const PAGE_SIZE = 20
 
 type CardRow = Awaited<ReturnType<typeof CardsDB.getCardsInSubcategoryForUser>>[number]
 
-// ported verbatim from the old bot's col.ts: 1=owned, 2=not owned, 3-5=rarity
 const FILTERS: FilterDef<CardRow>[] = [
   { id: '1', emoji: '☀', description: 'que você possui', match: c => c.ownedCount > 0 },
   { id: '2', emoji: '🌙', description: 'que você não possui', match: c => c.ownedCount === 0 },
@@ -40,10 +39,10 @@ async function renderPage(rawArg: string, page: number, viewerTelegramId: string
 
   const rows = slice.length > 0
     ? slice.map(c => {
-        const badge = cativeiroEmoji(c.ownedCount)
-        const trailing = c.ownedCount > 0 ? `\`${c.ownedCount}x\`` : c.categoryEmoji
-        return `${c.rarityEmoji} \`${c.id}\`. **${escapeMarkdown(c.name)}** ${badge}${trailing}`
-      }).join('\n')
+      const badge = cativeiroEmoji(c.ownedCount)
+      const trailing = c.ownedCount > 0 ? `\`${c.ownedCount}x\`` : c.categoryEmoji
+      return `${c.rarityEmoji} \`${c.id}\`. **${escapeMarkdown(c.name)}** ${badge}${trailing}`
+    }).join('\n')
     : '_Nenhum card para mostrar._'
   const advice = filterAdviceText(FILTERS, active, cards.length, 'cards')
   const pageInfo = totalPages > 1 ? `${EMOJI.page} Página \`${page + 1}\` de **${totalPages}**\n` : ''
@@ -67,6 +66,7 @@ export default class CollectionCommand extends Command {
   static override info = {
     name: 'clc',
     description: 'Mostra uma subcategoria e seus cards',
+    usage: '/clc <nome ou ID da subcategoria>',
     aliases: ['sub', 'colec', 'collec', 'col'],
   }
 

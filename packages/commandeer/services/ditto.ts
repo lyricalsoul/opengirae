@@ -30,7 +30,7 @@ export async function generateProfileImage(data: DittoProfileData, overlays?: st
       "X-Api-Key": process.env.DITTO_API_KEY!,
     },
     body: JSON.stringify({
-      theme: "user_profile",
+      theme: "default_profile",
       ...(overlays?.length ? { overlays } : {}),
       data: {
         ...data,

@@ -76,8 +76,6 @@ export async function processCallback(
   // TODO: reply with invalid command
   if (!raw) return
 
-  await rawClient.hDel(redisKey, eventName)
-
   const step: StoredStep = JSON.parse(raw)
 
   // TODO: reply with command not for you
@@ -85,6 +83,8 @@ export async function processCallback(
 
   const selected = step.options.find(o => o.id === optionIndex)
   if (!selected) return
+
+  await rawClient.hDel(redisKey, eventName)
 
   await resumeQueue.add('resume', {
     workflowID,

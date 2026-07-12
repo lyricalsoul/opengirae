@@ -36,10 +36,14 @@ export async function addVanityItem(ctx: IncomingCommand, type: 'background' | '
     stickerURL: type === 'sticker' ? photoUrl : undefined,
   })
   const preview = profileData ? await generateProfileImage(profileData) : null
+  if (!preview) {
+    await reply(ctx, 'Erro ao gerar preview. Tente novamente em instantes.')
+    return
+  }
 
   await reply(ctx, {
     content: `**${escapeMarkdown(title)}** — ${escapeMarkdown(description)}\n💸 ${price} moedas\n\nConfirma a criação deste ${TYPE_LABEL[type]}?`,
-    photoUrl: preview?.url ?? photoUrl,
+    photoUrl: preview.url,
     eventName: CONFIRM_EVENT,
     restricted: 'author',
     options: [{ title: '✅ Confirmar', data: true }, { title: '❌ Cancelar', data: false }],
@@ -56,7 +60,7 @@ export async function addVanityItem(ctx: IncomingCommand, type: 'background' | '
 
   const cdnUrl = await uploadFromUrl(photoUrl, TYPE_FOLDER[type])
   const item = await VanitiesDB.createStoreItem({ title, description, type, price, itemURL: cdnUrl }).catch((e) => {
-    if (e?.code === '23505') return null // unique (title, type) violated - lost a race with a concurrent /add
+    if (e?.code === '23505') return null
     throw e
   })
   if (!item) {

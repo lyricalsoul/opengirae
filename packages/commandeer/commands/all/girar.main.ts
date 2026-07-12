@@ -12,7 +12,8 @@ export default class GirarCommand extends Command {
   static override info = {
     name: 'girar',
     description: 'Tente a sorte e puxe uma carta!',
-    aliases: ['rodar', 'rechear', 'carimbar', 'draw', 'gi'],
+    usage: '/girar',
+    aliases: ['rodar', 'rechear', 'carimbar', 'draw', 'gi', 'mirar', 'sentar', 'gozar'],
     useWorkflow: true
   }
 
@@ -59,7 +60,7 @@ export default class GirarCommand extends Command {
         content: `🎲 Olá, **[${escapeMarkdown(ctx.message.author.name)}](tg://user?id=${ctx.message.author.id})**! Bem-vindo de volta. Pronto para girar?\n🎨 Você tem **${remainingDraws}** de **${user.maxDraws}** giros restantes.\n\n🕹 Escolha uma categoria:`,
         eventName: GirarCommand.CATEGORY_SELECTED_EVENT,
         restricted: 'author',
-        options: categories.map(c => ({ title: `${c.emoji} ${c.name}`, data: c.id }))
+        options: categories.map(c => ({ title: `${c.emoji} ${c.name}`, data: c.id })),
       })
 
       const categorySelection = await DBOS.recv<{ value: number, messageId?: string }>(GirarCommand.CATEGORY_SELECTED_EVENT)

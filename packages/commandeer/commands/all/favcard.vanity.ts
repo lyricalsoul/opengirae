@@ -10,6 +10,7 @@ export default class FavCardCommand extends Command {
   static override info = {
     name: 'favcard',
     description: 'Define sua carta favorita',
+    usage: '/favcard <nome ou ID do personagem>',
     aliases: ['fav', 'favorito', 'favorite'],
   }
 

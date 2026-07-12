@@ -10,6 +10,7 @@ export default class AddSubcategoryCommand extends Command {
   static override info = {
     name: 'addsubcategory',
     description: 'Adiciona uma nova subcategoria a uma categoria (staff)',
+    usage: '/addsubcategory <ID da categoria> <nome>',
     aliases: ['addsub', 'createsub']
   }
 

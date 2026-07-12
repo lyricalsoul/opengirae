@@ -6,6 +6,7 @@ export default class PingCommand extends Command {
   static override info = {
     name: 'ping',
     description: 'Verifica se o bot está online',
+    usage: '/ping',
     aliases: ['pong']
   }
 

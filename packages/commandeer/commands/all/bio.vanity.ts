@@ -9,6 +9,7 @@ export default class BioCommand extends Command {
   static override info = {
     name: 'bio',
     description: 'Define sua biografia do perfil',
+    usage: '/bio <texto>',
     aliases: ['biografia', 'biography']
   }
 

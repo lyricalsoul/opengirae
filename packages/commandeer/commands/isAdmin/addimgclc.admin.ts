@@ -11,6 +11,7 @@ export default class AddImageSubcategoryCommand extends Command {
   static override info = {
     name: 'addimgclc',
     description: 'Define a imagem de capa de uma subcategoria (staff)',
+    usage: '/addimgclc <ID ou nome da subcategoria>',
     aliases: ['setimageclc', 'setimgclc']
   }
 

@@ -44,7 +44,6 @@ export async function executeCommand(cmd: IncomingCommand) {
 
     if (subcommands && firstArg && subcommands[firstArg]) {
       const subcmd = subcommands[firstArg];
-      // Strip the subcommand name from the args so the handler receives clean arguments
       const args = [...cmd.args];
       args.shift();
       const subCtx = { ...cmd, args };

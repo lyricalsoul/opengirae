@@ -145,6 +145,19 @@ export class CardsDB {
     ]);
   })
 
+  // changes only the main subcategory, leaving secondary subcategories (tags) untouched
+  static setCardMainSubcategory = maybeTransaction('setCardMainSubcategory', async (client, cardId: number, subcategoryId: number) => {
+    await client.delete(cardSubcategories).where(and(eq(cardSubcategories.cardId, cardId), eq(cardSubcategories.isMain, true)));
+    await client.insert(cardSubcategories)
+      .values({ cardId, subcategoryId, isMain: true })
+      .onConflictDoUpdate({ target: [cardSubcategories.cardId, cardSubcategories.subcategoryId], set: { isMain: true } });
+  })
+
+  static deleteCard = maybeTransaction('deleteCard', async (client, cardId: number) => {
+    await client.delete(cardSubcategories).where(eq(cardSubcategories.cardId, cardId));
+    await client.delete(cards).where(eq(cards.id, cardId));
+  })
+
   static createRarity = maybeTransaction('createRarity', async (client, name: string, emoji: string, weight: number) => {
     return await client.insert(rarities).values({ name, emoji, weight }).returning().then(a => a?.[0]);
   })

@@ -10,6 +10,7 @@ export default class FavColorCommand extends Command {
   static override info = {
     name: 'favcolor',
     description: 'Define sua cor favorita do perfil',
+    usage: '/favcolor <#hex>',
     aliases: ['cor', 'color', 'corfav', 'corfavorita']
   }
 

@@ -30,6 +30,7 @@ export default class BackgroundCommand extends Command {
   static override info = {
     name: 'bg',
     description: 'Vê ou busca papéis de parede na loja',
+    usage: '/bg [ID ou busca]',
     aliases: ['background', 'papeldeparede'],
   }
 

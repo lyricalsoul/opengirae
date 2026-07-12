@@ -9,6 +9,7 @@ export default class ClearCommand extends Command {
   static override info = {
     name: 'clear',
     description: 'Cancela giros pendentes.',
+    usage: '/clear',
     aliases: ['cancel', 'cancelar']
   }
 
