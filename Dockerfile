@@ -13,7 +13,7 @@ RUN bun install --frozen-lockfile --production
 
 FROM base AS runtime
 ENV NODE_ENV=production
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app ./
 COPY . .
 
 CMD ["bun", "packages/commandeer/index.ts"]

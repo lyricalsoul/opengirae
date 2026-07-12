@@ -35,6 +35,12 @@ something new or rename/drop a command — it's the fastest way to answer
 | `/addsubcategory` (`addsub`,`createsub`) | `admin/createsub.ts` | isAdmin | plain |
 | `/addimgcat` (`setimagecat`,`setimgcat`) | `admin/setimagecat.ts` | isAdmin | plain |
 | `/addimgclc` (`setimageclc`,`setimgclc`) | `admin/setimageclc.ts` | isAdmin | plain |
+| `/addimgcard` (`setimage`,`setimg`) | `admin/setimage.ts` | isAdmin | plain |
+| `/addimgsticker` (`setimagesticker`,`setimgsticker`) | `admin/setimagesticker.ts` | isAdmin | plain |
+| `/addimgbg` (`setimagebg`,`setimgbg`) | `admin/setimagebg.ts` | isAdmin | plain |
+| `/delcard` | — (old bot had no confirm-button delete; new) | isAdmin | DBOS workflow (confirm/cancel, same shape as `/comprar`) |
+| `/setcardsub` (`setcardsubcat`) | — (no old equivalent, new) | isAdmin | plain |
+| `/commands` (`comandos`,`help`,`ajuda`) | — (no old equivalent, new) | all | plain |
 
 ## Status: what's left (surveyed, not yet built)
 
@@ -43,8 +49,7 @@ file not in the table above. Re-verify against the old file before starting
 any of these — this is a snapshot, not a spec.
 
 **Easy** (fits existing patterns, no new subsystem): `addalb` (addcard preset
-wrapper), `setimage`/`setimagebg`/`setimagesticker` (reuse the storage
-pipeline), `uploadurl`, `delbg`, `delsticker`, `delsubcategory`,
+wrapper), `uploadurl`, `delbg`, `delsticker`, `delsubcategory`,
 `transfercards`, `setapelido`, `giraeban` (needs `isBanned`+`banMessage`
 columns, already exist on `users`), `eval` (needs a new `isDeveloper` guard),
 `cts` (same `@Page` shape as `/clc`, no subcategory scoping), `rep`/`reputação`
@@ -53,12 +58,11 @@ just stub/fallback text).
 
 **Complicated** (real new work, no new subsystem): `editbg`/`editsticker`
 (edit branch over `vanityWizard.ts`, same idea as `/editcard` over
-`cardWizard.ts`), `delete`/`del`/`delcard` (new confirm-button DBOS workflow),
-`doar` (coin/card gift with confirm buttons + cooldowns — **not** trading,
-one-way, no negotiation), `chicoin` (shares `doar`'s coin-transfer path).
-`catlock` (restrict which categories a group can draw from) — needs one new
-per-group config table + one check in `/girar`; classified Complicated, not
-Major, if you're fine with that scope.
+`cardWizard.ts`), `doar` (coin/card gift with confirm buttons + cooldowns —
+**not** trading, one-way, no negotiation), `chicoin` (shares `doar`'s
+coin-transfer path). `catlock` (restrict which categories a group can draw
+from) — needs one new per-group config table + one check in `/girar`;
+classified Complicated, not Major, if you're fine with that scope.
 
 **Major rework** (blocked on a subsystem that doesn't exist — say so, don't
 half-build it): `trade`/`strade`/`htroca` (no trade system), `conectarconta`/
@@ -98,8 +102,13 @@ packages/commandeer/commands/<guards>/<name>.<category>.ts
   See `packages/commandeer/loader.ts`.
 - Every command file `export default class X extends Command` from
   `@girae/common/commands`, with `static override info = { name, description,
-  aliases?, useWorkflow? }` and `static override async execute(ctx:
-  IncomingCommand)`.
+  usage?, aliases?, useWorkflow? }` and `static override async execute(ctx:
+  IncomingCommand)`. `usage` (e.g. `'/card <nome ou ID do personagem>'`) is
+  shown by `/commands` and should mirror whatever the command's own
+  missing-args reply already says — set it on every new command, not just
+  ones with a `Uso:` string. `listCommands()` (`packages/commandeer/loader.ts`)
+  exposes the full loaded list (module/category/guards) for anything that
+  needs to enumerate commands, e.g. `/commands`' admin-gated section.
 - **Guards**: `packages/commandeer/services/guards.ts`. Currently only
   `isAdmin` is registered; unregistered guard names (e.g. `all`) are silent
   no-ops. Add a new guard function there, not per-command.
@@ -152,6 +161,18 @@ that can't be re-derived from scratch, it's a DBOS workflow.
 - `awaitTextReply(cmd, eventName)` — registers the sender's *next* plain
   (non-`/`) message to resume a workflow via `DBOS.recv<{value}>(eventName)`.
   Only useful inside a `@DBOS.workflow()`.
+- **`reply`/`deleteMsg`/`awaitTextReply` are DBOS steps** (via a `maybeStep()`
+  wrapper at the top of `messaging.ts`, same dual-mode shape as
+  `maybeTransaction` — `DBOS.isWithinWorkflow()` instead of
+  `DBOS.isInitialized()`). This matters: `DBOS.launch()` replays any workflow
+  still suspended on a `DBOS.recv()` (e.g. an abandoned `/addcard` wizard) on
+  every process start. Without step-wrapping, a replay has no record these
+  side-effecting calls already ran and **resends every message the workflow
+  sent so far** — this was a real, live bug (confirmed via duplicate
+  `sendPhoto` jobs piling up in the `{responses}` queue for the same
+  `/addcard` preview, every time the dev process restarted). Any new
+  side-effecting call added inside a workflow needs the same treatment, or it
+  will silently re-fire on every recovery replay.
 - **Button rows**: `InlineReplyOptions.rows?: number[]` lays `options` out
   into rows by size (e.g. `[4, 4, 1, 1]`); omit for one flat row. Use
   `groups()` from `@girae/common/utilities/groups` directly if you ever need
@@ -181,7 +202,13 @@ static override async execute(ctx: IncomingCommand) {
   `eventName` can be reused across loop iterations (each `reply()` call
   re-registers it) — this is how `/addcard`'s edit-any-field loop works.
 - `restricted: 'author'` limits clicks to the original sender; enforced in
-  `packages/inbounder/callback.ts`.
+  `packages/inbounder/callback.ts`. **Order matters there**: the pending
+  event's Redis hash field must be `hDel`'d *after* the `restricted`/option
+  checks pass, not before — deleting first (a real bug, since fixed) means a
+  non-author's click (or any click with a stale/invalid option index)
+  permanently destroys the event, and the real author's subsequent click then
+  hits a missing key and silently no-ops forever, even though the buttons are
+  still visibly there.
 
 ## Shared wizards: when two commands need (almost) the same workflow
 
@@ -209,6 +236,21 @@ one command file:
   make sure it **excludes the thing being edited from matching itself** —
   otherwise saving a card without renaming it falsely flags itself as a dup
   of itself. Real bug caught while building `/editcard`, not hypothetical.
+- `cardWizard.ts`'s create/edit success message carries `cardActionButtons(cardId)`
+  — **Editar**/**Deletar**, both via `runCommand` (see "Buttons that start a
+  fresh command" below) rather than a QuickView, since both open a real
+  multi-step flow (`/editcard`'s wizard, `/delcard`'s confirm/cancel), not an
+  instant action.
+- `CardsDB.deleteCard(id)` deliberately does **not** cascade into user-owned
+  data (`userCards`, `cardDrawHistory`, `users.favoriteCardId`) — none of
+  those FKs have `onDelete: cascade`, on purpose. It only clears the card's
+  own `cardSubcategories` bookkeeping, then attempts the delete; if anyone
+  already owns/drew/favorited the card, Postgres itself rejects it with a FK
+  violation (`23503`), and the whole `maybeTransaction` rolls back atomically
+  (the `cardSubcategories` clear included). `/delcard` catches that code and
+  reports "already owned" instead of crashing — same shape as `/comprar`'s
+  `23505` handling. Don't build cascade/soft-delete logic for this; the FK
+  constraint *is* the safety net.
 
 ## Stateless callbacks: `@QuickView` and `@Page`
 
@@ -494,16 +536,40 @@ into a reply string.
   `tg.user.username`. If the mention doesn't match our bot, the message is
   dropped before it ever reaches a queue. This only applies to Telegram —
   don't add it to `handler.ts` (platform-agnostic).
-- **`photo` vs `animation`**: a message's `photo` field is multiple
-  *resolutions of one photo* (smallest-first; grab the largest), not
+- **`photo` vs `animation` vs `document`**: a message's `photo` field is
+  multiple *resolutions of one photo* (smallest-first; grab the largest), not
   multiple distinct photos — Telegram albums arrive as separate message
   updates, each with its own single `photo`. GIFs are a wholly separate
-  `animation` field. See `resolveMedia()` in `inbounder/index.ts`.
+  `animation` field. An image sent as an **uncompressed file** (to dodge
+  Telegram's photo compression — the normal way admins attach card/vanity
+  art) arrives as `document` instead, resolved only when
+  `document.mimeType` starts with `image/`. See `resolveMedia()` in
+  `inbounder/index.ts`; all three feed the same `Message.photoUrl`, so no
+  command needs to care which one it was.
 - **Reply retries**: every queued response (`packages/common/dbos/messaging.ts`'s
   `RESPONSE_JOB_OPTIONS`) retries 3x with exponential backoff — transient
   network blips talking to Telegram used to silently drop replies with zero
   retry; don't bypass this by calling `responseQueue.add` directly without
   passing job options.
+- **`reply_parameters` silently dropped on `sendPhoto`/`sendAnimation`**:
+  `telegramsjs` routes any payload containing a media key (`photo`/
+  `animation`/etc, even when the value is just a URL string, not a real file)
+  through multipart form-data encoding instead of plain JSON. Its encoder
+  only `JSON.stringify`s a small hardcoded allowlist of fields
+  (`reply_markup`, `mask_position`, ...) before writing them as form parts —
+  `reply_parameters` isn't on that list, so a raw object falls through every
+  branch of its field-serializer as a no-op and never gets attached. Net
+  effect: every `sendPhoto`/`sendAnimation` reply silently lost its
+  "replying to X" link while `sendMessage` (plain JSON body, no such
+  restriction) worked fine — this is why it looked like a `commandeer`
+  reply-targeting bug at first when it was actually purely an `answerer`/
+  library serialization issue. Fixed in
+  `packages/answerer/platforms/telegram.ts`'s `buildReplyParameters()`: for
+  `sendPhoto`/`sendAnimation` specifically, pass `reply_parameters` as an
+  already-`JSON.stringify`'d string (which the multipart path *does* pass
+  through correctly, as a plain form field); `sendMessage`/`editMessage*`
+  keep the raw object, since double-stringifying there would break the JSON
+  body instead.
 
 ## Known, deliberate gaps (don't silently rebuild these)
 
