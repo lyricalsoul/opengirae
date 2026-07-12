@@ -1,6 +1,5 @@
-// handler.ts
-import type { Message, IncomingCommand } from "@girae/common/commands/types";
-import { commandQueue, resumeQueue, rawClient } from "@girae/common/queue"
+import type { Message, IncomingCommand } from "../commands/types";
+import { commandQueue, resumeQueue, rawClient } from "../queue"
 
 export const processCommand = async (msg: Message) => {
   if (!msg.content.startsWith("/")) {

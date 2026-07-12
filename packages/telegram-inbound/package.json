@@ -1,0 +1,9 @@
+{
+  "name": "@girae/telegram-inbound",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@girae/common": "workspace:*"
+  }
+}

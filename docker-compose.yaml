@@ -7,14 +7,58 @@ services:
       - dragonfly-data:/data
     command: --cluster_mode=emulated --lock_on_hashtags
     restart: unless-stopped
+
   queue:
     image: ghcr.io/alexbudure/queuedash:latest
     ports:
       - "3000:3000"
     environment:
-      QUEUES_CONFIG_JSON: '{"queues":[{"name":"{commands}","displayName":"Pending Commands","type":"bullmq","connectionUrl":"redis://dragonfly:6379"}, {"name":"{responses}","displayName":"Pending Responses","type":"bullmq","connectionUrl":"redis://dragonfly:6379"},{"name":"{resume}","displayName":"Pending DBOS workflow events","type":"bullmq","connectionUrl":"redis://dragonfly:6379"}]}'
+      QUEUES_CONFIG_JSON: '{"queues":[{"name":"{commands}","displayName":"Pending Commands","type":"bullmq","connectionUrl":"${REDIS_URL}"}, {"name":"{responses}","displayName":"Pending Responses","type":"bullmq","connectionUrl":"${REDIS_URL}"},{"name":"{resume}","displayName":"Pending DBOS workflow events","type":"bullmq","connectionUrl":"${REDIS_URL}"}]}'
     depends_on:
       - dragonfly
+    restart: unless-stopped
+
+  db-push:
+    build: .
+    command: ["bun", "run", "db:push"]
+    env_file: .env
+
+  discord-inbounder:
+    build: .
+    command: ["bun", "packages/discord-inbounder/index.ts"]
+    env_file: .env
+    depends_on:
+      db-push:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  telegram-inbound:
+    build: .
+    command: ["bun", "packages/telegram-inbound/index.ts"]
+    env_file: .env
+    ports:
+      - "${TELEGRAM_INBOUND_PORT:-8080}:8080"
+    depends_on:
+      db-push:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  commandeer:
+    build: .
+    command: ["bun", "packages/commandeer/index.ts"]
+    env_file: .env
+    depends_on:
+      db-push:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  answerer:
+    build: .
+    command: ["bun", "packages/answerer/index.ts"]
+    env_file: .env
+    depends_on:
+      db-push:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:

@@ -1,5 +1,5 @@
 {
-  "name": "@girae/inbounder",
+  "name": "@girae/discord-inbounder",
   "module": "index.ts",
   "type": "module",
   "private": true,

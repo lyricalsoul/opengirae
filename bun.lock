@@ -50,11 +50,17 @@
     "packages/database": {
       "name": "@girae/database",
     },
-    "packages/inbounder": {
-      "name": "@girae/inbounder",
+    "packages/discord-inbounder": {
+      "name": "@girae/discord-inbounder",
       "dependencies": {
         "@girae/common": "workspace:*",
         "discordeno": "^21.0.0",
+      },
+    },
+    "packages/telegram-inbound": {
+      "name": "@girae/telegram-inbound",
+      "dependencies": {
+        "@girae/common": "workspace:*",
       },
     },
   },
@@ -141,7 +147,9 @@
 
     "@girae/database": ["@girae/database@workspace:packages/database"],
 
-    "@girae/inbounder": ["@girae/inbounder@workspace:packages/inbounder"],
+    "@girae/discord-inbounder": ["@girae/discord-inbounder@workspace:packages/discord-inbounder"],
+
+    "@girae/telegram-inbound": ["@girae/telegram-inbound@workspace:packages/telegram-inbound"],
 
     "@img/colour": ["@img/colour@1.1.0", "", {}, "sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ=="],
 

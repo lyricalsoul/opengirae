@@ -1,8 +1,7 @@
-import type { MessageAuthor, MessageChat, Message } from '@girae/common/commands/types'
-import { avatarUrl, createBot, GatewayIntents } from 'discordeno'
-import { processCommand } from './handler'
-import { processCallback } from './callback'
+import type { MessageChat, Message } from '@girae/common/commands/types'
 import { TelegramClient } from 'telegramsjs'
+import { processCommand } from '@girae/common/inbound/handler'
+import { processCallback } from '@girae/common/inbound/callback'
 
 const tg = new TelegramClient(process.env.TELEGRAM_TOKEN!)
 
@@ -93,62 +92,19 @@ tg.on('callbackQuery', async (data) => {
   )
 })
 
-const bot = createBot({
-  token: process.env.DISCORD_TOKEN!,
-  intents: GatewayIntents.Guilds | GatewayIntents.MessageContent | GatewayIntents.GuildMessages,
-  desiredProperties: {
-    user: {
-      id: true,
-      globalName: true,
-      avatar: true,
-      accentColor: true,
-      discriminator: true
-    },
-    message: {
-      content: true,
-      id: true,
-      channelId: true,
-      author: true,
-    },
-    channel: {
-      id: true,
-      name: true
-    },
-  },
-  events: {
-    ready: ({ shardId, user }) => console.log(`Shard ${shardId} ready, user id: ${user.id}`),
-    messageCreate: async (msg) => {
-      if (!msg.author) return
+const webhookUrl = process.env.TELEGRAM_WEBHOOK_URL
 
-      const author: MessageAuthor = {
-        id: msg.author.id.toString(),
-        name: msg.author.globalName!,
-        avatarUrl: avatarUrl(msg.author.id, msg.author.discriminator)
-      }
-
-      const chan = await bot.rest.getChannel(msg.channelId)
-
-      const chat: MessageChat = {
-        id: msg.channelId.toString(),
-        title: chan.name!
-      }
-
-      const m: Message = {
-        content: msg.content.replace('!', '/'),
-        id: String(msg.id),
-        author,
-        chat,
-        timestamp: new Date(msg.timestamp),
-        platform: 'discord'
-      }
-
-      await processCommand(m)
+if (webhookUrl) {
+  await tg.login({
+    webhook: {
+      url: webhookUrl,
+      host: '0.0.0.0',
+      port: parseInt(process.env.PORT ?? '8080', 10),
+      path: '/webhook',
+      secretToken: process.env.TELEGRAM_WEBHOOK_SECRET,
+      maxConnections: 100,
     }
-  },
-})
-
-await Promise.allSettled([
-  bot.start(),
-  tg.login()
-])
-
+  })
+} else {
+  await tg.login()
+}

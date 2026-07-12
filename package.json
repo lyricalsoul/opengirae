@@ -30,8 +30,9 @@
     "db:studio": "drizzle-kit studio",
     "db:push": "drizzle-kit push",
     "db:seed": "bun packages/database/seed.ts",
-    "dev:all": "bun run --parallel 'dev:inbounder' 'dev:commandeer' 'dev:answerer'",
-    "dev:inbounder": "bun --watch packages/inbounder/index.ts",
+    "dev:all": "bun run --parallel 'dev:discord-inbounder' 'dev:telegram-inbound' 'dev:commandeer' 'dev:answerer'",
+    "dev:discord-inbounder": "bun --watch packages/discord-inbounder/index.ts",
+    "dev:telegram-inbound": "bun --watch packages/telegram-inbound/index.ts",
     "dev:commandeer": "bun --watch packages/commandeer/index.ts",
     "dev:answerer": "bun --watch packages/answerer/index.ts"
   }

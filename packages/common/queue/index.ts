@@ -1,7 +1,7 @@
 import { createNodeRedisClient, Queue } from 'bullmq'
 import { createClient } from 'redis'
 
-export const rawClient = createClient()
+export const rawClient = createClient({ url: process.env.REDIS_URL })
 await rawClient.connect()
 
 export const connection = createNodeRedisClient(rawClient)

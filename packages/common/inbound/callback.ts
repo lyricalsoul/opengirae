@@ -1,5 +1,5 @@
-import type { StoredStep, Message, IncomingCommand } from '@girae/common/commands/types'
-import { rawClient, resumeQueue, quickViewQueue, pageQueue, commandQueue } from '@girae/common/queue'
+import type { StoredStep, Message, IncomingCommand } from '../commands/types'
+import { rawClient, resumeQueue, quickViewQueue, pageQueue, commandQueue } from '../queue'
 
 export async function processCallback(
   callbackData: string,
@@ -93,4 +93,3 @@ export async function processCallback(
     messageId,
   })
 }
-
