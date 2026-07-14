@@ -61,6 +61,7 @@ export default class GirarCommand extends Command {
         eventName: GirarCommand.CATEGORY_SELECTED_EVENT,
         restricted: 'author',
         options: categories.map(c => ({ title: `${c.emoji} ${c.name}`, data: c.id })),
+        rows: Array(Math.ceil(categories.length / 2)).fill(2),
       })
 
       const categorySelection = await DBOS.recv<{ value: number, messageId?: string }>(GirarCommand.CATEGORY_SELECTED_EVENT)
