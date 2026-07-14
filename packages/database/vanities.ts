@@ -6,6 +6,10 @@ import { and, eq, gte, ilike, inArray, sql } from "drizzle-orm";
 type StoreItemType = (typeof storeItemTypes.enumValues)[number]
 
 export class VanitiesDB {
+  static listAllStoreItems = maybeTransaction('listAllStoreItems', async (client) => {
+    return await client.select().from(storeItems).orderBy(storeItems.id);
+  })
+
   static getStoreItemsByIds = maybeTransaction('getStoreItemsByIds', async (client, ids: number[]) => {
     if (ids.length === 0) return [];
     return await client.select().from(storeItems).where(inArray(storeItems.id, ids));
@@ -80,5 +84,9 @@ export class VanitiesDB {
 
   static updateStoreItem = maybeTransaction('updateStoreItem', async (client, id: number, data: Partial<typeof storeItems.$inferInsert>) => {
     return await client.update(storeItems).set(data).where(eq(storeItems.id, id)).returning().then(a => a?.[0]);
+  })
+
+  static deleteStoreItem = maybeTransaction('deleteStoreItem', async (client, id: number) => {
+    return await client.delete(storeItems).where(eq(storeItems.id, id)).returning().then(a => a?.[0]);
   })
 }

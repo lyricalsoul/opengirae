@@ -1,8 +1,37 @@
 import { users, userProfiles } from "./schemas/users";
 import { maybeTransaction } from "./decorators";
-import { eq, sql, and, gte } from "drizzle-orm";
+import { eq, sql, and, gte, ilike, desc } from "drizzle-orm";
 
 export class UsersDB {
+  static listUsers = maybeTransaction('listUsers', async (client, opts: { limit?: number; offset?: number; query?: string } = {}) => {
+    const { limit = 50, offset = 0, query } = opts;
+    return await client
+      .select()
+      .from(users)
+      .where(query ? ilike(users.displayName, `%${query}%`) : undefined)
+      .orderBy(desc(users.id))
+      .limit(limit)
+      .offset(offset);
+  })
+
+  static setBanned = maybeTransaction('setBanned', async (client, userId: number, isBanned: boolean, banMessage?: string) => {
+    return await client
+      .update(users)
+      .set({ isBanned, banMessage: isBanned ? (banMessage ?? null) : null })
+      .where(eq(users.id, userId))
+      .returning()
+      .then(rows => rows[0]);
+  })
+
+  static setIsAdmin = maybeTransaction('setIsAdmin', async (client, userId: number, isAdmin: boolean) => {
+    return await client
+      .update(users)
+      .set({ isAdmin })
+      .where(eq(users.id, userId))
+      .returning()
+      .then(rows => rows[0]);
+  })
+
   static getUserById = maybeTransaction('getUserById', async (client, id: number) => {
     return await client.select().from(users).where(eq(users.id, id)).limit(1).then(a => a?.[0]);
   })
@@ -139,5 +168,11 @@ export class UsersDB {
       .where(eq(users.id, userId))
       .returning()
       .then(rows => rows[0]);
+  })
+
+  static decrementUsedDraws = maybeTransaction('decrementUsedDraws', async (client, amount: number) => {
+    await client
+      .update(users)
+      .set({ usedDraws: sql`GREATEST(${users.usedDraws} - ${amount}, 0)` });
   })
 }
