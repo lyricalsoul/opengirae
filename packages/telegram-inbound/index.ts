@@ -42,9 +42,10 @@ const ADDCARD_THREAD_ID = '6016'
 
 tg.on('message', async (msg) => {
   let content = msg.content ?? msg.caption
+  console.log(msg.chat)
   if (String(msg.chat?.id) === ADDCARD_CHAT_ID
     && String(msg.chat?.threadId) === ADDCARD_THREAD_ID
-    && msg.photo?.length
+    && msg.chat?.inTopic && msg.photo?.length
     ) {
     content = `/addcard ${content ?? ''}`.trim()
   }
