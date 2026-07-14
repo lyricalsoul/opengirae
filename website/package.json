@@ -28,26 +28,26 @@
 		"chart.js": "^4.5.1",
 		"clsx": "^2.1.1",
 		"tailwind-merge": "^3.6.0",
-		"trpc-sveltekit": "^3.2.0",
+		"trpc-sveltekit": "^3.6.3",
 		"winston": "^3.19.0",
-		"zod": "^4.1.13"
+		"zod": "^4.4.3"
 	},
 	"devDependencies": {
 		"@better-auth/cli": "~1.4.21",
 		"@sveltejs/adapter-node": "^5.5.7",
-		"@sveltejs/kit": "^2.63.0",
-		"@sveltejs/vite-plugin-svelte": "^7.1.2",
+		"@sveltejs/kit": "^2.69.3",
+		"@sveltejs/vite-plugin-svelte": "^7.2.0",
 		"@tailwindcss/forms": "^0.5.11",
-		"@tailwindcss/vite": "^4.3.0",
-		"@types/node": "^22",
-		"better-auth": "~1.4.21",
+		"@tailwindcss/vite": "^4.3.2",
+		"@types/node": "^26",
+		"better-auth": "~1.6.23",
 		"drizzle-orm": "^0.45.2",
 		"mdsvex": "^0.12.7",
 		"postgres": "^3.4.9",
-		"svelte": "^5.56.1",
-		"svelte-check": "^4.6.0",
-		"tailwindcss": "^4.3.0",
-		"typescript": "^6.0.3",
-		"vite": "^8.0.16"
+		"svelte": "^5.56.4",
+		"svelte-check": "^4.7.2",
+		"tailwindcss": "^4.3.2",
+		"typescript": "^7.0.2",
+		"vite": "^8.1.4"
 	}
 }
