@@ -61,7 +61,7 @@ Responda SOMENTE com um objeto JSON no formato:
   - Variedades: uma descrição curta em português (ex.: "Streamers de Jogos", "Influencers Digitais", "Atrizes de Dorama", "BBB", "Memes", "Política Brasileira").
   Se não for possível identificar nada, use "Geral".
 - "rarity": procure pela palavra da raridade no texto (em português) e escolha exatamente uma destas: ${knownRarities.join(", ")}. Se não houver pistas, escolha a mais comum (geralmente a primeira da lista). Bronze se refere a Comum, Prata a raro, e Ouro a Lendário.
-- "tags": subcategorias secundárias relevantes (ex.: um grupo relacionado, uma era específica), pode ser um array vazio. NUNCA repita o valor de "subcategory" ou "category" aqui. Exemplos de tag: para Ariana Grande, "Atrizes de TV" (subcategoria principal é "Artistas de Pop"). Para jogadores de um time, seria o nome do Time.
+- "tags": subcategorias secundárias relevantes, use RARAMENTE - na grande maioria dos casos deve ser um array vazio, só preencha quando houver algo genuinamente relevante além do óbvio (ex.: um grupo relacionado, uma era específica). NUNCA inclua o nome do personagem/artista ("name"), a "subcategory" ou a "category" como tag. Exemplos de tag: para Ariana Grande, "Atrizes de TV" (subcategoria principal é "Artistas de Pop"). Para jogadores de um time, seria o nome do Time.
 - "error": se o texto não contiver informação suficiente para identificar o personagem/artista, explique brevemente em português; caso contrário null.`
 
   const completion = await groq.chat.completions.create({
@@ -87,10 +87,11 @@ Responda SOMENTE com um objeto JSON no formato:
     const { reasoning, tags, subcategory, ...rest } = JSON.parse(content) as RawInference
     if (reasoning) debug("cardInference", reasoning)
 
+    const blocked = [subcategory, rest.category, rest.name].map(v => v?.toLowerCase())
     return {
       ...rest,
       subcategory,
-      tags: (tags ?? []).filter(t => t.toLowerCase() !== subcategory?.toLowerCase()),
+      tags: (tags ?? []).filter(t => !blocked.includes(t.toLowerCase())),
     }
   } catch (e) {
     error("cardInference", `failed to parse groq response: ${e}`)
