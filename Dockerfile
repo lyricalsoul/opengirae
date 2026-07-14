@@ -17,7 +17,7 @@ RUN bun install
 FROM base AS runtime
 ENV NODE_ENV=production
 COPY --from=deps /app ./
-COPY drizzle.config.ts ./
+COPY drizzle.config.ts tsconfig.json ./
 COPY packages/ packages/
 COPY website/src/lib/server/db/ website/src/lib/server/db/
 
