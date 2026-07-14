@@ -3,7 +3,8 @@
   "type": "module",
   "private": true,
   "workspaces": [
-    "packages/**"
+    "packages/**",
+    "website"
   ],
   "devDependencies": {
     "@types/bun": "latest",
@@ -29,7 +30,6 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:push": "drizzle-kit push",
-    "db:seed": "bun packages/database/seed.ts",
     "dev:all": "bun run --parallel 'dev:discord-inbounder' 'dev:telegram-inbound' 'dev:commandeer' 'dev:answerer'",
     "dev:discord-inbounder": "bun --watch packages/discord-inbounder/index.ts",
     "dev:telegram-inbound": "bun --watch packages/telegram-inbound/index.ts",
