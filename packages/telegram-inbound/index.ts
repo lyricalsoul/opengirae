@@ -37,13 +37,24 @@ const stripBotMention = (content: string): string | null => {
   return firstToken.slice(0, atIndex) + content.slice(firstToken.length)
 }
 
+const ADDCARD_CHAT_ID = '-1003993142790'
+const ADDCARD_THREAD_ID = '6016'
+
 tg.on('message', async (msg) => {
   let content = msg.content ?? msg.caption
+  if (String(msg.chat?.id) === ADDCARD_CHAT_ID
+    && String(msg.chat?.threadId) === ADDCARD_THREAD_ID
+    && msg.photo?.length
+    ) {
+    content = `/addcard ${content ?? ''}`.trim()
+  }
+
   if (content) {
     const stripped = stripBotMention(content)
     if (stripped === null) return
     content = stripped
   }
+  if (!msg.author) return
   if (!content && !msg.photo?.length && !msg.animation) return
 
   const chat: MessageChat = {

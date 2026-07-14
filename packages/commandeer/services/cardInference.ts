@@ -1,7 +1,7 @@
 import Groq from "groq-sdk"
 import { debug, error } from "@girae/common/logger"
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY, maxRetries: 3 })
 const MODEL = process.env.GROQ_MODEL || "qwen/qwen3.6-27b"
 
 export interface InferredCardData {
@@ -36,6 +36,7 @@ export async function inferCardData(
   text: string,
   knownCategories: string[],
   knownRarities: string[],
+  knownMusicaSubcategories: string[] = [],
 ): Promise<InferredCardData | null> {
   const system = `Você extrai metadados de cards colecionáveis (personagens, artistas, ídolos, celebridades) de mensagens em texto livre para um bot de colecionáveis abrangente - não é só K-pop, cobre música de qualquer origem, animes/mangás, jogos, TV/filmes, ídolos asiáticos e variedades (streamers, influencers, atores, política, memes, etc.).
 
@@ -56,7 +57,7 @@ Responda SOMENTE com um objeto JSON no formato:
   - Animangá: o nome do anime/mangá (ex.: "Neon Genesis Evangelion", "Naruto").
   - Jogos: o nome do jogo (ex.: "Minecraft", "The Witcher", "Fortnite").
   - TV: o nome da série/novela/filme (ex.: "Gossip Girl", "Avenida Brasil").
-  - Música: o nome do grupo (ex.: "Red Velvet", "BTS", "NewJeans"), ou "Solistas de K-Pop"/"Solistas de J-Pop"/"Solistas de C-Pop" para artistas solo.
+  - Música: o nome do grupo (ex.: "Red Velvet", "BTS", "NewJeans"), ou "Solistas de K-Pop"/"Solistas de J-Pop"/"Solistas de C-Pop" para artistas solo. Subcategorias já existentes em Música: ${knownMusicaSubcategories.join(", ") || "nenhuma ainda"}. Se a categoria escolhida for "Música", "subcategory" DEVE ser uma dessas já existentes - nunca invente uma nova.
   - Variedades: uma descrição curta em português (ex.: "Streamers de Jogos", "Influencers Digitais", "Atrizes de Dorama", "BBB", "Memes", "Política Brasileira").
   Se não for possível identificar nada, use "Geral".
 - "rarity": procure pela palavra da raridade no texto (em português) e escolha exatamente uma destas: ${knownRarities.join(", ")}. Se não houver pistas, escolha a mais comum (geralmente a primeira da lista). Bronze se refere a Comum, Prata a raro, e Ouro a Lendário.

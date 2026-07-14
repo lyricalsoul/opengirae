@@ -39,7 +39,12 @@ export default class AddCardCommand extends Command {
       return
     }
 
-    const inferred = await inferCardData(sourceText, categories.map(c => c.name), rarities.map(r => r.name))
+    const musicaCategory = categories.find(c => c.name === 'Música')
+    const musicaSubcategories = musicaCategory
+      ? (await CardsDB.getSubcategoriesForCategory(musicaCategory.id)).map(s => s.name)
+      : []
+
+    const inferred = await inferCardData(sourceText, categories.map(c => c.name), rarities.map(r => r.name), musicaSubcategories)
     if (!inferred) {
       await reply(ctx, 'Não foi possível inferir os dados do card. Tente novamente.')
       return

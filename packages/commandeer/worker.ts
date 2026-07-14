@@ -1,12 +1,13 @@
 import { Worker } from 'bullmq'
 import { connection, responseQueue } from '@girae/common/queue'
+import { COMMAND_QUEUE_NAME, RESUME_QUEUE_NAME, QUICKVIEW_QUEUE_NAME, PAGE_QUEUE_NAME } from '@girae/common/queue/constants'
 import { executeCommand } from './services/commands'
 import { DBOS } from '@girae/common/dbos'
 import { info, error } from '@girae/common/logger'
 import { findQuickView, findPage } from './loader'
 import type { PendingResponse } from '@girae/common/commands/types'
 
-export const commandWorker = new Worker('{commands}', async (job) => {
+export const commandWorker = new Worker(COMMAND_QUEUE_NAME, async (job) => {
   await executeCommand(job.data)
 }, { connection })
 
@@ -18,7 +19,7 @@ commandWorker.on('failed', (job, err) => {
   error('commandeer', `Job ${job?.id} (${job?.data?.name}) failed: ${err.message}`)
 })
 
-export const resumeWorker = new Worker('{resume}', async (job) => {
+export const resumeWorker = new Worker(RESUME_QUEUE_NAME, async (job) => {
   const { workflowID, eventName, value, messageId } = job.data
   await DBOS.send(workflowID, { value, messageId }, eventName)
 }, { connection })
@@ -27,7 +28,7 @@ resumeWorker.on('failed', (job, err) => {
   error('commandeer', `Resume job ${job?.id} (workflow: ${job?.data?.workflowID}) failed: ${err.message}`)
 })
 
-export const quickViewWorker = new Worker('{quickviews}', async (job) => {
+export const quickViewWorker = new Worker(QUICKVIEW_QUEUE_NAME, async (job) => {
   const { handler, arg, callbackQueryId, clickerUserId } = job.data
   const entry = findQuickView(handler)
   if (!entry) return
@@ -48,7 +49,7 @@ quickViewWorker.on('failed', (job, err) => {
   error('commandeer', `Quick view job ${job?.id} (handler: ${job?.data?.handler}) failed: ${err.message}`)
 })
 
-export const pageWorker = new Worker('{pages}', async (job) => {
+export const pageWorker = new Worker(PAGE_QUEUE_NAME, async (job) => {
   const { handler, page, authorId, arg, clickerUserId, chatId, messageId } = job.data
   const entry = findPage(handler)
   if (!entry) return
@@ -87,4 +88,11 @@ export const pageWorker = new Worker('{pages}', async (job) => {
 pageWorker.on('failed', (job, err) => {
   error('commandeer', `Page job ${job?.id} (handler: ${job?.data?.handler}) failed: ${err.message}`)
 })
+
+const shutdown = async () => {
+  await Promise.all([commandWorker.close(), resumeWorker.close(), quickViewWorker.close(), pageWorker.close()])
+  process.exit(0)
+}
+process.on('SIGTERM', shutdown)
+process.on('SIGINT', shutdown)
 
