@@ -10,10 +10,7 @@ Inconsistencies across executions have been remediated by enforcing a DBOS workf
 
 Giraê is designed to be highly modular and easily scalable. While the legacy version implemented a rudimentary modular design, its reliance on heavy local state severely limited its scalability. In this rewrite, DBOS and BullMQ are heavily leveraged throughout the application to enforce a strict worker-based architecture, ensuring consistency and reliability across all executions.
 
-A detailed execution flow can be found in `flow.mermaid`. At a high level, the event pipeline operates as follows:
-```
-telegram/discord -> inbounder --bullMQ-> commandeer --bullMQ-> answerer -> telegram/discord
-```
+A detailed execution flow can be found in `flow.mermaid`. 
 
 
 ## Packages
@@ -24,3 +21,12 @@ telegram/discord -> inbounder --bullMQ-> commandeer --bullMQ-> answerer -> teleg
 - `@girae/commandeer` - Implements the command engine, and pushes results back to the `answerer` queue.
 - `@girae/answerer` - Sends answers back to platforms with the appropriate formatting and rate limiting.
 
+## Licensing
+
+Giraê is a **source-available** project under the Server Side Public License (SSPL). Any and all modifications or derivative works must also be published under SSPL. A `LICENSE` file is present in the root of the repository for the full license text.
+
+---
+
+Copyright © 2026 The Authors of the Giraê Project, Inc.
+
+This project is licensed under the Server Side Public License (SSPL). You are allowed to use the source-code, but any and all modifications must be made public. The violation of these terms might incur in legal action. A full copy of the SSPL is present in the `LICENSE` file in the root of this repository.
