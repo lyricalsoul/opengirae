@@ -1,0 +1,45 @@
+{
+	"name": "website",
+	"private": true,
+	"version": "0.0.1",
+	"type": "module",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"prepare": "svelte-kit sync || echo ''",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"auth:schema": "better-auth generate --config src/lib/server/auth.ts --output src/lib/server/db/auth.schema.ts --yes"
+	},
+	"dependencies": {
+		"@girae/database": "workspace:*",
+		"@trpc/client": "^10.45.2",
+		"@trpc/server": "^10.45.2",
+		"ag-grid-community": "^36.0.0",
+		"bits-ui": "^2.18.1",
+		"chart.js": "^4.5.1",
+		"clsx": "^2.1.1",
+		"tailwind-merge": "^3.6.0",
+		"trpc-sveltekit": "^3.2.0",
+		"zod": "^4.1.13"
+	},
+	"devDependencies": {
+		"@better-auth/cli": "~1.4.21",
+		"@sveltejs/adapter-auto": "^7.0.1",
+		"@sveltejs/kit": "^2.63.0",
+		"@sveltejs/vite-plugin-svelte": "^7.1.2",
+		"@tailwindcss/forms": "^0.5.11",
+		"@tailwindcss/vite": "^4.3.0",
+		"@types/node": "^22",
+		"better-auth": "~1.4.21",
+		"drizzle-orm": "^0.45.2",
+		"mdsvex": "^0.12.7",
+		"postgres": "^3.4.9",
+		"svelte": "^5.56.1",
+		"svelte-check": "^4.6.0",
+		"tailwindcss": "^4.3.0",
+		"typescript": "^6.0.3",
+		"vite": "^8.0.16"
+	}
+}

@@ -1,0 +1,151 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/forms';
+
+@theme {
+	--color-bg: #120e16;
+	--color-bg-soft: #1a1420;
+	--color-panel: #201829;
+	--color-ink: #f4ece8;
+	--color-ink-dim: #b6a7c2;
+	--color-magenta: #ff2e88;
+	--color-cyan: #33e6da;
+	--color-yellow: #ffc530;
+	--color-line: #35293f;
+
+	--font-sans:
+		-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+html {
+	color-scheme: dark;
+}
+
+body {
+	background: var(--color-bg);
+	color: var(--color-ink);
+	font-family: var(--font-sans);
+	min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+	font-family: inherit;
+}
+
+dialog {
+	background: var(--color-panel);
+	color: var(--color-ink);
+	border: 1px solid var(--color-line);
+	border-radius: 0.875rem;
+	padding: 1.25rem;
+	max-width: 24rem;
+	width: 100%;
+}
+dialog::backdrop {
+	background: rgba(0, 0, 0, 0.6);
+}
+
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.375rem;
+	border-radius: 0.625rem;
+	padding: 0.5rem 0.875rem;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	border: 1px solid var(--color-line);
+	background: var(--color-bg-soft);
+	color: var(--color-ink);
+	transition:
+		background-color 0.15s,
+		border-color 0.15s,
+		color 0.15s;
+	white-space: nowrap;
+}
+.btn:hover {
+	border-color: var(--color-ink-dim);
+}
+.btn-danger {
+	color: var(--color-magenta);
+	border-color: color-mix(in oklab, var(--color-magenta) 40%, var(--color-line));
+}
+.btn-danger:hover {
+	background: color-mix(in oklab, var(--color-magenta) 14%, var(--color-bg-soft));
+}
+.btn-ghost {
+	background: transparent;
+	border-color: transparent;
+	color: var(--color-ink-dim);
+}
+.btn-ghost:hover {
+	color: var(--color-ink);
+	background: var(--color-bg-soft);
+}
+
+.bg-tint {
+	background:
+		radial-gradient(ellipse 900px 600px at 12% -10%, color-mix(in oklab, var(--color-magenta) 16%, transparent), transparent),
+		radial-gradient(ellipse 700px 500px at 100% 10%, color-mix(in oklab, var(--color-cyan) 10%, transparent), transparent),
+		var(--color-bg);
+}
+
+.grain {
+	position: fixed;
+	inset: 0;
+	z-index: 60;
+	pointer-events: none;
+	opacity: 0.05;
+	mix-blend-mode: overlay;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.field {
+	display: block;
+	width: 100%;
+	border: 1px solid var(--color-line);
+	background: var(--color-bg-soft);
+	color: var(--color-ink);
+	border-radius: 0.5rem;
+	padding: 0.5rem 0.75rem;
+	font-size: 0.875rem;
+}
+.field::placeholder {
+	color: var(--color-ink-dim);
+}
+.field:focus {
+	outline: none;
+	border-color: var(--color-magenta);
+}
+
+/* bits-ui DropdownMenu content/item, shared by UserActionsMenu and UserMenu */
+.menu-content {
+	z-index: 50;
+	min-width: 10rem;
+	border-radius: 0.5rem;
+	border: 1px solid var(--color-line);
+	background: var(--color-panel);
+	padding: 0.25rem;
+	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.menu-item {
+	cursor: pointer;
+	border-radius: 0.375rem;
+	padding: 0.375rem 0.75rem;
+	font-size: 0.875rem;
+	color: var(--color-ink);
+	outline: none;
+}
+.menu-item:hover {
+	background: var(--color-bg-soft);
+}
+.menu-item-danger {
+	color: var(--color-magenta);
+}
+
+::selection {
+	background: var(--color-magenta);
+	color: var(--color-bg);
+}
