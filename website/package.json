@@ -14,6 +14,13 @@
 	},
 	"dependencies": {
 		"@girae/database": "workspace:*",
+		"@opentelemetry/api": "^1.9.1",
+		"@opentelemetry/context-async-hooks": "^2.9.0",
+		"@opentelemetry/core": "^2.9.0",
+		"@opentelemetry/exporter-logs-otlp-proto": "^0.220.0",
+		"@opentelemetry/exporter-trace-otlp-proto": "^0.220.0",
+		"@opentelemetry/sdk-logs": "^0.220.0",
+		"@opentelemetry/sdk-trace-base": "^2.9.0",
 		"@trpc/client": "^10.45.2",
 		"@trpc/server": "^10.45.2",
 		"ag-grid-community": "^36.0.0",
@@ -22,11 +29,12 @@
 		"clsx": "^2.1.1",
 		"tailwind-merge": "^3.6.0",
 		"trpc-sveltekit": "^3.2.0",
+		"winston": "^3.19.0",
 		"zod": "^4.1.13"
 	},
 	"devDependencies": {
 		"@better-auth/cli": "~1.4.21",
-		"@sveltejs/adapter-auto": "^7.0.1",
+		"@sveltejs/adapter-node": "^5.5.7",
 		"@sveltejs/kit": "^2.63.0",
 		"@sveltejs/vite-plugin-svelte": "^7.1.2",
 		"@tailwindcss/forms": "^0.5.11",

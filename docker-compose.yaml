@@ -61,5 +61,17 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  website:
+    build:
+      context: .
+      dockerfile: website/Dockerfile
+    env_file: .env
+    ports:
+      - "${WEBSITE_PORT:-3001}:3000"
+    depends_on:
+      db-push:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
 volumes:
   dragonfly-data:
