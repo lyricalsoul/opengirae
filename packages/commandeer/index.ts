@@ -17,6 +17,11 @@ await DBOS.applySchedules([
         scheduleName: 'daily-midnight-reset',
         workflowFn: CronJobs.runMidnightReset,
         schedule: '0 3 * * *',
+    },
+    {
+        scheduleName: 'hourly-draw-decay',
+        workflowFn: CronJobs.runHourlyDrawDecay,
+        schedule: '0 * * * *',
     }
 ])
 

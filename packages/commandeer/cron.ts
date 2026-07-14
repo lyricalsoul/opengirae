@@ -8,4 +8,10 @@ export class CronJobs {
     info('cron', `Running midnight reset for ${schedTime.toISOString()}`)
     await UsersDB.resetMidnightStats()
   }
+
+  @DBOS.workflow()
+  static async runHourlyDrawDecay(schedTime: Date) {
+    info('cron', `Running hourly draw decay for ${schedTime.toISOString()}`)
+    await UsersDB.decrementUsedDraws(2)
+  }
 }
