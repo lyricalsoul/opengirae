@@ -31,7 +31,7 @@ export const storeItems = pgTable("store_items", {
 export const boughtItems = pgTable("bought_items", {
     id: integer().primaryKey().generatedAlwaysAsIdentity(),
     userId: integer().notNull().references(() => users.id),
-    itemId: integer().notNull().references(() => storeItems.id),
+    itemId: integer().notNull().references(() => storeItems.id, { onDelete: "cascade" }),
     boughtAt: timestamp().notNull().defaultNow(),
 }, (table) => [
     unique().on(table.userId, table.itemId),

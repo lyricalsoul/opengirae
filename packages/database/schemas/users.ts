@@ -54,7 +54,7 @@ export const userProfiles = pgTable("user_profiles", {
 
   hideProfileEmojis: boolean().notNull().default(false),
 
-  equipedBackgroundId: integer().references(() => storeItems.id),
-  equipedStickerId: integer().references(() => storeItems.id),
-  equipedProfileId: integer().references(() => storeItems.id)
+  equipedBackgroundId: integer().references(() => storeItems.id, { onDelete: "set null" }),
+  equipedStickerId: integer().references(() => storeItems.id, { onDelete: "set null" }),
+  equipedProfileId: integer().references(() => storeItems.id, { onDelete: "set null" })
 });
