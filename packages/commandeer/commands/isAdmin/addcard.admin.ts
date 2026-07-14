@@ -1,11 +1,15 @@
 import { Command } from '@girae/common/commands'
 import { CardsDB } from '@girae/database/cards'
+import { UsersDB } from '@girae/database/users'
+import { AuditDB } from '@girae/database/audit'
 import { DBOS } from '@dbos-inc/dbos-sdk'
 import { reply } from '@girae/common/dbos/messaging'
+import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { uploadCardImage } from '../../services/cardImage'
 import { uploadFromUrl } from '../../services/storage'
 import { inferCardData } from '../../services/cardInference'
-import { runCardWizard } from '../../services/cardWizard'
+import { parseCardListing, parseSubcategoryListing } from '../../services/cardListingParser'
+import { runCardWizard, finalizeCard } from '../../services/cardWizard'
 import type { IncomingCommand } from '@girae/common/commands/types'
 
 export default class AddCardCommand extends Command {
@@ -32,13 +36,62 @@ export default class AddCardCommand extends Command {
       return
     }
 
-    const categories = await CardsDB.getCategories()
     const rarities = await CardsDB.getRarities()
     if (rarities.length === 0) {
       await reply(ctx, 'Não há raridades cadastradas ainda.')
       return
     }
 
+    const replyCtx = ctx.message.replyTo
+      ? { ...ctx, message: { ...ctx.message, id: ctx.message.replyTo.id } }
+      : ctx
+
+    const parsed = parseCardListing(sourceText)
+    if (parsed) {
+      const category = await CardsDB.getCategory(parsed.categoryId)
+      if (!category) {
+        await reply(ctx, 'Categoria configurada para esse formato não existe mais.')
+        return
+      }
+
+      const cdnUrl = isAnimated ? await uploadFromUrl(photoUrl, 'cards') : await uploadCardImage(photoUrl)
+      await finalizeCard(replyCtx, {
+        name: parsed.name,
+        category: category.name,
+        subcategory: parsed.subcategory,
+        rarity: parsed.rarity,
+        tags: [],
+      }, cdnUrl, 'create')
+      return
+    }
+
+    const subcategoryListing = parseSubcategoryListing(sourceText)
+    if (subcategoryListing) {
+      const category = await CardsDB.getCategory(subcategoryListing.categoryId)
+      if (!category) {
+        await reply(ctx, 'Categoria configurada para esse formato não existe mais.')
+        return
+      }
+
+      const existing = await CardsDB.getSubcategoryByNameAndCategory(subcategoryListing.subcategory, category.id)
+      const cdnUrl = await uploadFromUrl(photoUrl, 'subcategories')
+      const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+      if (!user) return
+
+      if (existing) {
+        await CardsDB.updateSubcategory(existing.id, { imageUrl: cdnUrl })
+        await AuditDB.log(user.id, 'subcategory.updatePhoto', { subcategoryId: existing.id, name: existing.name })
+        await reply(ctx, `🖼️ Foto de **${escapeMarkdown(existing.name)}** atualizada.`)
+      } else {
+        const created = await CardsDB.createSubcategory(subcategoryListing.subcategory, category.id, cdnUrl)
+        if (!created) return
+        await AuditDB.log(user.id, 'subcategory.create', { subcategoryId: created.id, name: created.name, categoryEmoji: category.emoji })
+        await reply(ctx, `📂 Subcategoria **${escapeMarkdown(created.name)}** criada com foto.`)
+      }
+      return
+    }
+
+    const categories = await CardsDB.getCategories()
     const musicaCategory = categories.find(c => c.name === 'Música')
     const musicaSubcategories = musicaCategory
       ? (await CardsDB.getSubcategoriesForCategory(musicaCategory.id)).map(s => s.name)
@@ -55,11 +108,6 @@ export default class AddCardCommand extends Command {
     }
 
     const cdnUrl = isAnimated ? await uploadFromUrl(photoUrl, 'cards') : await uploadCardImage(photoUrl)
-
-    const replyCtx = ctx.message.replyTo
-      ? { ...ctx, message: { ...ctx.message, id: ctx.message.replyTo.id } }
-      : ctx
-
     await runCardWizard(replyCtx, {
       cardData: {
         name: inferred.name,

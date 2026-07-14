@@ -48,6 +48,59 @@ function diffFields(before: CardData, after: CardData): Array<{ field: string, o
   return changes
 }
 
+export async function finalizeCard(
+  ctx: IncomingCommand,
+  cardData: CardData,
+  photoUrl: string,
+  mode: 'create' | 'edit',
+  existingCardId?: number,
+  messageId?: string,
+  before?: CardData,
+) {
+  const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+  if (!user) return
+
+  const category = await CardsDB.getOrCreateCategory(cardData.category)
+  if (!category) return
+  const subcategory = await CardsDB.getOrCreateSubcategory(cardData.subcategory, category.id)
+  const rarity = await CardsDB.getRarityByName(cardData.rarity)
+  if (!subcategory || !rarity) {
+    await reply(ctx, mode === 'edit' ? 'Não foi possível editar o card.' : 'Não foi possível criar o card.')
+    return
+  }
+
+  const secondarySubcategoryIds = (await Promise.all(
+    cardData.tags.map(tag => CardsDB.getOrCreateSubcategory(tag, category.id))
+  )).filter((s): s is NonNullable<typeof s> => !!s).map(s => s.id)
+
+  if (mode === 'edit' && existingCardId) {
+    await CardsDB.updateCard(existingCardId, { name: cardData.name, rarityId: rarity.id, imageUrl: photoUrl })
+    await CardsDB.setCardSubcategories(existingCardId, subcategory.id, secondarySubcategoryIds)
+
+    await AuditDB.log(user.id, 'card.edit', { cardId: existingCardId, changes: diffFields(before!, cardData) })
+
+    if (messageId) await deleteMsg(ctx, messageId)
+    await reply(ctx, {
+      content: `🃏 Card atualizado: \n\n${rarity.emoji} ${existingCardId}. ${escapeMarkdown(cardData.name)}\n${category.emoji} ${escapeMarkdown(subcategory.name)}`,
+      photoUrl,
+      buttons: cardActionButtons(existingCardId),
+    })
+    return
+  }
+
+  const card = await CardsDB.createCard(cardData.name, rarity.id, photoUrl, subcategory.id, secondarySubcategoryIds)
+  if (!card) return
+
+  await AuditDB.log(user.id, 'card.create', { cardId: card.id, name: cardData.name, rarityName: rarity.name, categoryEmoji: category.emoji })
+
+  if (messageId) await deleteMsg(ctx, messageId)
+  await reply(ctx, {
+    content: `🃏 Carta criada: \n\n${rarity.emoji} ${card.id}. ${escapeMarkdown(cardData.name)}\n${category.emoji} ${escapeMarkdown(subcategory.name)}`,
+    photoUrl,
+    buttons: cardActionButtons(card.id),
+  })
+}
+
 export async function runCardWizard(
   ctx: IncomingCommand,
   initial: { cardData: CardData, photoUrl: string, mode: 'create' | 'edit', existingCardId?: number }
@@ -139,46 +192,5 @@ export async function runCardWizard(
     }
   }
 
-  const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
-  if (!user) return
-
-  const category = await CardsDB.getOrCreateCategory(cardData.category)
-  if (!category) return
-  const subcategory = await CardsDB.getOrCreateSubcategory(cardData.subcategory, category.id)
-  const rarity = await CardsDB.getRarityByName(cardData.rarity)
-  if (!subcategory || !rarity) {
-    await reply(ctx, mode === 'edit' ? 'Não foi possível editar o card.' : 'Não foi possível criar o card.')
-    return
-  }
-
-  const secondarySubcategoryIds = (await Promise.all(
-    cardData.tags.map(tag => CardsDB.getOrCreateSubcategory(tag, category.id))
-  )).filter((s): s is NonNullable<typeof s> => !!s).map(s => s.id)
-
-  if (mode === 'edit' && existingCardId) {
-    await CardsDB.updateCard(existingCardId, { name: cardData.name, rarityId: rarity.id, imageUrl: photoUrl })
-    await CardsDB.setCardSubcategories(existingCardId, subcategory.id, secondarySubcategoryIds)
-
-    await AuditDB.log(user.id, 'card.edit', { cardId: existingCardId, changes: diffFields(before, cardData) })
-
-    if (messageId) await deleteMsg(ctx, messageId)
-    await reply(ctx, {
-      content: `🃏 Card atualizado: \n\n${rarity.emoji} ${existingCardId}. ${escapeMarkdown(cardData.name)}\n${category.emoji} ${escapeMarkdown(subcategory.name)}`,
-      photoUrl,
-      buttons: cardActionButtons(existingCardId),
-    })
-    return
-  }
-
-  const card = await CardsDB.createCard(cardData.name, rarity.id, photoUrl, subcategory.id, secondarySubcategoryIds)
-  if (!card) return
-
-  await AuditDB.log(user.id, 'card.create', { cardId: card.id, name: cardData.name, rarityName: rarity.name, categoryEmoji: category.emoji })
-
-  if (messageId) await deleteMsg(ctx, messageId)
-  await reply(ctx, {
-    content: `🃏 Carta criada: \n\n${rarity.emoji} ${card.id}. ${escapeMarkdown(cardData.name)}\n${category.emoji} ${escapeMarkdown(subcategory.name)}`,
-    photoUrl,
-    buttons: cardActionButtons(card.id),
-  })
+  await finalizeCard(ctx, cardData, photoUrl, mode, existingCardId, messageId, before)
 }
