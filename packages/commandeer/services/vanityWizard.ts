@@ -49,23 +49,32 @@ function parseOldListing(content: string): VanityItemData | null {
 
 export async function resolveInitialVanityData(ctx: IncomingCommand, type: VanityType): Promise<VanityItemData> {
   const quoted = ctx.message.replyTo?.content ? parseOldListing(ctx.message.replyTo.content) : null
-  if (quoted) return quoted
 
   const firstArg = ctx.args[0]
   const asPrice = firstArg ? parseInt(firstArg, 10) : NaN
   const hasLeadingPrice = !isNaN(asPrice) && asPrice > 0
-  const price = hasLeadingPrice ? asPrice : null
+  const argsPrice = hasLeadingPrice ? asPrice : null
   const rest = (hasLeadingPrice ? ctx.args.slice(1) : ctx.args).join(' ').trim()
-
-  if (!rest) return { title: '', description: '', price }
-
   const [explicitTitle, explicitDescription] = rest.split(' - ').map(s => s?.trim())
-  if (explicitDescription) return { title: explicitTitle!, description: explicitDescription, price }
 
-  const inferred = await inferVanityData(rest, type)
-  if (inferred) return { title: inferred.title, description: inferred.description, price: price ?? inferred.price }
+  const data: VanityItemData = {
+    title: quoted?.title || explicitTitle || '',
+    description: quoted?.description || explicitDescription || '',
+    price: quoted?.price ?? argsPrice,
+  }
+  if (data.title && data.description && data.price != null) return data
 
-  return { title: rest, description: '', price }
+  const fullText = [rest, ctx.message.replyTo?.content].filter(Boolean).join('\n')
+  if (!fullText.trim()) return data
+
+  const inferred = await inferVanityData(fullText, type)
+  if (!inferred) return data
+
+  return {
+    title: data.title || inferred.title,
+    description: data.description || inferred.description,
+    price: data.price ?? inferred.price,
+  }
 }
 
 export async function addVanityItem(ctx: IncomingCommand, type: VanityType) {
