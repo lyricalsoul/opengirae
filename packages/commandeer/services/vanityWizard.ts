@@ -36,6 +36,7 @@ const FIELD_PROMPTS: Record<TextField, string> = {
 
 const ACTION_EVENT = 'vanitywizard:action'
 const TEXT_EVENT = 'vanitywizard:text'
+const DELETE_CONFIRM_EVENT = 'vanitywizard:deleteConfirm'
 
 const OLD_LISTING_RE = /^.+?\s\d+\.\s*(.+)\n(.+)\n+💰\s*([\d.,]+)\s*moedas/u
 
@@ -47,34 +48,113 @@ function parseOldListing(content: string): VanityItemData | null {
   return { title: title!.trim(), description: description!.trim(), price: isNaN(price) ? null : price }
 }
 
-export async function resolveInitialVanityData(ctx: IncomingCommand, type: VanityType): Promise<VanityItemData> {
-  const quoted = ctx.message.replyTo?.content ? parseOldListing(ctx.message.replyTo.content) : null
+export async function resolveInitialVanityData(ctx: IncomingCommand, type: VanityType): Promise<{ data: VanityItemData, deterministic: boolean }> {
+  const fullArgsText = ctx.args.join(' ').trim()
+  const listing = parseOldListing(fullArgsText) ?? (ctx.message.replyTo?.content ? parseOldListing(ctx.message.replyTo.content) : null)
 
   const firstArg = ctx.args[0]
   const asPrice = firstArg ? parseInt(firstArg, 10) : NaN
-  const hasLeadingPrice = !isNaN(asPrice) && asPrice > 0
+  const hasLeadingPrice = !listing && !isNaN(asPrice) && asPrice > 0
   const argsPrice = hasLeadingPrice ? asPrice : null
   const rest = (hasLeadingPrice ? ctx.args.slice(1) : ctx.args).join(' ').trim()
   const [explicitTitle, explicitDescription] = rest.split(' - ').map(s => s?.trim())
 
   const data: VanityItemData = {
-    title: quoted?.title || explicitTitle || '',
-    description: quoted?.description || explicitDescription || '',
-    price: quoted?.price ?? argsPrice,
+    title: listing?.title || explicitTitle || '',
+    description: listing?.description || explicitDescription || '',
+    price: listing?.price ?? argsPrice,
   }
-  if (data.title && data.description && data.price != null) return data
+  if (data.title && data.description && data.price != null) return { data, deterministic: true }
 
   const fullText = [rest, ctx.message.replyTo?.content].filter(Boolean).join('\n')
-  if (!fullText.trim()) return data
+  if (!fullText.trim()) return { data, deterministic: false }
 
   const inferred = await inferVanityData(fullText, type)
-  if (!inferred) return data
+  if (!inferred) return { data, deterministic: false }
 
   return {
-    title: data.title || inferred.title,
-    description: data.description || inferred.description,
-    price: data.price ?? inferred.price,
+    data: {
+      title: data.title || inferred.title,
+      description: data.description || inferred.description,
+      price: data.price ?? inferred.price,
+    },
+    deterministic: false,
   }
+}
+
+const VANITY_EDIT_CMD = { background: 'editbg', sticker: 'editsticker' } as const
+const VANITY_DEL_CMD = { background: 'delbg', sticker: 'delsticker' } as const
+
+const vanityActionButtons = (itemId: number, type: VanityType) => [
+  { text: '✏️ Editar', runCommand: { name: VANITY_EDIT_CMD[type], args: [String(itemId)] } },
+  { text: '🗑️ Deletar', runCommand: { name: VANITY_DEL_CMD[type], args: [String(itemId)] } },
+]
+
+export async function finalizeVanityItem(
+  ctx: IncomingCommand,
+  itemData: VanityItemData,
+  photoUrl: string,
+  type: VanityType,
+  mode: 'create' | 'edit',
+  existingItemId?: number,
+  messageId?: string,
+) {
+  const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+  if (!user) return
+
+  const cdnUrl = await uploadFromUrl(photoUrl, TYPE_FOLDER[type])
+
+  if (mode === 'edit' && existingItemId) {
+    const updated = await VanitiesDB.updateStoreItem(existingItemId, {
+      title: itemData.title,
+      description: itemData.description,
+      price: itemData.price!,
+      itemURL: cdnUrl,
+    }).catch((e) => {
+      if (e?.code === '23505') return null // unique (title, type) violated
+      throw e
+    })
+    if (!updated) {
+      if (messageId) await deleteMsg(ctx, messageId)
+      await reply(ctx, `Já existe um ${TYPE_LABEL[type]} chamado **${escapeMarkdown(itemData.title)}**.`)
+      return
+    }
+
+    await AuditDB.log(user.id, `vanity.${type}.edit`, { itemId: existingItemId, title: itemData.title, price: itemData.price })
+
+    if (messageId) await deleteMsg(ctx, messageId)
+    await reply(ctx, {
+      content: `🛍 ${TYPE_LABEL[type]} atualizado: \`${existingItemId}\`. **${escapeMarkdown(itemData.title)}**\n${escapeMarkdown(itemData.description)}\n💸 ${itemData.price} moedas`,
+      photoUrl: cdnUrl,
+      buttons: vanityActionButtons(existingItemId, type),
+    })
+    return
+  }
+
+  const item = await VanitiesDB.createStoreItem({
+    title: itemData.title,
+    description: itemData.description,
+    type,
+    price: itemData.price!,
+    itemURL: cdnUrl,
+  }).catch((e) => {
+    if (e?.code === '23505') return null // unique (title, type) violated - lost a race with a concurrent /add
+    throw e
+  })
+  if (!item) {
+    if (messageId) await deleteMsg(ctx, messageId)
+    await reply(ctx, `Já existe um ${TYPE_LABEL[type]} chamado **${escapeMarkdown(itemData.title)}**.`)
+    return
+  }
+
+  await AuditDB.log(user.id, `vanity.${type}.create`, { itemId: item.id, title: itemData.title, price: itemData.price })
+
+  if (messageId) await deleteMsg(ctx, messageId)
+  await reply(ctx, {
+    content: `🛍 ${TYPE_LABEL[type]} criado: \`${item.id}\`. **${escapeMarkdown(itemData.title)}**\n${escapeMarkdown(itemData.description)}\n💸 ${itemData.price} moedas`,
+    photoUrl: cdnUrl,
+    buttons: vanityActionButtons(item.id, type),
+  })
 }
 
 export async function addVanityItem(ctx: IncomingCommand, type: VanityType) {
@@ -84,19 +164,83 @@ export async function addVanityItem(ctx: IncomingCommand, type: VanityType) {
     return
   }
 
-  const itemData = await resolveInitialVanityData(ctx, type)
-  await runVanityWizard(ctx, { itemData, photoUrl, type })
+  const { data, deterministic } = await resolveInitialVanityData(ctx, type)
+  if (deterministic) {
+    await finalizeVanityItem(ctx, data, photoUrl, type, 'create')
+    return
+  }
+
+  await runVanityWizard(ctx, { itemData: data, photoUrl, type, mode: 'create' })
+}
+
+export async function editVanityItem(ctx: IncomingCommand, type: VanityType) {
+  const itemId = parseInt(ctx.args[0] ?? '', 10)
+  const cmdName = type === 'background' ? 'editbg' : 'editsticker'
+  if (isNaN(itemId)) {
+    await reply(ctx, `Uso: \`/${cmdName} <id do item>\``)
+    return
+  }
+
+  const item = await VanitiesDB.getStoreItemById(itemId)
+  if (!item || item.type !== type) {
+    await reply(ctx, `${TYPE_LABEL[type]} não encontrado.`)
+    return
+  }
+
+  const newPhotoUrl = ctx.message.photoUrl ?? ctx.message.replyTo?.photoUrl
+  const photoUrl = newPhotoUrl ?? item.itemURL
+
+  await runVanityWizard(ctx, {
+    itemData: { title: item.title, description: item.description, price: item.price },
+    photoUrl,
+    type,
+    mode: 'edit',
+    existingItemId: itemId,
+  })
+}
+
+export async function deleteVanityItem(ctx: IncomingCommand, type: VanityType) {
+  const itemId = parseInt(ctx.args[0] ?? '', 10)
+  const cmdName = type === 'background' ? 'delbg' : 'delsticker'
+  if (isNaN(itemId)) {
+    await reply(ctx, `Uso: \`/${cmdName} <id do item>\``)
+    return
+  }
+
+  const item = await VanitiesDB.getStoreItemById(itemId)
+  if (!item || item.type !== type) {
+    await reply(ctx, `${TYPE_LABEL[type]} não encontrado.`)
+    return
+  }
+
+  await reply(ctx, {
+    content: `🗑️ Deletar **${escapeMarkdown(item.title)}** (\`${item.id}\`)? Essa ação não pode ser desfeita.`,
+    photoUrl: item.itemURL,
+    eventName: DELETE_CONFIRM_EVENT,
+    restricted: 'author',
+    options: [{ title: '✅ Confirmar', data: true }, { title: '❌ Cancelar', data: false }],
+  })
+
+  const confirmSelection = await DBOS.recv<{ value: boolean, messageId?: string }>(DELETE_CONFIRM_EVENT)
+  if (confirmSelection?.messageId) await deleteMsg(ctx, confirmSelection.messageId)
+  if (!confirmSelection?.value) return
+
+  const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+  if (!user) return
+
+  await VanitiesDB.deleteStoreItem(itemId)
+  await AuditDB.log(user.id, `vanity.${type}.delete`, { itemId: item.id, title: item.title })
+  await reply(ctx, `🗑️ **${escapeMarkdown(item.title)}** foi deletado.`)
 }
 
 export async function runVanityWizard(
   ctx: IncomingCommand,
-  initial: { itemData: VanityItemData, photoUrl: string, type: VanityType }
+  initial: { itemData: VanityItemData, photoUrl: string, type: VanityType, mode: 'create' | 'edit', existingItemId?: number }
 ) {
-  const { photoUrl, type } = initial
+  const { photoUrl, type, mode, existingItemId } = initial
   const itemData: VanityItemData = { ...initial.itemData }
 
-  // the ditto preview only depends on the photo, not the editable text fields - generate it
-  // once before the loop instead of on every edit, or each button click would burn a ditto call
+  // the ditto preview only depends on the photo, not the editable text fields
   const profileData = await buildProfileData(ctx.message.author.id, {
     backgroundURL: type === 'background' ? photoUrl : undefined,
     stickerURL: type === 'sticker' ? photoUrl : undefined,
@@ -110,13 +254,14 @@ export async function runVanityWizard(
   let messageId: string | undefined
   while (true) {
     const existing = itemData.title ? await VanitiesDB.getStoreItemByTitle(itemData.title, type) : null
+    const isDuplicateOfSelf = mode === 'edit' && existing?.id === existingItemId
     const priceValid = itemData.price != null && itemData.price > 0
 
     let warnings = ''
     if (!itemData.title) warnings += '\n🚫 Nome não definido.'
     if (!itemData.description) warnings += '\n🚫 Descrição não definida.'
     if (!priceValid) warnings += '\n🚫 Preço não definido.'
-    if (existing) warnings += `\n⚠️ Já existe um ${TYPE_LABEL[type]} chamado (\`${existing.id}\`). Confirme antes de upar novamente.`
+    if (existing && !isDuplicateOfSelf) warnings += `\n⚠️ Já existe um ${TYPE_LABEL[type]} chamado (\`${existing.id}\`). Confirme antes de upar novamente.`
 
     const priceText = priceValid ? `${itemData.price}` : '❓'
     const previewContent = `${EMOJI.dice} **${escapeMarkdown(itemData.title || 'sem nome')}**\n\n${itemData.description ? escapeMarkdown(itemData.description) : '_sem descrição_'}\n💸 ${priceText} moedas${warnings}`
@@ -145,7 +290,7 @@ export async function runVanityWizard(
 
     if (selection.value.action === 'cancel') {
       if (messageId) await deleteMsg(ctx, messageId)
-      await reply(ctx, `Adição de ${TYPE_LABEL[type]} cancelada.`)
+      await reply(ctx, mode === 'edit' ? `Edição de ${TYPE_LABEL[type]} cancelada.` : `Adição de ${TYPE_LABEL[type]} cancelada.`)
       return
     }
 
@@ -170,31 +315,5 @@ export async function runVanityWizard(
     }
   }
 
-  const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
-  if (!user) return
-
-  const cdnUrl = await uploadFromUrl(photoUrl, TYPE_FOLDER[type])
-  const item = await VanitiesDB.createStoreItem({
-    title: itemData.title,
-    description: itemData.description,
-    type,
-    price: itemData.price!,
-    itemURL: cdnUrl,
-  }).catch((e) => {
-    if (e?.code === '23505') return null // unique (title, type) violated - lost a race with a concurrent /add
-    throw e
-  })
-  if (!item) {
-    if (messageId) await deleteMsg(ctx, messageId)
-    await reply(ctx, `Já existe um ${TYPE_LABEL[type]} chamado **${escapeMarkdown(itemData.title)}**.`)
-    return
-  }
-
-  await AuditDB.log(user.id, `vanity.${type}.create`, { itemId: item.id, title: itemData.title, price: itemData.price })
-
-  if (messageId) await deleteMsg(ctx, messageId)
-  await reply(ctx, {
-    content: `🛍 ${TYPE_LABEL[type]} criado: \`${item.id}\`. **${escapeMarkdown(itemData.title)}**\n${escapeMarkdown(itemData.description)}\n💸 ${itemData.price} moedas`,
-    photoUrl: cdnUrl,
-  })
+  await finalizeVanityItem(ctx, itemData, photoUrl, type, mode, existingItemId, messageId)
 }

@@ -38,6 +38,7 @@ const stripBotMention = (content: string): string | null => {
 }
 
 const ADDCARD_CHAT_IDS = [['-1003993142790', '6016'], ['-1004365766145', '2']]
+const ADDBG_CHAT_ID = [['-1003993142790', '10106']]
 
 tg.on('message', async (msg) => {
   let content = msg.content ?? msg.caption
@@ -45,6 +46,11 @@ tg.on('message', async (msg) => {
   const matchingChat = ADDCARD_CHAT_IDS.find(([chatId, threadId]) => String(msg.chat?.id) === chatId && String(msg.chat?.threadId) === threadId)
   if (matchingChat && msg.chat?.inTopic && msg.photo?.length) {
     content = `/addcard ${content ?? ''}`.trim()
+  }
+
+  const matchingBg = ADDBG_CHAT_ID.find(([chatId, threadId]) => String(msg.chat?.id) === chatId && String(msg.chat?.threadId) === threadId)
+  if (matchingBg && msg.chat?.inTopic && msg.photo?.length) {
+    content = `/addbg ${content ?? ''}`.trim()
   }
 
   if (content) {
