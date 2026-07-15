@@ -5,7 +5,15 @@ import { z } from 'zod';
 
 export const usersRouter = t.router({
 	list: adminProcedure
-		.input(z.object({ limit: z.number().min(1).max(200).default(50), offset: z.number().min(0).default(0), query: z.string().optional() }))
+		.input(
+			z.object({
+				limit: z.number().min(1).max(200).default(50),
+				offset: z.number().min(0).default(0),
+				query: z.string().optional(),
+				sortField: z.enum(['displayName', 'coins', 'usedDraws', 'isBanned', 'isAdmin']).optional(),
+				sortDir: z.enum(['asc', 'desc']).optional()
+			})
+		)
 		.query(({ input }) => UsersDB.listUsers(input)),
 
 	setBanned: adminProcedure

@@ -9,7 +9,8 @@
 		colorSchemeDark,
 		type GridApi,
 		type GridOptions,
-		type ICellRendererParams
+		type ICellRendererParams,
+		type IDatasource
 	} from 'ag-grid-community';
 	import { trpc } from '$lib/trpc/client';
 	import { toast } from '$lib/stores/toast.svelte';
@@ -28,10 +29,14 @@
 		isAdmin: boolean;
 	};
 
-	let { users }: { users: UserRow[] } = $props();
-
 	let gridDiv: HTMLDivElement;
 	let gridApi: GridApi<UserRow> | undefined;
+	let query = $state('');
+
+	$effect(() => {
+		query;
+		gridApi?.purgeInfiniteCache();
+	});
 
 	let banDialogOpen = $state(false);
 	let banTargetId = $state<number | null>(null);
@@ -46,12 +51,12 @@
 	async function applyBanned(userId: number, isBanned: boolean, banMessage?: string) {
 		const rowNode = gridApi?.getRowNode(String(userId));
 		const prev = rowNode?.data;
-		if (rowNode?.data) gridApi?.applyTransaction({ update: [{ ...rowNode.data, isBanned }] });
+		if (rowNode?.data) rowNode.setData({ ...rowNode.data, isBanned });
 		try {
 			await trpc().users.setBanned.mutate({ userId, isBanned, banMessage });
 			toast.success(isBanned ? 'Usuário banido' : 'Usuário desbanido');
 		} catch {
-			if (prev) gridApi?.applyTransaction({ update: [prev] });
+			if (prev) rowNode?.setData(prev);
 			toast.error('Falha ao atualizar usuário');
 		}
 	}
@@ -71,12 +76,12 @@
 		const rowNode = gridApi?.getRowNode(String(userId));
 		const prev = rowNode?.data;
 		const next = !isAdmin;
-		if (rowNode?.data) gridApi?.applyTransaction({ update: [{ ...rowNode.data, isAdmin: next }] });
+		if (rowNode?.data) rowNode.setData({ ...rowNode.data, isAdmin: next });
 		try {
 			await trpc().users.setIsAdmin.mutate({ userId, isAdmin: next });
 			toast.success(next ? 'Agora é admin' : 'Admin removido');
 		} catch {
-			if (prev) gridApi?.applyTransaction({ update: [prev] });
+			if (prev) rowNode?.setData(prev);
 			toast.error('Falha ao atualizar usuário');
 		}
 	}
@@ -84,9 +89,10 @@
 	function userCellRenderer(params: ICellRendererParams<UserRow>) {
 		const wrap = document.createElement('div');
 		wrap.className = 'flex h-full items-center gap-2';
+		if (!params.data) return wrap;
 
 		const img = document.createElement('img');
-		img.src = params.data!.avatarUrl;
+		img.src = params.data.avatarUrl;
 		img.width = 32;
 		img.height = 32;
 		img.className = 'rounded-full object-cover shrink-0';
@@ -99,7 +105,7 @@
 		};
 
 		const name = document.createElement('span');
-		name.textContent = params.data!.displayName;
+		name.textContent = params.data.displayName;
 
 		wrap.append(img, name);
 		return wrap;
@@ -121,6 +127,7 @@
 		init(params: ICellRendererParams<UserRow>) {
 			this.eGui = document.createElement('div');
 			this.eGui.className = 'flex h-full items-center';
+			if (!params.data) return;
 			this.instance = mount(UserActionsMenu, {
 				target: this.eGui,
 				props: {
@@ -151,41 +158,52 @@
 		wrapperBorderRadius: 16
 	});
 
+	const pageSize = 20;
+	const sortableFields = ['displayName', 'coins', 'usedDraws', 'isBanned', 'isAdmin'] as const;
+
+	const datasource: IDatasource = {
+		getRows: async (params) => {
+			try {
+				const sort = params.sortModel[0];
+				const sortField = sortableFields.find((f) => f === sort?.colId);
+				const result = await trpc().users.list.query({
+					offset: params.startRow,
+					limit: params.endRow - params.startRow,
+					query: query || undefined,
+					sortField,
+					sortDir: sort?.sort ?? undefined
+				});
+				const lastRow = params.startRow + result.rows.length >= result.total ? result.total : undefined;
+				params.successCallback(result.rows, lastRow);
+			} catch {
+				params.failCallback();
+			}
+		}
+	};
+
 	const gridOptions: GridOptions<UserRow> = {
 		theme,
-		// svelte-ignore state_referenced_locally -- only used for the initial createGrid() call, kept in sync afterward via $effect below
-		rowData: users,
-		getRowId: (params) => String(params.data.id),
+		rowModelType: 'infinite',
+		datasource,
+		cacheBlockSize: pageSize,
+		suppressLoadingOverlay: true,
+		getRowId: (params) => (params.data ? String(params.data.id) : crypto.randomUUID()),
 		domLayout: 'autoHeight',
 		pagination: true,
-		paginationPageSize: 20,
-		paginationPageSizeSelector: [10, 20, 50],
-		defaultColDef: { sortable: true, filter: true, resizable: true },
+		paginationPageSize: pageSize,
+		defaultColDef: { sortable: true, filter: false, resizable: true },
 		columnDefs: [
 			{ headerName: 'Usuário', field: 'displayName', cellRenderer: userCellRenderer, flex: 2, minWidth: 220 },
-			{ headerName: 'Moedas', field: 'coins', filter: 'agNumberColumnFilter', width: 120 },
+			{ headerName: 'Moedas', field: 'coins', width: 120 },
 			{
 				headerName: 'Giros',
-				valueGetter: (p) => p.data?.usedDraws,
+				field: 'usedDraws',
 				valueFormatter: (p) => `${p.data?.usedDraws}/${p.data?.maxDraws}`,
-				width: 110,
-				sortable: true
-			},
-			{
-				headerName: 'Banido',
-				valueGetter: (p) => p.data?.isBanned,
-				cellRenderer: badgeCellRenderer,
-				filter: false,
 				width: 110
 			},
-			{
-				headerName: 'Admin',
-				valueGetter: (p) => p.data?.isAdmin,
-				cellRenderer: badgeCellRenderer,
-				filter: false,
-				width: 110
-			},
-			{ headerName: '', cellRenderer: ActionsCellRenderer, sortable: false, filter: false, width: 70 }
+			{ headerName: 'Banido', field: 'isBanned', cellRenderer: badgeCellRenderer, width: 110 },
+			{ headerName: 'Admin', field: 'isAdmin', cellRenderer: badgeCellRenderer, width: 110 },
+			{ headerName: '', cellRenderer: ActionsCellRenderer, sortable: false, width: 70 }
 		]
 	};
 
@@ -196,11 +214,11 @@
 	onDestroy(() => {
 		gridApi?.destroy();
 	});
-
-	$effect(() => {
-		gridApi?.setGridOption('rowData', users);
-	});
 </script>
+
+<div class="mb-4">
+	<input type="search" bind:value={query} placeholder="Buscar por nome…" class="field max-w-sm" />
+</div>
 
 <div bind:this={gridDiv}></div>
 

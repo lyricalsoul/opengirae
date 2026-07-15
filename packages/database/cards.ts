@@ -8,6 +8,7 @@ import {
   cardDrawHistory,
   cardSubcategories
 } from "./schemas/cards";
+import { users } from "./schemas/users";
 import { eq, and, sql, ilike, desc } from "drizzle-orm";
 
 export class CardsDB {
@@ -83,10 +84,10 @@ export class CardsDB {
     return await client.insert(categories).values({ name, emoji }).returning().then(a => a?.[0]);
   })
 
-  static createSubcategory = maybeTransaction('createSubcategory', async (client, name: string, categoryId: number) => {
+  static createSubcategory = maybeTransaction('createSubcategory', async (client, name: string, categoryId: number, imageUrl?: string) => {
     return await client
       .insert(subcategories)
-      .values({ name, categoryId })
+      .values({ name, categoryId, imageUrl })
       .returning()
       .then(a => a?.[0]);
   })
@@ -350,5 +351,165 @@ export class CardsDB {
       .where(eq(userCards.userId, userId))
       .then(a => a?.[0]);
     return result?.total ?? 0;
+  })
+
+  static deleteSubcategory = maybeTransaction('deleteSubcategory', async (client, id: number) => {
+    const cardCount = await client
+      .select({ cardCount: sql<number>`CAST(COUNT(${cardSubcategories.cardId}) AS INTEGER)` })
+      .from(cardSubcategories)
+      .where(eq(cardSubcategories.subcategoryId, id))
+      .then(rows => rows[0]?.cardCount ?? 0);
+    if (cardCount > 0) return { ok: false as const, reason: 'has_cards' as const };
+
+    const drawCount = await client
+      .select({ drawCount: sql<number>`CAST(COUNT(*) AS INTEGER)` })
+      .from(cardDrawHistory)
+      .where(eq(cardDrawHistory.subcategoryId, id))
+      .then(rows => rows[0]?.drawCount ?? 0);
+    if (drawCount > 0) return { ok: false as const, reason: 'has_history' as const };
+
+    await client.delete(subcategories).where(eq(subcategories.id, id));
+    return { ok: true as const };
+  })
+
+  static listCardsForAdmin = maybeTransaction('listCardsForAdmin', async (client, opts: {
+    limit?: number; offset?: number; query?: string; sortField?: 'name' | 'rarityModifier'; sortDir?: 'asc' | 'desc';
+  } = {}) => {
+    const { limit = 20, offset = 0, query, sortField, sortDir } = opts;
+    const where = query ? ilike(cards.name, `%${query}%`) : undefined;
+
+    const sortColumns = { name: cards.name, rarityModifier: cards.rarityModifier };
+    const column = sortField ? sortColumns[sortField] : cards.id;
+    const direction = sortField ? (sortDir ?? 'asc') : 'asc';
+    const orderBy = direction === 'desc' ? desc(column) : column;
+
+    const [rows, total] = await Promise.all([
+      client
+        .select({
+          id: cards.id,
+          name: cards.name,
+          imageUrl: cards.imageUrl,
+          rarityModifier: cards.rarityModifier,
+          rarityName: rarities.name,
+          rarityEmoji: rarities.emoji,
+          categoryName: categories.name,
+          subcategoryName: subcategories.name,
+          ownerCount: sql<number>`CAST(COUNT(DISTINCT ${userCards.userId}) AS INTEGER)`,
+          totalCopies: sql<number>`CAST(COALESCE(SUM(${userCards.count}), 0) AS INTEGER)`,
+        })
+        .from(cards)
+        .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+        .leftJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.isMain, true)))
+        .leftJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
+        .leftJoin(categories, eq(categories.id, subcategories.categoryId))
+        .leftJoin(userCards, eq(userCards.cardId, cards.id))
+        .where(where)
+        .groupBy(cards.id, rarities.id, categories.id, subcategories.id)
+        .orderBy(orderBy)
+        .limit(limit)
+        .offset(offset),
+      client.select({ total: sql<number>`CAST(COUNT(*) AS INTEGER)` }).from(cards).where(where).then(r => r[0]?.total ?? 0),
+    ]);
+
+    return { rows, total };
+  })
+
+  static listSubcategoriesForAdmin = maybeTransaction('listSubcategoriesForAdmin', async (client, opts: {
+    limit?: number; offset?: number; query?: string; categoryId?: number;
+    sortField?: 'name' | 'rarityModifier'; sortDir?: 'asc' | 'desc';
+  } = {}) => {
+    const { limit = 20, offset = 0, query, categoryId, sortField, sortDir } = opts;
+    const conditions = [
+      query ? ilike(subcategories.name, `%${query}%`) : undefined,
+      categoryId ? eq(subcategories.categoryId, categoryId) : undefined,
+    ].filter((c): c is NonNullable<typeof c> => c !== undefined);
+    const where = conditions.length ? and(...conditions) : undefined;
+
+    const sortColumns = { name: subcategories.name, rarityModifier: subcategories.rarityModifier };
+    const column = sortField ? sortColumns[sortField] : subcategories.id;
+    const direction = sortField ? (sortDir ?? 'asc') : 'asc';
+    const orderBy = direction === 'desc' ? desc(column) : column;
+
+    const [rows, total] = await Promise.all([
+      client
+        .select({
+          id: subcategories.id,
+          name: subcategories.name,
+          categoryId: subcategories.categoryId,
+          categoryName: categories.name,
+          tags: subcategories.tags,
+          isSecondary: subcategories.isSecondary,
+          imageUrl: subcategories.imageUrl,
+          rarityModifier: subcategories.rarityModifier,
+          cardCount: sql<number>`CAST(COUNT(${cardSubcategories.cardId}) AS INTEGER)`,
+        })
+        .from(subcategories)
+        .innerJoin(categories, eq(categories.id, subcategories.categoryId))
+        .leftJoin(cardSubcategories, and(eq(cardSubcategories.subcategoryId, subcategories.id), eq(cardSubcategories.isMain, true)))
+        .where(where)
+        .groupBy(subcategories.id, categories.id)
+        .orderBy(orderBy)
+        .limit(limit)
+        .offset(offset),
+      client.select({ total: sql<number>`CAST(COUNT(*) AS INTEGER)` }).from(subcategories).where(where).then(r => r[0]?.total ?? 0),
+    ]);
+
+    return { rows, total };
+  })
+
+  static getCardForAdminEdit = maybeTransaction('getCardForAdminEdit', async (client, id: number) => {
+    const card = await client
+      .select({
+        id: cards.id,
+        name: cards.name,
+        imageUrl: cards.imageUrl,
+        rarityId: cards.rarityId,
+        rarityModifier: cards.rarityModifier,
+        categoryId: subcategories.categoryId,
+        subcategoryId: subcategories.id,
+      })
+      .from(cards)
+      .leftJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.isMain, true)))
+      .leftJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
+      .where(eq(cards.id, id))
+      .limit(1)
+      .then(a => a?.[0]);
+    if (!card) return undefined;
+
+    const secondarySubcategoryIds = await client
+      .select({ subcategoryId: cardSubcategories.subcategoryId })
+      .from(cardSubcategories)
+      .where(and(eq(cardSubcategories.cardId, id), eq(cardSubcategories.isMain, false)))
+      .then(rows => rows.map(r => r.subcategoryId));
+
+    return { ...card, secondarySubcategoryIds };
+  })
+
+  static deleteCardGuarded = maybeTransaction('deleteCardGuarded', async (client, id: number) => {
+    const ownerCount = await client
+      .select({ ownerCount: sql<number>`CAST(COUNT(*) AS INTEGER)` })
+      .from(userCards)
+      .where(eq(userCards.cardId, id))
+      .then(rows => rows[0]?.ownerCount ?? 0);
+    if (ownerCount > 0) return { ok: false as const, reason: 'has_owners' as const, ownerCount };
+
+    const drawCount = await client
+      .select({ drawCount: sql<number>`CAST(COUNT(*) AS INTEGER)` })
+      .from(cardDrawHistory)
+      .where(eq(cardDrawHistory.cardId, id))
+      .then(rows => rows[0]?.drawCount ?? 0);
+    if (drawCount > 0) return { ok: false as const, reason: 'has_history' as const };
+
+    await client.delete(cardSubcategories).where(eq(cardSubcategories.cardId, id));
+    await client.delete(cards).where(eq(cards.id, id));
+    return { ok: true as const };
+  })
+
+  static forceDeleteCard = maybeTransaction('forceDeleteCard', async (client, id: number) => {
+    await client.delete(cardDrawHistory).where(eq(cardDrawHistory.cardId, id));
+    await client.delete(userCards).where(eq(userCards.cardId, id));
+    await client.delete(cardSubcategories).where(eq(cardSubcategories.cardId, id));
+    await client.update(users).set({ favoriteCardId: null }).where(eq(users.favoriteCardId, id));
+    await client.delete(cards).where(eq(cards.id, id));
   })
 }

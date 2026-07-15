@@ -2,16 +2,33 @@ import { users, userProfiles } from "./schemas/users";
 import { maybeTransaction } from "./decorators";
 import { eq, sql, and, gte, ilike, desc } from "drizzle-orm";
 
+type UserSortField = 'displayName' | 'coins' | 'usedDraws' | 'isBanned' | 'isAdmin';
+
 export class UsersDB {
-  static listUsers = maybeTransaction('listUsers', async (client, opts: { limit?: number; offset?: number; query?: string } = {}) => {
-    const { limit = 50, offset = 0, query } = opts;
-    return await client
-      .select()
-      .from(users)
-      .where(query ? ilike(users.displayName, `%${query}%`) : undefined)
-      .orderBy(desc(users.id))
-      .limit(limit)
-      .offset(offset);
+  static listUsers = maybeTransaction('listUsers', async (client, opts: {
+    limit?: number; offset?: number; query?: string; sortField?: UserSortField; sortDir?: 'asc' | 'desc';
+  } = {}) => {
+    const { limit = 50, offset = 0, query, sortField, sortDir } = opts;
+    const where = query ? ilike(users.displayName, `%${query}%`) : undefined;
+
+    const sortColumns = {
+      displayName: users.displayName,
+      coins: users.coins,
+      usedDraws: users.usedDraws,
+      isBanned: users.isBanned,
+      isAdmin: users.isAdmin,
+    };
+    // no explicit sort: keep the original newest-first default
+    const column = sortField ? sortColumns[sortField] : users.id;
+    const direction = sortField ? (sortDir ?? 'asc') : 'desc';
+    const orderBy = direction === 'desc' ? desc(column) : column;
+
+    const [rows, total] = await Promise.all([
+      client.select().from(users).where(where).orderBy(orderBy).limit(limit).offset(offset),
+      client.select({ total: sql<number>`CAST(COUNT(*) AS INTEGER)` }).from(users).where(where).then(r => r[0]?.total ?? 0),
+    ]);
+
+    return { rows, total };
   })
 
   static setBanned = maybeTransaction('setBanned', async (client, userId: number, isBanned: boolean, banMessage?: string) => {

@@ -8,7 +8,10 @@
 	const links = [
 		{ href: '/admin/overview', label: 'Visão Geral' },
 		{ href: '/admin/users', label: 'Usuários' },
-		{ href: '/admin/items', label: 'Loja' }
+		{ href: '/admin/items', label: 'Loja' },
+		{ href: '/admin/categories', label: 'Categorias' },
+		{ href: '/admin/subcategories', label: 'Subcategorias' },
+		{ href: '/admin/cards', label: 'Cartas' }
 	];
 </script>
 
