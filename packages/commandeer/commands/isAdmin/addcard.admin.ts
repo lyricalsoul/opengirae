@@ -3,7 +3,7 @@ import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { AuditDB } from '@girae/database/audit'
 import { DBOS } from '@dbos-inc/dbos-sdk'
-import { reply } from '@girae/common/dbos/messaging'
+import { reply, deleteMsg } from '@girae/common/dbos/messaging'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { uploadCardImage } from '../../services/cardImage'
 import { uploadFromUrl } from '../../services/storage'
@@ -48,18 +48,36 @@ export default class AddCardCommand extends Command {
 
     const parsed = parseCardListing(sourceText)
     if (parsed) {
-      const category = await CardsDB.getCategory(parsed.categoryId)
+      const correction = await CardsDB.getCorrection(parsed.subcategory)
+      const categoryId = correction?.categoryId ?? parsed.categoryId
+      const subcategoryName = correction?.subcategoryName ?? parsed.subcategory
+
+      const category = await CardsDB.getCategory(categoryId)
       if (!category) {
         await reply(ctx, 'Categoria configurada para esse formato não existe mais.')
         return
       }
 
-      const existingSubcategory = await CardsDB.getSubcategoryByNameAndCategory(parsed.subcategory, category.id)
+      const existingSubcategory = await CardsDB.getSubcategoryByNameAndCategory(subcategoryName, category.id)
       if (existingSubcategory) {
         const duplicate = await CardsDB.getCardByNameAndSubcategory(parsed.name, existingSubcategory.id)
         if (duplicate) {
-          await reply(ctx, `⚠️ Já existe um card chamado **${escapeMarkdown(parsed.name)}** em **${escapeMarkdown(existingSubcategory.name)}** (\`${duplicate.id}\`). Upload rejeitado.`)
-          return
+          await reply(ctx, {
+            content: `⚠️ Já existe um card chamado **${escapeMarkdown(parsed.name)}** em **${escapeMarkdown(existingSubcategory.name)}** (\`${duplicate.id}\`).`,
+            eventName: 'addcard:confirmDuplicate',
+            restricted: 'author',
+            options: [
+              { title: '✅ Criar mesmo assim', data: true },
+              { title: '❌ Cancelar', data: false },
+            ],
+          })
+
+          const confirmSelection = await DBOS.recv<{ value: boolean, messageId?: string }>('addcard:confirmDuplicate')
+          if (confirmSelection?.messageId) await deleteMsg(ctx, confirmSelection.messageId)
+          if (!confirmSelection?.value) {
+            await reply(ctx, 'Upload cancelado.')
+            return
+          }
         }
       }
 
@@ -67,7 +85,7 @@ export default class AddCardCommand extends Command {
       await finalizeCard(replyCtx, {
         name: parsed.name,
         category: category.name,
-        subcategory: parsed.subcategory,
+        subcategory: subcategoryName,
         rarity: parsed.rarity,
         tags: [],
       }, cdnUrl, 'create')
@@ -76,13 +94,17 @@ export default class AddCardCommand extends Command {
 
     const subcategoryListing = parseSubcategoryListing(sourceText)
     if (subcategoryListing) {
-      const category = await CardsDB.getCategory(subcategoryListing.categoryId)
+      const listingCorrection = await CardsDB.getCorrection(subcategoryListing.subcategory)
+      const categoryId = listingCorrection?.categoryId ?? subcategoryListing.categoryId
+      const subcategoryName = listingCorrection?.subcategoryName ?? subcategoryListing.subcategory
+
+      const category = await CardsDB.getCategory(categoryId)
       if (!category) {
         await reply(ctx, 'Categoria configurada para esse formato não existe mais.')
         return
       }
 
-      const existing = await CardsDB.getSubcategoryByNameAndCategory(subcategoryListing.subcategory, category.id)
+      const existing = await CardsDB.getSubcategoryByNameAndCategory(subcategoryName, category.id)
       const cdnUrl = await uploadFromUrl(photoUrl, 'subcategories')
       const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
       if (!user) return
@@ -92,7 +114,7 @@ export default class AddCardCommand extends Command {
         await AuditDB.log(user.id, 'subcategory.updatePhoto', { subcategoryId: existing.id, name: existing.name })
         await reply(ctx, `🖼️ Foto de **${escapeMarkdown(existing.name)}** atualizada.`)
       } else {
-        const created = await CardsDB.createSubcategory(subcategoryListing.subcategory, category.id, cdnUrl)
+        const created = await CardsDB.createSubcategory(subcategoryName, category.id, cdnUrl)
         if (!created) return
         await AuditDB.log(user.id, 'subcategory.create', { subcategoryId: created.id, name: created.name, categoryEmoji: category.emoji })
         await reply(ctx, `📂 Subcategoria **${escapeMarkdown(created.name)}** criada com foto.`)

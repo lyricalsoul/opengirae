@@ -93,3 +93,9 @@ export const cardDrawHistory = pgTable("card_draw_history", {
   subcategoryId: integer().notNull().references(() => subcategories.id),
   drawnAt: timestamp().notNull().defaultNow(),
 });
+
+export const chocolateFactoryCorrections = pgTable("chocolate_factory_corrections", {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  targetName: text().notNull().unique(),
+  subcategoryId: integer().notNull().references(() => subcategories.id),
+});

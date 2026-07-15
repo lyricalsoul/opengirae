@@ -8,6 +8,13 @@
       "when": 1783550461722,
       "tag": "0000_nebulous_blue_shield",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784084181654,
+      "tag": "0001_curious_beast",
+      "breakpoints": true
     }
   ]
 }

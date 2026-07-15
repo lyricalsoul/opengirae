@@ -6,7 +6,8 @@ import {
   rarities,
   userCards,
   cardDrawHistory,
-  cardSubcategories
+  cardSubcategories,
+  chocolateFactoryCorrections
 } from "./schemas/cards";
 import { users } from "./schemas/users";
 import { eq, and, sql, ilike, desc } from "drizzle-orm";
@@ -157,6 +158,45 @@ export class CardsDB {
   static deleteCard = maybeTransaction('deleteCard', async (client, cardId: number) => {
     await client.delete(cardSubcategories).where(eq(cardSubcategories.cardId, cardId));
     await client.delete(cards).where(eq(cards.id, cardId));
+  })
+
+  static getCorrection = maybeTransaction('getCorrection', async (client, targetName: string) => {
+    return await client
+      .select({ subcategoryId: chocolateFactoryCorrections.subcategoryId, subcategoryName: subcategories.name, categoryId: subcategories.categoryId })
+      .from(chocolateFactoryCorrections)
+      .innerJoin(subcategories, eq(subcategories.id, chocolateFactoryCorrections.subcategoryId))
+      .where(ilike(chocolateFactoryCorrections.targetName, targetName))
+      .limit(1)
+      .then(a => a?.[0]);
+  })
+
+  static upsertCorrection = maybeTransaction('upsertCorrection', async (client, targetName: string, subcategoryId: number) => {
+    return await client
+      .insert(chocolateFactoryCorrections)
+      .values({ targetName, subcategoryId })
+      .onConflictDoUpdate({ target: chocolateFactoryCorrections.targetName, set: { subcategoryId } })
+      .returning()
+      .then(a => a?.[0]);
+  })
+
+  static getSubcategoryCardCount = maybeTransaction('getSubcategoryCardCount', async (client, subcategoryId: number) => {
+    return await client
+      .select({ count: sql<number>`count(*)::int` })
+      .from(cardSubcategories)
+      .where(eq(cardSubcategories.subcategoryId, subcategoryId))
+      .then(a => a?.[0]?.count ?? 0);
+  })
+
+  static mergeSubcategory = maybeTransaction('mergeSubcategory', async (client, fromId: number, toId: number) => {
+    const rows = await client.select({ cardId: cardSubcategories.cardId, isMain: cardSubcategories.isMain }).from(cardSubcategories).where(eq(cardSubcategories.subcategoryId, fromId));
+    for (const row of rows) {
+      await client.insert(cardSubcategories).values({ cardId: row.cardId, subcategoryId: toId, isMain: row.isMain })
+        .onConflictDoUpdate({ target: [cardSubcategories.cardId, cardSubcategories.subcategoryId], set: { isMain: sql`${cardSubcategories.isMain} OR excluded."isMain"` } });
+    }
+    await client.delete(cardSubcategories).where(eq(cardSubcategories.subcategoryId, fromId));
+    await client.update(cardDrawHistory).set({ subcategoryId: toId }).where(eq(cardDrawHistory.subcategoryId, fromId));
+    await client.delete(subcategories).where(eq(subcategories.id, fromId));
+    return rows.length;
   })
 
   static createRarity = maybeTransaction('createRarity', async (client, name: string, emoji: string, weight: number) => {
