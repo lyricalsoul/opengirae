@@ -121,7 +121,7 @@ export class CardsDB {
       .select({ id: cards.id, name: cards.name })
       .from(cards)
       .innerJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.subcategoryId, subcategoryId)))
-      .where(eq(cards.name, name))
+      .where(ilike(cards.name, name))
       .limit(1)
       .then(a => a?.[0]);
   })

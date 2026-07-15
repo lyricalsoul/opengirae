@@ -54,6 +54,15 @@ export default class AddCardCommand extends Command {
         return
       }
 
+      const existingSubcategory = await CardsDB.getSubcategoryByNameAndCategory(parsed.subcategory, category.id)
+      if (existingSubcategory) {
+        const duplicate = await CardsDB.getCardByNameAndSubcategory(parsed.name, existingSubcategory.id)
+        if (duplicate) {
+          await reply(ctx, `⚠️ Já existe um card chamado **${escapeMarkdown(parsed.name)}** em **${escapeMarkdown(existingSubcategory.name)}** (\`${duplicate.id}\`). Upload rejeitado.`)
+          return
+        }
+      }
+
       const cdnUrl = isAnimated ? await uploadFromUrl(photoUrl, 'cards') : await uploadCardImage(photoUrl)
       await finalizeCard(replyCtx, {
         name: parsed.name,
