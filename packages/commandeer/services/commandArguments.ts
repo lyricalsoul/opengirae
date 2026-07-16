@@ -15,12 +15,16 @@ const GREEDY_TYPES = new Set([
   CommandArgumentType.VANITY_ITEM,
 ])
 
-export function splitPositionalTokens(args: string[], specs: CommandArgumentSpec[]): (string | undefined)[] {
+export function splitPositionalTokens(args: string[], specs: CommandArgumentSpec[], ctx?: IncomingCommand): (string | undefined)[] {
+  let cursor = 0
   return specs.map((spec, i) => {
+    if (spec.type === CommandArgumentType.USER_MENTION && ctx?.message.replyTo) return undefined
+
     const isLast = i === specs.length - 1
     const raw = (isLast && GREEDY_TYPES.has(spec.type))
-      ? args.slice(i).join(' ').trim()
-      : (args[i] ?? '').trim()
+      ? args.slice(cursor).join(' ').trim()
+      : (args[cursor] ?? '').trim()
+    cursor++
     return raw === '' ? undefined : raw
   })
 }
@@ -170,7 +174,7 @@ export async function parseCommandArguments(
   args: string[],
   ctx: IncomingCommand,
 ): Promise<CommandArgumentResult> {
-  const tokens = splitPositionalTokens(args, specs)
+  const tokens = splitPositionalTokens(args, specs, ctx)
   const values: Record<string, unknown> = {}
 
   for (let i = 0; i < specs.length; i++) {

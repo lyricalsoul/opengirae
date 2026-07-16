@@ -49,7 +49,8 @@ something new or rename/drop a command — it's the fastest way to answer
 | `/delbg` | — (not verified against old file) | isAdmin | DBOS workflow (confirm/cancel, same shape as `/delcard`) |
 | `/delsticker` | — (not verified against old file) | isAdmin | DBOS workflow (confirm/cancel, same shape as `/delcard`) |
 | `/commands` (`comandos`,`help`,`ajuda`) | — (no old equivalent, new) | all | plain |
-| `/trade` (`trocar`,`troca`) | `cards/trade.ts` + `scenes/start-trade.ts` | all | DBOS workflow (real Telegram deep-link DM negotiation, no `strade`/`htroca`) |
+| `/trade` (`trocar`,`troca`) | `cards/trade.ts` + `scenes/start-trade.ts` | all | DBOS workflow (real Telegram deep-link DM negotiation, no `htroca`) |
+| `/strade` (`strocar`,`stroca`) | `cards/strade.ts` | all | DBOS workflow (`awaitMultiPartyChoice`, quick 1-for-1, no `htroca` admin history report) |
 | `/add` (`adicionar`) / `/remove` (`rem`) | — (no old equivalent, new) | all | plain — quick add/remove a card to/from your active `/trade` offer without leaving the DM |
 
 ## Status: what's left (surveyed, not yet built)
@@ -73,9 +74,8 @@ one check in `/girar`; classified Complicated, not Major, if you're fine with
 that scope.
 
 **Major rework** (blocked on a subsystem that doesn't exist — say so, don't
-half-build it): `strade`/`htroca` (quick 1-for-1 trade and admin trade-history
-report — not ported; `/trade`'s full negotiated flow now covers the actual trading
-need, see the status table and "Real Telegram DMs" below), `conectarconta`/
+half-build it): `htroca` (admin trade-history report — no such reporting
+subsystem exists; `strade` itself is ported, see status table), `conectarconta`/
 `removerconta`/`contas`/`buscar` (no account-linking subsystem — `buscar` is
 double-blocked, also needs per-user card image prefs), `uploadvid` (needs
 per-user card image prefs + a staff-approval flow), `fm` (no Last.fm

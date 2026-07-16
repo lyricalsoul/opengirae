@@ -80,6 +80,26 @@ describe("splitPositionalTokens", () => {
     ];
     expect(splitPositionalTokens(['', '5'], specs)).toEqual([undefined, '5']);
   });
+
+  test("strade shape: a leading USER_MENTION resolved via replyTo doesn't eat a token - later specs still see args[0], args[1]", () => {
+    const specs: CommandArgumentSpec[] = [
+      { name: 'target', type: CommandArgumentType.USER_MENTION },
+      { name: 'a', type: CommandArgumentType.NUMBER },
+      { name: 'b', type: CommandArgumentType.NUMBER },
+    ];
+    const ctx = fakeCtx(['5', '7'], { replyToAuthorId: 'replied-author' });
+    expect(splitPositionalTokens(ctx.args, specs, ctx)).toEqual([undefined, '5', '7']);
+  });
+
+  test("same shape with no replyTo: USER_MENTION falls back to eating args[0] like any other spec", () => {
+    const specs: CommandArgumentSpec[] = [
+      { name: 'target', type: CommandArgumentType.USER_MENTION },
+      { name: 'a', type: CommandArgumentType.NUMBER },
+      { name: 'b', type: CommandArgumentType.NUMBER },
+    ];
+    const ctx = fakeCtx(['123456789', '5', '7']);
+    expect(splitPositionalTokens(ctx.args, specs, ctx)).toEqual(['123456789', '5', '7']);
+  });
 });
 
 describe("parseCommandArguments - NUMBER/STRING (no DB, no I/O)", () => {
@@ -186,6 +206,17 @@ describe("parseCommandArguments - USER_MENTION", () => {
     const result = await parseCommandArguments(specs, ctx.args, ctx);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.message).toBeUndefined();
+  });
+
+  test("strade shape: replyTo resolves target AND leaves both trailing NUMBER specs intact", async () => {
+    const specs: CommandArgumentSpec[] = [
+      { name: 'target', type: CommandArgumentType.USER_MENTION },
+      { name: 'a', type: CommandArgumentType.NUMBER },
+      { name: 'b', type: CommandArgumentType.NUMBER },
+    ];
+    const ctx = fakeCtx(['5', '7'], { replyToAuthorId: 'replied-author' });
+    const result = await parseCommandArguments(specs, ctx.args, ctx);
+    expect(result).toEqual({ ok: true, values: { target: 'replied-author', a: 5, b: 7 } });
   });
 });
 
