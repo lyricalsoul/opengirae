@@ -37,16 +37,18 @@ export interface InlineReplyOptions {
   editMessageId?: string;
   photoUrl?: string;
   rows?: number[];
+  multiUse?: boolean;
 }
 
 export interface StoredStep {
   options: Array<{ id: string; data: any }>;
   authorIds: string[];
   restricted: 'author' | 'none';
+  multiUse: boolean;
 }
 
 export interface PendingResponse {
-  method: 'sendMessage' | 'sendPhoto' | 'sendAnimation' | 'editMessageText' | 'editMessageCaption' | 'deleteMessage' | 'answerCallbackQuery';
+  method: 'sendMessage' | 'sendPhoto' | 'sendAnimation' | 'editMessageMedia' | 'editMessageCaption' | 'editMessageText' | 'deleteMessage' | 'answerCallbackQuery';
   content?: string;
   photoUrl?: string;
   replyToMessageId?: string;

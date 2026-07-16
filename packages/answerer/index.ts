@@ -5,7 +5,7 @@ import { sendAnswer } from './handler'
 import { info, error } from '@girae/common/logger'
 
 const worker = new Worker(RESPONSE_QUEUE_NAME, async (job) => {
-  await sendAnswer(job.data)
+  return sendAnswer(job.data)
 }, {
   connection,
   concurrency: 5,

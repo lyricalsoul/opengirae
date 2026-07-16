@@ -2,13 +2,13 @@ import type { PendingResponse } from '@girae/common/commands/types'
 import { sendDiscordAnswer } from './platforms/discord'
 import { sendTelegramAnswer } from './platforms/telegram'
 
-export async function sendAnswer(response: PendingResponse) {
+export async function sendAnswer(response: PendingResponse): Promise<string | undefined> {
   if (response.platform === 'none') return
 
   if (response.platform === 'discord') {
-    await sendDiscordAnswer(response)
+    return sendDiscordAnswer(response)
   } else if (response.platform === 'telegram') {
-    await sendTelegramAnswer(response)
+    return sendTelegramAnswer(response)
   }
 }
 

@@ -22,6 +22,8 @@ function isValidHttpUrl(url: string): boolean {
   }
 }
 
+const isAnimatedMediaUrl = (url: string) => /\.(gif|mp4|webm)(\?|#|$)/i.test(url)
+
 function buildReplyParameters(replyToMessageId: string | undefined, multipart: boolean): { replyParameters?: any } {
   if (!replyToMessageId) return {}
   const params = { message_id: replyToMessageId, allow_sending_without_reply: false }
@@ -42,12 +44,50 @@ function buildReplyMarkup(buttons?: PendingResponse['buttons']) {
   }
 }
 
-export async function sendTelegramAnswer(response: PendingResponse) {
+function buildInlineKeyboard(buttons?: PendingResponse['buttons']) {
+  if (!buttons?.length) return undefined
+  return buttons.map(row => row.map(b => {
+    const btn: any = { text: b.text }
+    if (b.callbackData) btn.callback_data = b.callbackData
+    if (b.url) btn.url = b.url
+    return btn
+  }))
+}
+
+async function editMessageMediaRaw(params: {
+  chatId: string
+  messageId: string
+  photoUrl: string
+  isAnimated: boolean
+  caption?: string
+  buttons?: PendingResponse['buttons']
+}): Promise<string> {
+  const res = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/editMessageMedia`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: params.chatId,
+      message_id: Number(params.messageId),
+      media: {
+        type: params.isAnimated ? 'animation' : 'photo',
+        media: params.photoUrl,
+        caption: params.caption,
+        parse_mode: 'HTML',
+      },
+      ...(buildInlineKeyboard(params.buttons) ? { reply_markup: { inline_keyboard: buildInlineKeyboard(params.buttons) } } : {}),
+    }),
+  })
+  const json: any = await res.json()
+  if (!json.ok) throw new Error(`Bad Request: ${json.description}`)
+  return String(json.result?.message_id ?? params.messageId)
+}
+
+export async function sendTelegramAnswer(response: PendingResponse): Promise<string | undefined> {
   const formattedContent = await processMarkdown(response.content);
 
   switch (response.method) {
-    case 'sendMessage':
-      await tg.sendMessage({
+    case 'sendMessage': {
+      const msg = await tg.sendMessage({
         chatId: response.chatId,
         text: formattedContent ?? '',
         parseMode: 'HTML',
@@ -55,39 +95,64 @@ export async function sendTelegramAnswer(response: PendingResponse) {
         ...buildReplyParameters(response.replyToMessageId, false),
         ...buildReplyMarkup(response.buttons)
       })
-      break
-    case 'editMessageText':
-      await tg.editMessageText({
+      return msg.id
+    }
+    case 'editMessageMedia': {
+      const photoUrl = response.photoUrl
+      if (!photoUrl || !isValidHttpUrl(photoUrl)) {
+        warn('answerer', `editMessageMedia received invalid URL, falling back to editMessageText: ${photoUrl}`)
+        const result = await tg.editMessageText({
+          chatId: response.chatId,
+          messageId: response.messageId!,
+          text: formattedContent!,
+          parseMode: 'HTML',
+          ...buildReplyMarkup(response.buttons)
+        })
+        return result === true ? response.messageId : result.id
+      }
+      return await editMessageMediaRaw({
         chatId: response.chatId,
         messageId: response.messageId!,
-        text: formattedContent!,
-        parseMode: 'HTML',
-        ...buildReplyMarkup(response.buttons)
+        photoUrl,
+        isAnimated: isAnimatedMediaUrl(photoUrl),
+        caption: formattedContent,
+        buttons: response.buttons,
       })
-      break
-    case 'editMessageCaption':
-      await tg.editMessageCaption({
+    }
+    case 'editMessageCaption': {
+      const result = await tg.editMessageCaption({
         chatId: response.chatId,
         messageId: response.messageId!,
         caption: formattedContent,
         parseMode: 'HTML',
         ...buildReplyMarkup(response.buttons)
       })
-      break
+      return result === true ? response.messageId : result.id
+    }
+    case 'editMessageText': {
+      const result = await tg.editMessageText({
+        chatId: response.chatId,
+        messageId: response.messageId!,
+        text: formattedContent!,
+        parseMode: 'HTML',
+        ...buildReplyMarkup(response.buttons)
+      })
+      return result === true ? response.messageId : result.id
+    }
     case 'sendPhoto': {
       const photoUrl = response.photoUrl!
       if (!isValidHttpUrl(photoUrl)) {
         warn('answerer', `sendPhoto received invalid URL, falling back to sendMessage: ${photoUrl}`)
-        await tg.sendMessage({
+        const msg = await tg.sendMessage({
           chatId: response.chatId,
           text: formattedContent ?? '',
           parseMode: 'HTML',
           ...buildReplyParameters(response.replyToMessageId, false),
           ...buildReplyMarkup(response.buttons)
         })
-        break
+        return msg.id
       }
-      await tg.sendPhoto({
+      const msg = await tg.sendPhoto({
         chatId: response.chatId,
         photo: photoUrl,
         caption: formattedContent,
@@ -95,22 +160,22 @@ export async function sendTelegramAnswer(response: PendingResponse) {
         ...buildReplyParameters(response.replyToMessageId, true),
         ...buildReplyMarkup(response.buttons)
       })
-      break
+      return msg.id
     }
     case 'sendAnimation': {
       const animationUrl = response.photoUrl!
       if (!isValidHttpUrl(animationUrl)) {
         warn('answerer', `sendAnimation received invalid URL, falling back to sendMessage: ${animationUrl}`)
-        await tg.sendMessage({
+        const msg = await tg.sendMessage({
           chatId: response.chatId,
           text: formattedContent ?? '',
           parseMode: 'HTML',
           ...buildReplyParameters(response.replyToMessageId, false),
           ...buildReplyMarkup(response.buttons)
         })
-        break
+        return msg.id
       }
-      await tg.sendAnimation({
+      const msg = await tg.sendAnimation({
         chatId: response.chatId,
         animation: animationUrl,
         caption: formattedContent,
@@ -118,19 +183,19 @@ export async function sendTelegramAnswer(response: PendingResponse) {
         ...buildReplyParameters(response.replyToMessageId, true),
         ...buildReplyMarkup(response.buttons)
       })
-      break
+      return msg.id
     }
     case 'deleteMessage':
       await tg.deleteMessage(response.chatId,
         Number(response.messageId!))
-      break
+      return
     case 'answerCallbackQuery':
       await tg.answerCallbackQuery({
         callbackQueryId: response.callbackQueryId!,
         text: response.content,
-        showAlert: true,
+        showAlert: !!response.content,
       })
-      break
+      return
     default:
       error('answerer', `Unimplemented Telegram method: ${response.method}`)
       throw new Error(`Unimplemented Telegram method: ${response.method}`)

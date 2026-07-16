@@ -7,10 +7,10 @@ const manager = createRestManager({
   token: process.env.DISCORD_TOKEN!,
 })
 
-export async function sendDiscordAnswer(response: PendingResponse) {
+export async function sendDiscordAnswer(response: PendingResponse): Promise<string | undefined> {
   switch (response.method) {
-    case 'sendMessage':
-      await manager.sendMessage(BigInt(response.chatId), {
+    case 'sendMessage': {
+      const msg = await manager.sendMessage(BigInt(response.chatId), {
         content: response.content,
         ...(response.replyToMessageId ? {
           messageReference: {
@@ -30,7 +30,8 @@ export async function sendDiscordAnswer(response: PendingResponse) {
           }))
         } : {})
       })
-      break
+      return String(msg.id)
+    }
     default:
       error('answerer', `Unimplemented Discord method: ${response.method}`)
       throw new Error(`Unimplemented Discord method: ${response.method}`)

@@ -58,3 +58,49 @@ export async function generateProfileImage(data: DittoProfileData, overlays?: st
       return null
     })
 }
+
+export interface DittoTradeSide {
+  avatarURL: string
+  name: string
+  cards: string[]
+}
+
+export interface DittoTradeData {
+  user1: DittoTradeSide
+  user2: DittoTradeSide
+}
+
+export async function generateTradeImage(data: DittoTradeData): Promise<{ url: string } | null> {
+  if (!process.env.DITTO_URL) return null
+
+  return fetch(`${process.env.DITTO_URL}/generate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Api-Key": process.env.DITTO_API_KEY!,
+    },
+    body: JSON.stringify({
+      theme: "default_trade",
+      data,
+      image_pack: "girae",
+    }),
+  })
+    .then(async (r) => {
+      if (!r.ok) {
+        const body = await r.text().catch(() => '<unreadable>')
+        error("ditto", `generateTradeImage HTTP ${r.status}: ${body}`)
+        return null
+      }
+      const text = await r.text()
+      try {
+        return JSON.parse(text) as { url: string } | null
+      } catch (e) {
+        error("ditto", `generateTradeImage invalid JSON: ${text}`)
+        return null
+      }
+    })
+    .catch((e) => {
+      error("ditto", `generateTradeImage failed: ${e}`)
+      return null
+    })
+}

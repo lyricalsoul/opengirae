@@ -1,7 +1,17 @@
 import { DBOS } from "@dbos-inc/dbos-sdk"
 import type { IncomingCommand, InlineReplyOptions, PendingResponse, StoredStep } from "../commands/types"
-import { responseQueue, rawClient } from "../queue"
+import { responseQueue, responseQueueEvents, rawClient } from "../queue"
 import { groups } from "../utilities/groups"
+import { error as logError } from "../logger"
+
+async function settleReply(job: Awaited<ReturnType<typeof responseQueue.add>>): Promise<string | undefined> {
+    try {
+        return await job.waitUntilFinished(responseQueueEvents)
+    } catch (e) {
+        logError('messaging', `reply job ${job.id} failed: ${e}`)
+        return undefined
+    }
+}
 
 function maybeStep<Args extends unknown[], Return>(
     name: string,
@@ -24,12 +34,27 @@ export interface ButtonSpec {
 export const toPageButton = (handler: string, b: { text: string; arg: string; page: number }): ButtonSpec =>
     ({ text: b.text, page: { handler, arg: b.arg, page: b.page } })
 
+export function pageNavSteps(page: number, hasNext: boolean, totalPages: number | undefined): { text: string; page: number }[] {
+    const lastPage = (totalPages ?? 1) - 1
+    return [
+        ...(page > 1 ? [{ text: '⏮️', page: 0 }] : []),
+        ...(page > 0 ? [{ text: '⬅️', page: page - 1 }] : []),
+        ...(hasNext ? [{ text: '➡️', page: page + 1 }] : []),
+        ...(lastPage - page > 1 ? [{ text: '⏭️', page: lastPage }] : []),
+    ]
+}
+
+export function pageNavRow(handler: string, arg: string, page: number, hasNext: boolean, totalPages: number | undefined): ButtonSpec[] {
+    return pageNavSteps(page, hasNext, totalPages).map(s => toPageButton(handler, { text: s.text, arg, page: s.page }))
+}
+
 export type MessageReply = string | {
     content?: string;
     photoUrl?: string;
     editMessageId?: string;
     buttons?: ButtonSpec[];
     buttonRows?: ButtonSpec[][];
+    captionOnly?: boolean;
 }
 
 const WORKFLOW_TTL_SECONDS = 1 * 60 * 60
@@ -51,11 +76,12 @@ const resolveButton = (cmd: IncomingCommand, b: ButtonSpec) => ({
                 : b.callbackData,
 })
 
-export const reply = maybeStep('reply', async (cmd: IncomingCommand, content: MessageReply | InlineReplyOptions) => {
+export const reply = maybeStep('reply', async (cmd: IncomingCommand, content: MessageReply | InlineReplyOptions): Promise<string | undefined> => {
     if (typeof content === 'string' || !('options' in content)) {
         const text = typeof content === 'string' ? content : content.content;
         const photoUrl = typeof content === 'string' ? undefined : content.photoUrl;
         const editMessageId = typeof content === 'string' ? undefined : content.editMessageId;
+        const captionOnly = typeof content === 'string' ? false : !!content.captionOnly;
         const buttons = typeof content === 'string' ? undefined
             : content.buttonRows ? content.buttonRows.map(row => row.map(b => resolveButton(cmd, b)))
                 : content.buttons ? [content.buttons.map(b => resolveButton(cmd, b))]
@@ -63,12 +89,12 @@ export const reply = maybeStep('reply', async (cmd: IncomingCommand, content: Me
 
         let method: PendingResponse['method'] = 'sendMessage';
         if (editMessageId) {
-            method = photoUrl ? 'editMessageCaption' : 'editMessageText';
+            method = photoUrl ? (captionOnly ? 'editMessageCaption' : 'editMessageMedia') : 'editMessageText';
         } else if (photoUrl) {
             method = isAnimatedMediaUrl(photoUrl) ? 'sendAnimation' : 'sendPhoto';
         }
 
-        await responseQueue.add('sendMessage', {
+        const job = await responseQueue.add('sendMessage', {
             method,
             chatId: cmd.message.chat.id,
             content: text,
@@ -78,13 +104,14 @@ export const reply = maybeStep('reply', async (cmd: IncomingCommand, content: Me
             platform: cmd.message.platform,
             buttons,
         } satisfies PendingResponse, RESPONSE_JOB_OPTIONS)
-        return
+        return settleReply(job)
     }
 
     const stored: StoredStep = {
         options: content.options.map((o, i) => ({ id: String(i), data: o.data })),
         authorIds: content.authorIds ?? [cmd.message.author.id],
         restricted: content.restricted,
+        multiUse: content.multiUse ?? false,
     }
     const redisKey = `workflow:${cmd.workflowIDToBeAssigned}`
     await rawClient.hSet(redisKey, content.eventName, JSON.stringify(stored))
@@ -96,11 +123,13 @@ export const reply = maybeStep('reply', async (cmd: IncomingCommand, content: Me
     }))
     const buttons = content.rows ? groups(flatButtons, content.rows) : [flatButtons]
 
-    const method = content.photoUrl
-        ? (content.editMessageId ? 'editMessageCaption' : (isAnimatedMediaUrl(content.photoUrl) ? 'sendAnimation' : 'sendPhoto'))
-        : (content.editMessageId ? 'editMessageText' : 'sendMessage');
+    const method: PendingResponse['method'] = content.editMessageId
+        ? (content.photoUrl ? 'editMessageMedia' : 'editMessageText')
+        : content.photoUrl
+            ? (isAnimatedMediaUrl(content.photoUrl) ? 'sendAnimation' : 'sendPhoto')
+            : 'sendMessage';
 
-    await responseQueue.add('sendMessage', {
+    const job = await responseQueue.add('sendMessage', {
         method,
         chatId: cmd.message.chat.id,
         content: content.content,
@@ -110,6 +139,7 @@ export const reply = maybeStep('reply', async (cmd: IncomingCommand, content: Me
         platform: cmd.message.platform,
         buttons,
     } satisfies PendingResponse, RESPONSE_JOB_OPTIONS)
+    return settleReply(job)
 })
 
 export const awaitTextReply = maybeStep('awaitTextReply', async (cmd: IncomingCommand, eventName: string) => {
@@ -128,3 +158,50 @@ export const deleteMsg = maybeStep('deleteMsg', async (cmd: IncomingCommand, mes
         platform: cmd.message.platform,
     } satisfies PendingResponse, RESPONSE_JOB_OPTIONS)
 })
+
+export async function awaitMultiPartyChoice<T>(
+    cmd: IncomingCommand,
+    eventName: string,
+    content: { content: string; photoUrl?: string; editMessageId?: string; rows?: number[] },
+    options: Array<{ title: string; data: T }>,
+    authorIds: string[],
+    isValid: (choice: { data: T; clickerUserId: string }) => boolean,
+    timeoutSeconds?: number,
+
+    onProgress?: (choice: { data: T; clickerUserId: string }, buttons: ButtonSpec[][]) => void | Promise<void>,
+): Promise<{ data: T; clickerUserId: string; messageId?: string } | null> {
+    const flatButtons = options.map((o, i) => ({
+        text: o.title,
+        callbackData: `${cmd.workflowIDToBeAssigned}.${eventName}.${i}`,
+    }))
+    const buttons = content.rows ? groups(flatButtons, content.rows) : [flatButtons]
+
+    await reply(cmd, {
+        content: content.content,
+        photoUrl: content.photoUrl,
+        editMessageId: content.editMessageId,
+        rows: content.rows,
+        eventName,
+        restricted: 'author',
+        authorIds,
+        multiUse: true,
+        options: options.map(o => ({ title: o.title, data: o.data })),
+    })
+
+    const deadline = timeoutSeconds ? Date.now() + timeoutSeconds * 1000 : undefined
+    while (true) {
+        const remainingSeconds = deadline ? Math.max(0, Math.ceil((deadline - Date.now()) / 1000)) : undefined
+        const received = await DBOS.recv<{ value: T, messageId?: string, clickerUserId?: string }>(eventName, remainingSeconds)
+        if (!received) return null
+
+        const clickerUserId = received.clickerUserId ?? authorIds[0]!
+        const choice = { data: received.value, clickerUserId }
+        if (!isValid(choice)) {
+            await onProgress?.(choice, buttons)
+            continue
+        }
+
+        await rawClient.hDel(`workflow:${cmd.workflowIDToBeAssigned}`, eventName)
+        return { ...choice, messageId: received.messageId }
+    }
+}
