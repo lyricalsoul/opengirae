@@ -4,7 +4,7 @@ import { UsersDB } from '@girae/database/users'
 import { CardsDB } from '@girae/database/cards'
 import { VanitiesDB } from '@girae/database/vanities'
 import type { IncomingCommand } from '@girae/common/commands/types'
-import { generateProfileImage, DEFAULT_BACKGROUND_URL } from '../../services/ditto'
+import { generateProfileImage, DEFAULT_BACKGROUND_URL } from '@girae/common/ditto'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 
 export default class ProfileCommand extends Command {

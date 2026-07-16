@@ -1,5 +1,7 @@
-import { error, warn } from "@girae/common/logger"
+import { error, warn } from "./logger"
 import { DEFAULT_BACKGROUND_URL } from "@girae/database/constants"
+import { VanitiesDB } from "@girae/database/vanities"
+import { buildProfileData } from "./profileData"
 
 export { DEFAULT_BACKGROUND_URL }
 
@@ -103,4 +105,15 @@ export async function generateTradeImage(data: DittoTradeData): Promise<{ url: s
       error("ditto", `generateTradeImage failed: ${e}`)
       return null
     })
+}
+
+export async function previewItem(telegramId: string, itemId: number): Promise<{ url: string } | null> {
+  const item = await VanitiesDB.getStoreItemById(itemId)
+  if (!item || item.type === 'profile') return null
+
+  const overrides = item.type === 'background' ? { backgroundURL: item.itemURL } : { stickerURL: item.itemURL }
+  const profileData = await buildProfileData(telegramId, overrides)
+  if (!profileData) return null
+
+  return generateProfileImage(profileData, ['preview'])
 }

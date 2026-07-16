@@ -3,7 +3,7 @@ import { DBOS } from '@dbos-inc/dbos-sdk'
 import { CardsDB, InsufficientCardError } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { reply, deleteMsg, awaitMultiPartyChoice } from '@girae/common/dbos/messaging'
-import { generateTradeImage } from '../../services/ditto'
+import { generateTradeImage } from '@girae/common/ditto'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 

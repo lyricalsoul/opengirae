@@ -4,13 +4,12 @@ import { VanitiesDB } from '@girae/database/vanities'
 import { UsersDB } from '@girae/database/users'
 import { AuditDB } from '@girae/database/audit'
 import { reply, deleteMsg } from '@girae/common/dbos/messaging'
-import { buildProfileData } from '../../services/profileData'
-import { generateProfileImage } from '../../services/ditto'
+import { buildProfileData } from '@girae/common/profileData'
+import { generateProfileImage } from '@girae/common/ditto'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 
 const TYPE_LABEL = { background: 'papel de parede', sticker: 'sticker' } as const
-const EQUIP_FIELD = { background: 'equipedBackgroundId', sticker: 'equipedStickerId' } as const
 const CONFIRM_EVENT = 'comprar:confirm'
 
 export default class ComprarCommand extends Command {
@@ -56,10 +55,7 @@ export default class ComprarCommand extends Command {
       return
     }
 
-    const result = await VanitiesDB.purchaseItem(user.id, item.id, item.price).catch((e) => {
-      if (e?.code === '23505') return { ok: false as const, reason: 'already_owned' as const } // lost a race with a concurrent purchase of the same item
-      throw e
-    })
+    const result = await VanitiesDB.buyItem(user.id, item.id)
     if (!result.ok) {
       if (confirmSelection.messageId) await deleteMsg(ctx, confirmSelection.messageId)
       await reply(ctx, result.reason === 'insufficient_funds' ? 'Moedas insuficientes.' : `Você já possui **${escapeMarkdown(item.title)}**.`)
@@ -80,17 +76,13 @@ export default class ComprarCommand extends Command {
   static async equip(arg: string, clickerUserId: string): Promise<string> {
     const [type, itemIdStr] = arg.split(':') as ['background' | 'sticker', string]
     const itemId = parseInt(itemIdStr ?? '', 10)
-    if (!EQUIP_FIELD[type] || isNaN(itemId)) return 'Erro ao equipar.'
+    if ((type !== 'background' && type !== 'sticker') || isNaN(itemId)) return 'Erro ao equipar.'
 
     const user = await UsersDB.getUserByTelegramId(clickerUserId)
     if (!user) return 'Erro ao equipar.'
 
-    if (!(await VanitiesDB.hasBought(user.id, itemId))) return 'Você não possui este item.'
-
-    const item = await VanitiesDB.getStoreItemById(itemId)
-    if (!item) return 'Item não encontrado.'
-
-    await UsersDB.updateUserProfile(user.id, { [EQUIP_FIELD[type]]: itemId })
-    return `✅ ${item.title} equipado!`
+    const result = await VanitiesDB.equipItem(user.id, type, itemId)
+    if (!result.ok) return result.reason === 'not_owned' ? 'Você não possui este item.' : 'Item não encontrado.'
+    return `✅ ${result.title} equipado!`
   }
 }

@@ -11,7 +11,8 @@ import {
   trades,
 } from "./schemas/cards";
 import { users } from "./schemas/users";
-import { eq, and, sql, ilike, desc, gte } from "drizzle-orm";
+import { eq, and, sql, ilike, desc, gte, inArray } from "drizzle-orm";
+import { CARD_DISCARD_REWARDS } from "./constants";
 
 export class InsufficientCardError extends Error {
   constructor(public userId: number, public cardId: number) {
@@ -475,6 +476,7 @@ export class CardsDB {
         rarityName: rarities.name,
         rarityEmoji: rarities.emoji,
         categoryEmoji: categories.emoji,
+        categoryName: categories.name,
         subcategoryName: subcategories.name,
         ownedCount: userCards.count,
       })
@@ -486,6 +488,151 @@ export class CardsDB {
       .leftJoin(categories, eq(categories.id, subcategories.categoryId))
       .where(eq(userCards.userId, userId))
       .orderBy(desc(cards.rarityId), cards.id);
+  })
+
+  static getUserOwnedCardsPaginated = maybeTransaction('getUserOwnedCardsPaginated', async (
+    client, userId: number, opts: { query?: string; limit?: number; offset?: number } = {},
+  ) => {
+    const { query, limit = 20, offset = 0 } = opts;
+    const where = query
+      ? and(eq(userCards.userId, userId), ilike(cards.name, `%${query}%`))
+      : eq(userCards.userId, userId);
+
+    const [rows, total] = await Promise.all([
+      client
+        .select({
+          id: cards.id,
+          name: cards.name,
+          rarityName: rarities.name,
+          rarityEmoji: rarities.emoji,
+          categoryEmoji: categories.emoji,
+          categoryName: categories.name,
+          subcategoryName: subcategories.name,
+          ownedCount: userCards.count,
+        })
+        .from(userCards)
+        .innerJoin(cards, eq(cards.id, userCards.cardId))
+        .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+        .leftJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.isMain, true)))
+        .leftJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
+        .leftJoin(categories, eq(categories.id, subcategories.categoryId))
+        .where(where)
+        .orderBy(desc(cards.rarityId), cards.id)
+        .limit(limit)
+        .offset(offset),
+      client
+        .select({ total: sql<number>`CAST(COUNT(*) AS INTEGER)` })
+        .from(userCards)
+        .innerJoin(cards, eq(cards.id, userCards.cardId))
+        .where(where)
+        .then(r => r[0]?.total ?? 0),
+    ]);
+
+    return { rows, total };
+  })
+
+  static getUserCollectionProgress = maybeTransaction('getUserCollectionProgress', async (
+    client, userId: number, opts: { query?: string; limit?: number; offset?: number } = {},
+  ) => {
+    const { query, limit = 20, offset = 0 } = opts;
+    const where = query ? ilike(subcategories.name, `%${query}%`) : undefined;
+
+    const [rows, totalResult] = await Promise.all([
+      client
+        .select({
+          subcategoryId: subcategories.id,
+          subcategoryName: subcategories.name,
+          categoryName: categories.name,
+          imageUrl: subcategories.imageUrl,
+          total: sql<number>`CAST(COUNT(DISTINCT ${cardSubcategories.cardId}) AS INTEGER)`,
+          owned: sql<number>`CAST(COUNT(DISTINCT CASE WHEN ${userCards.count} > 0 THEN ${cardSubcategories.cardId} END) AS INTEGER)`,
+        })
+        .from(subcategories)
+        .innerJoin(categories, eq(categories.id, subcategories.categoryId))
+        .innerJoin(cardSubcategories, and(eq(cardSubcategories.subcategoryId, subcategories.id), eq(cardSubcategories.isMain, true)))
+        .leftJoin(userCards, and(eq(userCards.cardId, cardSubcategories.cardId), eq(userCards.userId, userId)))
+        .where(where)
+        .groupBy(subcategories.id, categories.id)
+        .orderBy(subcategories.id)
+        .limit(limit)
+        .offset(offset),
+      client
+        .select({ total: sql<number>`CAST(COUNT(DISTINCT ${subcategories.id}) AS INTEGER)` })
+        .from(subcategories)
+        .innerJoin(categories, eq(categories.id, subcategories.categoryId))
+        .where(where)
+        .then(r => r[0]?.total ?? 0),
+    ]);
+
+    return { rows, total: totalResult };
+  })
+
+  static discardUserCard = maybeTransaction('discardUserCard', async (client, userId: number, cardId: number) => {
+    const [owned] = await client
+      .select({ count: userCards.count, rarityName: rarities.name })
+      .from(userCards)
+      .innerJoin(cards, eq(cards.id, userCards.cardId))
+      .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+      .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)))
+      .limit(1);
+
+    if (!owned || owned.count <= 0) return null;
+
+    const reward = CARD_DISCARD_REWARDS[owned.rarityName] ?? 0;
+
+    if (owned.count <= 1) {
+      await client.delete(userCards).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+    } else {
+      await client.update(userCards).set({ count: sql`${userCards.count} - 1` }).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+    }
+
+    if (reward > 0) {
+      await client.update(users).set({ coins: sql`${users.coins} + ${reward}` }).where(eq(users.id, userId));
+    }
+
+    return { remainingCount: Math.max(0, owned.count - 1), coinsAwarded: reward };
+  })
+
+  static discardUserCards = maybeTransaction('discardUserCards', async (client, userId: number, cardIds: number[]) => {
+    const uniqueIds = [...new Set(cardIds)];
+    if (uniqueIds.length === 0) return { ok: true as const, results: [], totalCoinsAwarded: 0 };
+
+    const owned = await client
+      .select({ cardId: userCards.cardId, count: userCards.count, rarityName: rarities.name })
+      .from(userCards)
+      .innerJoin(cards, eq(cards.id, userCards.cardId))
+      .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+      .where(and(eq(userCards.userId, userId), inArray(userCards.cardId, uniqueIds)));
+
+    const ownedById = new Map(owned.map(o => [o.cardId, o]));
+
+    for (const cardId of uniqueIds) {
+      const row = ownedById.get(cardId);
+      if (!row || row.count <= 0) return { ok: false as const, reason: 'missing_or_not_owned' as const, cardId };
+    }
+
+    const results: { cardId: number; remainingCount: number; coinsAwarded: number }[] = [];
+    let totalCoinsAwarded = 0;
+
+    for (const cardId of uniqueIds) {
+      const row = ownedById.get(cardId)!;
+      const reward = CARD_DISCARD_REWARDS[row.rarityName] ?? 0;
+
+      if (row.count <= 1) {
+        await client.delete(userCards).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+      } else {
+        await client.update(userCards).set({ count: sql`${userCards.count} - 1` }).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+      }
+
+      results.push({ cardId, remainingCount: Math.max(0, row.count - 1), coinsAwarded: reward });
+      totalCoinsAwarded += reward;
+    }
+
+    if (totalCoinsAwarded > 0) {
+      await client.update(users).set({ coins: sql`${users.coins} + ${totalCoinsAwarded}` }).where(eq(users.id, userId));
+    }
+
+    return { ok: true as const, results, totalCoinsAwarded };
   })
 
   static deleteSubcategory = maybeTransaction('deleteSubcategory', async (client, id: number) => {

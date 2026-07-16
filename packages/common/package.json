@@ -4,6 +4,7 @@
   "type": "module",
   "private": true,
   "dependencies": {
-    "redis": "^6.1.0"
+    "redis": "^6.1.0",
+    "@girae/database": "workspace:*"
   }
 }

@@ -21,9 +21,6 @@ export async function buildProfileData(
     CardsDB.getUserCardsCount(user.id)
   ])
 
-  // avatarUrl is kept fresh by the inbound layer (telegram-inbound's refreshAvatarIfStale,
-  // run on every message/callback before the command that reads it here even starts) - no
-  // need for this command to refresh it itself.
   const avatarUrl = user.avatarUrl
 
   const background = vanities.find(v => v.id === profile.equipedBackgroundId)

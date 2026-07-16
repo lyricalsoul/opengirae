@@ -1,7 +1,8 @@
 import { maybeTransaction } from "./decorators";
 import { storeItems, boughtItems, type storeItemTypes } from "./schemas/vanities";
 import { users } from "./schemas/users";
-import { and, eq, gte, ilike, inArray, sql } from "drizzle-orm";
+import { UsersDB } from "./users";
+import { and, desc, eq, gte, ilike, inArray, sql } from "drizzle-orm";
 
 type StoreItemType = (typeof storeItemTypes.enumValues)[number]
 
@@ -35,6 +36,61 @@ export class VanitiesDB {
       .orderBy(storeItems.id);
   })
 
+  static listStoreItemsByPopularity = maybeTransaction('listStoreItemsByPopularity', async (
+    client, type: StoreItemType, opts: { query?: string; limit?: number; offset?: number } = {},
+  ) => {
+    const { query, limit = 20, offset = 0 } = opts;
+    const where = query
+      ? and(eq(storeItems.type, type), eq(storeItems.isAvailable, true), ilike(storeItems.title, `%${query}%`))
+      : and(eq(storeItems.type, type), eq(storeItems.isAvailable, true));
+
+    const [rows, totalResult] = await Promise.all([
+      client
+        .select({
+          id: storeItems.id, title: storeItems.title, description: storeItems.description,
+          price: storeItems.price, itemURL: storeItems.itemURL, type: storeItems.type,
+          createdAt: storeItems.createdAt,
+          purchaseCount: sql<number>`CAST(COUNT(${boughtItems.id}) AS INTEGER)`,
+        })
+        .from(storeItems)
+        .leftJoin(boughtItems, eq(boughtItems.itemId, storeItems.id))
+        .where(where)
+        .groupBy(storeItems.id)
+        .orderBy(desc(sql`COUNT(${boughtItems.id})`))
+        .limit(limit)
+        .offset(offset),
+      client.select({ total: sql<number>`CAST(COUNT(*) AS INTEGER)` }).from(storeItems).where(where).then(r => r[0]?.total ?? 0),
+    ]);
+
+    return { rows, total: totalResult };
+  })
+
+  static listStoreItemsByRecency = maybeTransaction('listStoreItemsByRecency', async (
+    client, type: StoreItemType, opts: { query?: string; limit?: number; offset?: number } = {},
+  ) => {
+    const { query, limit = 20, offset = 0 } = opts;
+    const where = query
+      ? and(eq(storeItems.type, type), eq(storeItems.isAvailable, true), ilike(storeItems.title, `%${query}%`))
+      : and(eq(storeItems.type, type), eq(storeItems.isAvailable, true));
+
+    const [rows, totalResult] = await Promise.all([
+      client
+        .select({
+          id: storeItems.id, title: storeItems.title, description: storeItems.description,
+          price: storeItems.price, itemURL: storeItems.itemURL, type: storeItems.type,
+          createdAt: storeItems.createdAt,
+        })
+        .from(storeItems)
+        .where(where)
+        .orderBy(desc(storeItems.createdAt), desc(storeItems.id))
+        .limit(limit)
+        .offset(offset),
+      client.select({ total: sql<number>`CAST(COUNT(*) AS INTEGER)` }).from(storeItems).where(where).then(r => r[0]?.total ?? 0),
+    ]);
+
+    return { rows, total: totalResult };
+  })
+
   static hasBought = maybeTransaction('hasBought', async (client, userId: number, itemId: number): Promise<boolean> => {
     return !!(await client
       .select()
@@ -59,6 +115,33 @@ export class VanitiesDB {
     const item = await client.insert(boughtItems).values({ userId, itemId }).returning().then(a => a?.[0]);
     return { ok: true as const, item };
   })
+
+  static buyItem = async (userId: number, itemId: number): Promise<
+    { ok: true } | { ok: false; reason: 'not_found' | 'insufficient_funds' | 'already_owned' }
+  > => {
+    const item = await VanitiesDB.getStoreItemById(itemId);
+    if (!item || !item.isAvailable || item.type === 'profile') return { ok: false, reason: 'not_found' };
+    if (await VanitiesDB.hasBought(userId, itemId)) return { ok: false, reason: 'already_owned' };
+
+    const result = await VanitiesDB.purchaseItem(userId, itemId, item.price).catch((e: any) => {
+      if (e?.code === '23505') return { ok: false as const, reason: 'already_owned' as const };
+      throw e;
+    });
+    if (!result.ok) return result;
+    return { ok: true };
+  }
+
+  static equipItem = async (userId: number, type: 'background' | 'sticker', itemId: number): Promise<
+    { ok: true; title: string } | { ok: false; reason: 'not_owned' | 'not_found' }
+  > => {
+    if (!(await VanitiesDB.hasBought(userId, itemId))) return { ok: false, reason: 'not_owned' };
+    const item = await VanitiesDB.getStoreItemById(itemId);
+    if (!item) return { ok: false, reason: 'not_found' };
+
+    const field = type === 'background' ? 'equipedBackgroundId' : 'equipedStickerId';
+    await UsersDB.updateUserProfile(userId, { [field]: itemId });
+    return { ok: true, title: item.title };
+  }
 
   // bulk ownership lookup - avoids one hasBought() call per item when rendering a browse list
   static getBoughtItemIds = maybeTransaction('getBoughtItemIds', async (client, userId: number): Promise<number[]> => {
