@@ -1,10 +1,9 @@
-import { Command, Subcommand } from '@girae/common/commands'
+import { Command, Subcommand, CommandArgument, CommandArgumentType } from '@girae/common/commands'
 import { reply } from '@girae/common/dbos/messaging'
 import { UsersDB } from '@girae/database/users'
 import { CardsDB } from '@girae/database/cards'
 import { VanitiesDB } from '@girae/database/vanities'
 import type { IncomingCommand } from '@girae/common/commands/types'
-import { resolveTargetTelegramId } from '../../utilities/mentions'
 import { refreshAvatarIfStale } from '../../services/avatar'
 import { generateProfileImage, DEFAULT_BACKGROUND_URL } from '../../services/ditto'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
@@ -17,8 +16,9 @@ export default class ProfileCommand extends Command {
     aliases: ['perfil', 'me', 'pf', 'pfp', 'ppc']
   }
 
-  static override async execute(ctx: IncomingCommand) {
-    const targetTelegramId = await resolveTargetTelegramId(ctx)
+  @CommandArgument([{ name: 'target', type: CommandArgumentType.USER_MENTION, nullable: true }])
+  static override async execute(ctx: IncomingCommand, args: { target?: string }) {
+    const targetTelegramId = args.target ?? ctx.message.author.id
 
     const profileRow = await UsersDB.getUserProfileByTelegramId(targetTelegramId)
     const user = profileRow?.users
@@ -95,11 +95,12 @@ export default class ProfileCommand extends Command {
   }
 
   @Subcommand({ name: 'emo', description: 'Ativa ou desativa os emojis do seu perfil', aliases: ['emoji', 'emojis'] })
-  static async toggleEmojis(ctx: IncomingCommand) {
+  @CommandArgument([{ name: 'enabled', type: CommandArgumentType.BOOLEAN }])
+  static async toggleEmojis(ctx: IncomingCommand, args: { enabled: boolean }) {
     const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
     if (!user) return
 
-    const hide = ctx.args[0] === 'off'
+    const hide = !args.enabled
     await UsersDB.updateUserProfile(user.id, { hideProfileEmojis: hide })
     await reply(ctx, hide ? 'Emojis escondidos com sucesso! 🎨' : 'Emojis ativados com sucesso! 🎨')
   }

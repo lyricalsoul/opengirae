@@ -61,7 +61,7 @@ export const cardSubcategories = pgTable(
       .references(() => cards.id),
     subcategoryId: integer()
       .notNull()
-      .references(() => subcategories.id),
+      .references(() => subcategories.id, { onDelete: "cascade" }),
     isMain: boolean().notNull().default(false),
   },
   (table) => [
@@ -90,12 +90,21 @@ export const cardDrawHistory = pgTable("card_draw_history", {
   userId: integer().notNull().references(() => users.id),
   cardId: integer().notNull().references(() => cards.id),
   categoryId: integer().notNull().references(() => categories.id),
-  subcategoryId: integer().notNull().references(() => subcategories.id),
+  subcategoryId: integer().notNull().references(() => subcategories.id, { onDelete: "cascade" }),
   drawnAt: timestamp().notNull().defaultNow(),
 });
 
 export const chocolateFactoryCorrections = pgTable("chocolate_factory_corrections", {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
   targetName: text().notNull().unique(),
-  subcategoryId: integer().notNull().references(() => subcategories.id),
+  subcategoryId: integer().notNull().references(() => subcategories.id, { onDelete: "cascade" }),
+});
+
+export const trades = pgTable("trades", {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  user1Id: integer().notNull().references(() => users.id),
+  user2Id: integer().notNull().references(() => users.id),
+  cardsUser1: integer().array().notNull(),
+  cardsUser2: integer().array().notNull(),
+  createdAt: timestamp().notNull().defaultNow(),
 });

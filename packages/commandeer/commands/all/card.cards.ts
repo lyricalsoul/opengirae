@@ -1,7 +1,8 @@
-import { Command, QuickView } from '@girae/common/commands'
+import { Command, QuickView, CommandArgument, CommandArgumentType } from '@girae/common/commands'
 import { reply } from '@girae/common/dbos/messaging'
 import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
+import { getActiveTradeSide } from './trade.cards'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { EMOJI, cativeiroEmoji } from '../../constants'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
@@ -27,10 +28,23 @@ ${card.categoryEmoji ?? EMOJI.category} _${escapeMarkdown(card.subcategoryName ?
 
 ${EMOJI.owner} \`${user?.id ?? '?'}\`. [${escapeMarkdown(ctx.message.author.name)}](tg://user?id=${ctx.message.author.id})${countSuffix}`
 
+  const buttonRows = [[{ text: EMOJI.quickView, quickView: { handler: 'cardinfo', arg: String(card.id) } }]]
+
+  const activeTrade = await getActiveTradeSide(ctx.message.author.id)
+  if (activeTrade) {
+    const inOffer = !!activeTrade.state.offers[activeTrade.side][card.id]
+    if (!inOffer && count > 0) {
+      buttonRows.push([{ text: '➕ Trocar este card', quickView: { handler: 'tradeCard', arg: `add:${card.id}` } }])
+    }
+    if (inOffer) {
+      buttonRows.push([{ text: '➖ Retirar este card da troca', quickView: { handler: 'tradeCard', arg: `remove:${card.id}` } }])
+    }
+  }
+
   await reply(ctx, {
     content: text,
     photoUrl: card.imageUrl ?? FALLBACK_IMAGE,
-    buttons: [{ text: EMOJI.quickView, quickView: { handler: 'cardinfo', arg: String(card.id) } }],
+    buttonRows,
   })
 }
 
@@ -42,39 +56,9 @@ export default class CardCommand extends Command {
     aliases: ['view', 'ver'],
   }
 
-  static override async execute(ctx: IncomingCommand) {
-    const query = ctx.args.join(' ').trim()
-    if (!query) {
-      await reply(ctx, 'Uso: `/card <nome ou ID do personagem>`')
-      return
-    }
-
-    const asId = parseInt(query, 10)
-    if (!isNaN(asId)) {
-      const card = await CardsDB.getCardWithDetails(asId)
-      if (!card) {
-        await reply(ctx, 'Não encontrei um personagem com esse ID.')
-        return
-      }
-      await showCard(ctx, card)
-      return
-    }
-
-    const results = await CardsDB.searchCardsByName(query, 100)
-    if (results.length === 0) {
-      await reply(ctx, 'Não encontrei um personagem com esse nome.')
-      return
-    }
-    if (results.length === 1) {
-      const card = await CardsDB.getCardWithDetails(results[0]!.id)
-      if (card) await showCard(ctx, card)
-      return
-    }
-
-    const list = results
-      .map(c => `${c.rarityEmoji} \`${c.id}\`. **${escapeMarkdown(c.name)}** ${c.categoryEmoji ?? ''} _${escapeMarkdown(c.subcategoryName ?? '')}_`)
-      .join('\n')
-    await reply(ctx, `${EMOJI.search} **${results.length}** resultados encontrados:\n\n${list}\n\nPara ver um desses cards, use \`/card id\``)
+  @CommandArgument([{ name: 'card', type: CommandArgumentType.CARD }])
+  static override async execute(ctx: IncomingCommand, args: { card: CardDetails }) {
+    await showCard(ctx, args.card)
   }
 
   @QuickView({ name: 'cardinfo' })

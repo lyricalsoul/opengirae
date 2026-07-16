@@ -1,4 +1,4 @@
-import { Command } from '@girae/common/commands'
+import { Command, CommandArgument, CommandArgumentType } from '@girae/common/commands'
 import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { AuditDB } from '@girae/database/audit'
@@ -14,23 +14,13 @@ export default class AddSubcategoryCommand extends Command {
     aliases: ['addsub', 'createsub']
   }
 
-  static override async execute(ctx: IncomingCommand) {
-    const [categoryIdRaw, ...nameParts] = ctx.args
-    const name = nameParts.join(' ').trim()
-    const categoryId = parseInt(categoryIdRaw ?? '', 10)
-
-    if (isNaN(categoryId) || !name) {
-      await reply(ctx, 'Uso: `/addsubcategory <id da categoria> <nome>` (o nome pode ter mais de uma palavra).')
-      return
-    }
-
-    const category = await CardsDB.getCategory(categoryId)
-    if (!category) {
-      const categories = await CardsDB.getCategories()
-      const list = categories.map(c => `${c.emoji} \`${c.id}\`. **${escapeMarkdown(c.name)}**`).join('\n')
-      await reply(ctx, `Categoria não encontrada. As seguintes categorias estão disponíveis:\n\n${list}`)
-      return
-    }
+  @CommandArgument([
+    { name: 'category', type: CommandArgumentType.CATEGORY },
+    { name: 'name', type: CommandArgumentType.STRING },
+  ])
+  static override async execute(ctx: IncomingCommand, args: { category: NonNullable<Awaited<ReturnType<typeof CardsDB.getCategory>>>; name: string }) {
+    const { category, name } = args
+    const categoryId = category.id
 
     const existing = await CardsDB.getSubcategoryByNameAndCategory(name, categoryId)
     if (existing) {

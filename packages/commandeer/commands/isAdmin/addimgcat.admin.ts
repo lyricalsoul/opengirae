@@ -1,4 +1,4 @@
-import { Command } from '@girae/common/commands'
+import { Command, CommandArgument, CommandArgumentType } from '@girae/common/commands'
 import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { AuditDB } from '@girae/database/audit'
@@ -15,21 +15,10 @@ export default class AddImageCategoryCommand extends Command {
     aliases: ['setimagecat', 'setimgcat']
   }
 
-  static override async execute(ctx: IncomingCommand) {
-    const query = ctx.args.join(' ').trim()
+  @CommandArgument([{ name: 'category', type: CommandArgumentType.CATEGORY }])
+  static override async execute(ctx: IncomingCommand, args: { category: NonNullable<Awaited<ReturnType<typeof CardsDB.getCategory>>> }) {
+    const category = args.category
     const photoUrl = ctx.message.photoUrl ?? ctx.message.replyTo?.photoUrl
-
-    if (!query) {
-      await reply(ctx, 'Uso: `/addimgcat <ID ou nome da categoria>`, respondendo a uma foto (ou enviando junto com a legenda).')
-      return
-    }
-
-    const asId = parseInt(query, 10)
-    const category = !isNaN(asId) ? await CardsDB.getCategory(asId) : await CardsDB.getCategoryByName(query)
-    if (!category) {
-      await reply(ctx, 'Categoria não encontrada.')
-      return
-    }
 
     if (!photoUrl) {
       await reply(ctx, 'Não encontrei nenhuma foto na mensagem ou na resposta.')

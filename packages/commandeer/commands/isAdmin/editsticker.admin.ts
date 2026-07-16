@@ -1,6 +1,7 @@
-import { Command } from '@girae/common/commands'
+import { Command, CommandArgument, CommandArgumentType } from '@girae/common/commands'
 import { DBOS } from '@dbos-inc/dbos-sdk'
 import { editVanityItem } from '../../services/vanityWizard'
+import { VanitiesDB } from '@girae/database/vanities'
 import type { IncomingCommand } from '@girae/common/commands/types'
 
 export default class EditStickerCommand extends Command {
@@ -12,7 +13,8 @@ export default class EditStickerCommand extends Command {
   }
 
   @DBOS.workflow()
-  static override async execute(ctx: IncomingCommand) {
-    await editVanityItem(ctx, 'sticker')
+  @CommandArgument([{ name: 'item', type: CommandArgumentType.VANITY_ITEM, vanityType: 'sticker' }])
+  static override async execute(ctx: IncomingCommand, args: { item: NonNullable<Awaited<ReturnType<typeof VanitiesDB.getStoreItemById>>> }) {
+    await editVanityItem(ctx, 'sticker', args.item)
   }
 }

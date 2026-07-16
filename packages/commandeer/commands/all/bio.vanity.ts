@@ -1,4 +1,4 @@
-import { Command } from '@girae/common/commands'
+import { Command, CommandArgument, CommandArgumentType } from '@girae/common/commands'
 import { reply } from '@girae/common/dbos/messaging'
 import { UsersDB } from '@girae/database/users'
 import type { IncomingCommand } from '@girae/common/commands/types'
@@ -13,22 +13,15 @@ export default class BioCommand extends Command {
     aliases: ['biografia', 'biography']
   }
 
-  static override async execute(ctx: IncomingCommand) {
-    const bio = ctx.args.join(' ').trim()
-    if (!bio) {
-      await reply(ctx, 'Uso: `/bio <texto>`\nExemplo: `/bio Sou fofa e divertida 😊`')
-      return
-    }
-
-    if (bio.length > MAX_BIO_LENGTH) {
-      await reply(ctx, `Desculpe, mas a sua biografia não pode ter mais de ${MAX_BIO_LENGTH} caracteres. 😅`)
-      return
-    }
-
+  @CommandArgument([{
+    name: 'bio', type: CommandArgumentType.STRING,
+    guard: (v: string) => v.length <= MAX_BIO_LENGTH || `Desculpe, mas a sua biografia não pode ter mais de ${MAX_BIO_LENGTH} caracteres. 😅`,
+  }])
+  static override async execute(ctx: IncomingCommand, args: { bio: string }) {
     const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
     if (!user) return
 
-    await UsersDB.updateUserProfile(user.id, { bio })
-    await reply(ctx, `📝 Sua biografia foi atualizada para:\n\n\`${bio}\``)
+    await UsersDB.updateUserProfile(user.id, { bio: args.bio })
+    await reply(ctx, `📝 Sua biografia foi atualizada para:\n\n\`${args.bio}\``)
   }
 }

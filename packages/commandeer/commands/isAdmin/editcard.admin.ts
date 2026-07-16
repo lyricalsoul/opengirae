@@ -1,4 +1,4 @@
-import { Command } from '@girae/common/commands'
+import { Command, CommandArgument, CommandArgumentType } from '@girae/common/commands'
 import { CardsDB } from '@girae/database/cards'
 import { DBOS } from '@dbos-inc/dbos-sdk'
 import { reply } from '@girae/common/dbos/messaging'
@@ -16,20 +16,15 @@ export default class EditCardCommand extends Command {
   }
 
   @DBOS.workflow()
-  static override async execute(ctx: IncomingCommand) {
-    const cardId = parseInt(ctx.args[0] ?? '', 10)
-    if (isNaN(cardId)) {
-      await reply(ctx, 'Uso: `/editcard <ID do card>`')
-      return
-    }
-
-    const card = await CardsDB.getCardForEdit(cardId)
+  @CommandArgument([{ name: 'card', type: CommandArgumentType.CARD }])
+  static override async execute(ctx: IncomingCommand, args: { card: NonNullable<Awaited<ReturnType<typeof CardsDB.getCardWithDetails>>> }) {
+    const card = await CardsDB.getCardForEdit(args.card.id)
     if (!card) {
       await reply(ctx, 'Card não encontrado.')
       return
     }
 
-    const tags = await CardsDB.getSecondarySubcategoryNames(cardId)
+    const tags = await CardsDB.getSecondarySubcategoryNames(args.card.id)
 
     const newPhotoUrl = ctx.message.photoUrl ?? ctx.message.replyTo?.photoUrl
     const isAnimated = ctx.message.photoUrl ? ctx.message.isAnimatedPhoto : ctx.message.replyTo?.isAnimatedPhoto
@@ -48,7 +43,7 @@ export default class EditCardCommand extends Command {
       },
       photoUrl,
       mode: 'edit',
-      existingCardId: cardId,
+      existingCardId: args.card.id,
     })
   }
 }

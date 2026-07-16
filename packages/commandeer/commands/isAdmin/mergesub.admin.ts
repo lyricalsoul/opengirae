@@ -1,4 +1,4 @@
-import { Command } from '@girae/common/commands'
+import { Command, CommandArgument, CommandArgumentType } from '@girae/common/commands'
 import { DBOS } from '@dbos-inc/dbos-sdk'
 import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
@@ -18,18 +18,17 @@ export default class MergeSubcategoryCommand extends Command {
   }
 
   @DBOS.workflow()
-  static override async execute(ctx: IncomingCommand) {
-    const fromId = parseInt(ctx.args[0] ?? '', 10)
-    const toId = parseInt(ctx.args[1] ?? '', 10)
+  @CommandArgument([
+    { name: 'from', type: CommandArgumentType.SUBCATEGORY },
+    { name: 'to', type: CommandArgumentType.SUBCATEGORY },
+  ])
+  static override async execute(ctx: IncomingCommand, args: { from: NonNullable<Awaited<ReturnType<typeof CardsDB.getSubcategory>>>; to: NonNullable<Awaited<ReturnType<typeof CardsDB.getSubcategory>>> }) {
+    const { from, to } = args
+    const fromId = from.id
+    const toId = to.id
 
-    if (isNaN(fromId) || isNaN(toId) || fromId === toId) {
+    if (fromId === toId) {
       await reply(ctx, 'Uso: `/mergesub <id de origem> <id de destino>` (precisam ser diferentes)')
-      return
-    }
-
-    const [from, to] = await Promise.all([CardsDB.getSubcategory(fromId), CardsDB.getSubcategory(toId)])
-    if (!from || !to) {
-      await reply(ctx, 'Uma das subcategorias não foi encontrada.')
       return
     }
 

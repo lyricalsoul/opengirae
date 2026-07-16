@@ -1,4 +1,4 @@
-import { Command } from '@girae/common/commands'
+import { Command, CommandArgument, CommandArgumentType } from '@girae/common/commands'
 import { DBOS } from '@dbos-inc/dbos-sdk'
 import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
@@ -18,18 +18,9 @@ export default class DeleteCardCommand extends Command {
   }
 
   @DBOS.workflow()
-  static override async execute(ctx: IncomingCommand) {
-    const cardId = parseInt(ctx.args[0] ?? '', 10)
-    if (isNaN(cardId)) {
-      await reply(ctx, 'Uso: `/delcard <ID do card>`')
-      return
-    }
-
-    const card = await CardsDB.getCard(cardId)
-    if (!card) {
-      await reply(ctx, 'Card não encontrado.')
-      return
-    }
+  @CommandArgument([{ name: 'card', type: CommandArgumentType.CARD }])
+  static override async execute(ctx: IncomingCommand, args: { card: NonNullable<Awaited<ReturnType<typeof CardsDB.getCardWithDetails>>> }) {
+    const card = args.card
 
     await reply(ctx, {
       content: `🗑️ Deletar **${escapeMarkdown(card.name)}** (\`${card.id}\`)? Essa ação não pode ser desfeita.`,

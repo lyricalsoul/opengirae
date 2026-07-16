@@ -33,5 +33,6 @@ const processPendingTextInput = async (msg: Message) => {
     eventName,
     value: msg.content,
     messageId: msg.id,
+    clickerUserId: msg.author.id,
   });
 };

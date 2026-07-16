@@ -1,5 +1,5 @@
-import { Command, Page } from '@girae/common/commands'
-import { reply } from '@girae/common/dbos/messaging'
+import { Command, Page, CommandArgument, CommandArgumentType } from '@girae/common/commands'
+import { reply, pageNavRow } from '@girae/common/dbos/messaging'
 import { CardsDB } from '@girae/database/cards'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { EMOJI } from '../../constants'
@@ -27,7 +27,7 @@ ${rows}
 
 ${pageInfo}${EMOJI.browse} Para ver uma dessas subcategorias, use \`/clc id\`.`
 
-  return { content, photoUrl: category.drawImageUrl ?? undefined, hasNext: page < totalPages - 1 }
+  return { content, photoUrl: category.drawImageUrl ?? undefined, hasNext: page < totalPages - 1, totalPages }
 }
 
 async function replyAllCategories(ctx: IncomingCommand, header: string) {
@@ -44,28 +44,21 @@ export default class CategoryCommand extends Command {
     aliases: ['cats', 'ctg'],
   }
 
-  static override async execute(ctx: IncomingCommand) {
-    const query = ctx.args.join(' ').trim()
-
-    if (!query) {
+  @CommandArgument([{ name: 'category', type: CommandArgumentType.CATEGORY, nullable: true }])
+  static override async execute(ctx: IncomingCommand, args: { category?: NonNullable<Awaited<ReturnType<typeof CardsDB.getCategory>>> }) {
+    if (!args.category) {
       await replyAllCategories(ctx, 'Escolha uma categoria:')
       return
     }
 
-    const asId = parseInt(query, 10)
-    const category = !isNaN(asId) ? await CardsDB.getCategory(asId) : await CardsDB.getCategoryByName(query)
-    if (!category) {
-      await replyAllCategories(ctx, 'Categoria não encontrada. As seguintes categorias estão disponíveis:')
-      return
-    }
-
-    const page = await renderPage(category.id, 0)
+    const page = await renderPage(args.category.id, 0)
     if (!page) return
 
+    const navRow = pageNavRow('cat', String(args.category.id), 0, page.hasNext, page.totalPages)
     await reply(ctx, {
       content: page.content,
       photoUrl: page.photoUrl,
-      buttons: page.hasNext ? [{ text: 'Próxima ➡️', page: { handler: 'cat', arg: String(category.id), page: 1 } }] : undefined,
+      buttonRows: navRow.length ? [navRow] : undefined,
     })
   }
 

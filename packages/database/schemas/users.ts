@@ -11,6 +11,7 @@ import { storeItems } from "./vanities";
 export const users = pgTable("users", {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
   telegramId: text().notNull().unique(),
+  username: text(),
   isBanned: boolean().notNull().default(false),
   banMessage: text(),
   isAdmin: boolean().notNull().default(false),

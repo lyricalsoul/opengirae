@@ -3,6 +3,8 @@ import { TelegramClient } from 'telegramsjs'
 import { processCommand } from '@girae/common/inbound/handler'
 import { processCallback } from '@girae/common/inbound/callback'
 import { info } from '@girae/common/logger'
+import { UsersDB } from '@girae/database/users'
+import { commandQueue } from '@girae/common/queue'
 
 const tg = new TelegramClient(process.env.TELEGRAM_TOKEN!)
 
@@ -24,6 +26,24 @@ const resolveMedia = async (msg: any): Promise<{ photoUrl?: string, isAnimatedPh
   return { photoUrl: file.url ?? undefined }
 }
 
+const AVATAR_TTL_MS = 24 * 60 * 60 * 1000
+
+async function refreshAvatarIfStale(telegramId: string, displayName: string) {
+  const user = await UsersDB.ensureUser({ telegramId, displayName, avatarUrl: '' })
+  if (!user) return
+  const isStale = !user.avatarUrl || !user.avatarUpdatedAt || Date.now() - user.avatarUpdatedAt.getTime() > AVATAR_TTL_MS
+  if (!isStale) return
+
+  const photos = await tg.getUserProfilePhotos({ userId: telegramId, limit: 1 })
+  const photo = photos?.photos?.[0]?.[0]
+  if (!photo) return
+
+  const file = await photo.fetch()
+  if (!file.url) return
+
+  await UsersDB.updateAvatar(user.id, file.url)
+}
+
 const stripBotMention = (content: string): string | null => {
   if (!content.startsWith('/')) return content
   const spaceIndex = content.indexOf(' ')
@@ -39,17 +59,18 @@ const stripBotMention = (content: string): string | null => {
 
 const ADDCARD_CHAT_IDS = [['-1003993142790', '6016'], ['-1004365766145', '2']]
 const ADDBG_CHAT_ID = [['-1003993142790', '10106']]
+const isLocalDevelopment = !!process.env.LOCAL_DEVELOPMENT
 
 tg.on('message', async (msg) => {
   let content = msg.content ?? msg.caption
 
   const matchingChat = ADDCARD_CHAT_IDS.find(([chatId, threadId]) => String(msg.chat?.id) === chatId && String(msg.chat?.threadId) === threadId)
-  if (matchingChat && msg.chat?.inTopic && msg.photo?.length) {
+  if (matchingChat && msg.chat?.inTopic && msg.photo?.length && !isLocalDevelopment) {
     content = `/addcard ${content ?? ''}`.trim()
   }
 
   const matchingBg = ADDBG_CHAT_ID.find(([chatId, threadId]) => String(msg.chat?.id) === chatId && String(msg.chat?.threadId) === threadId)
-  if (matchingBg && msg.chat?.inTopic && msg.photo?.length) {
+  if (matchingBg && msg.chat?.inTopic && msg.photo?.length && !isLocalDevelopment) {
     content = `/addbg ${content ?? ''}`.trim()
   }
 
@@ -95,11 +116,15 @@ tg.on('message', async (msg) => {
     ...await resolveMedia(msg)
   }
 
+  UsersDB.touchUsername(m.author.id, msg.author!.username).catch(() => undefined)
+  await refreshAvatarIfStale(m.author.id, m.author.name)
+
   await processCommand(m)
 })
 
 tg.on('callbackQuery', async (data) => {
   if (!data.data) return
+  await refreshAvatarIfStale(data.author.id.toString(), data.author.firstName)
   await processCallback(
     data.data,
     data.author.id.toString(),
@@ -125,5 +150,13 @@ if (webhookUrl) {
   })
 } else {
   info('telegram-inbound', 'TELEGRAM_WEBHOOK_URL not set, falling back to long polling')
-  await tg.login()
+  const dropPendingUpdates = !!process.env.POLL_DROP_PENDING_UPDATES
+  if (dropPendingUpdates) {
+    info('telegram-inbound', 'POLL_DROP_PENDING_UPDATES set, dropping pending updates and queued commands on start')
+    await commandQueue.drain(true)
+    tg.polling.offset = 2147483647
+    // somehow none of this works...
+    // TODO: figure out why telegramjs is trash
+  }
+  await tg.login({ polling: { dropPendingUpdates, offset: 2147483647 } })
 }

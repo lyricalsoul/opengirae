@@ -48,15 +48,16 @@ function parseOldListing(content: string): VanityItemData | null {
   return { title: title!.trim(), description: description!.trim(), price: isNaN(price) ? null : price }
 }
 
-export async function resolveInitialVanityData(ctx: IncomingCommand, type: VanityType): Promise<{ data: VanityItemData, deterministic: boolean }> {
-  const fullArgsText = ctx.args.join(' ').trim()
+export async function resolveInitialVanityData(ctx: IncomingCommand, type: VanityType, content: string | undefined): Promise<{ data: VanityItemData, deterministic: boolean }> {
+  const fullArgsText = (content ?? '').trim()
   const listing = parseOldListing(fullArgsText) ?? (ctx.message.replyTo?.content ? parseOldListing(ctx.message.replyTo.content) : null)
 
-  const firstArg = ctx.args[0]
+  const tokens = fullArgsText ? fullArgsText.split(/\s+/) : []
+  const firstArg = tokens[0]
   const asPrice = firstArg ? parseInt(firstArg, 10) : NaN
   const hasLeadingPrice = !listing && !isNaN(asPrice) && asPrice > 0
   const argsPrice = hasLeadingPrice ? asPrice : null
-  const rest = (hasLeadingPrice ? ctx.args.slice(1) : ctx.args).join(' ').trim()
+  const rest = (hasLeadingPrice ? tokens.slice(1) : tokens).join(' ').trim()
   const [explicitTitle, explicitDescription] = rest.split(' - ').map(s => s?.trim())
 
   const data: VanityItemData = {
@@ -157,14 +158,14 @@ export async function finalizeVanityItem(
   })
 }
 
-export async function addVanityItem(ctx: IncomingCommand, type: VanityType) {
+export async function addVanityItem(ctx: IncomingCommand, type: VanityType, content: string | undefined) {
   const photoUrl = ctx.message.photoUrl ?? ctx.message.replyTo?.photoUrl
   if (!photoUrl) {
     await reply(ctx, `Uso: \`/${type === 'background' ? 'addbg' : 'addsticker'} [preço] [Nome - Descrição]\`, respondendo a uma foto (ou enviando junto com a legenda). Preço e descrição podem ser preenchidos depois, no assistente.`)
     return
   }
 
-  const { data, deterministic } = await resolveInitialVanityData(ctx, type)
+  const { data, deterministic } = await resolveInitialVanityData(ctx, type, content)
   if (deterministic) {
     await finalizeVanityItem(ctx, data, photoUrl, type, 'create')
     return
@@ -173,20 +174,9 @@ export async function addVanityItem(ctx: IncomingCommand, type: VanityType) {
   await runVanityWizard(ctx, { itemData: data, photoUrl, type, mode: 'create' })
 }
 
-export async function editVanityItem(ctx: IncomingCommand, type: VanityType) {
-  const itemId = parseInt(ctx.args[0] ?? '', 10)
-  const cmdName = type === 'background' ? 'editbg' : 'editsticker'
-  if (isNaN(itemId)) {
-    await reply(ctx, `Uso: \`/${cmdName} <id do item>\``)
-    return
-  }
+type VanityItem = NonNullable<Awaited<ReturnType<typeof VanitiesDB.getStoreItemById>>>
 
-  const item = await VanitiesDB.getStoreItemById(itemId)
-  if (!item || item.type !== type) {
-    await reply(ctx, `${TYPE_LABEL[type]} não encontrado.`)
-    return
-  }
-
+export async function editVanityItem(ctx: IncomingCommand, type: VanityType, item: VanityItem) {
   const newPhotoUrl = ctx.message.photoUrl ?? ctx.message.replyTo?.photoUrl
   const photoUrl = newPhotoUrl ?? item.itemURL
 
@@ -195,24 +185,11 @@ export async function editVanityItem(ctx: IncomingCommand, type: VanityType) {
     photoUrl,
     type,
     mode: 'edit',
-    existingItemId: itemId,
+    existingItemId: item.id,
   })
 }
 
-export async function deleteVanityItem(ctx: IncomingCommand, type: VanityType) {
-  const itemId = parseInt(ctx.args[0] ?? '', 10)
-  const cmdName = type === 'background' ? 'delbg' : 'delsticker'
-  if (isNaN(itemId)) {
-    await reply(ctx, `Uso: \`/${cmdName} <id do item>\``)
-    return
-  }
-
-  const item = await VanitiesDB.getStoreItemById(itemId)
-  if (!item || item.type !== type) {
-    await reply(ctx, `${TYPE_LABEL[type]} não encontrado.`)
-    return
-  }
-
+export async function deleteVanityItem(ctx: IncomingCommand, type: VanityType, item: VanityItem) {
   await reply(ctx, {
     content: `🗑️ Deletar **${escapeMarkdown(item.title)}** (\`${item.id}\`)? Essa ação não pode ser desfeita.`,
     photoUrl: item.itemURL,
@@ -228,7 +205,7 @@ export async function deleteVanityItem(ctx: IncomingCommand, type: VanityType) {
   const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
   if (!user) return
 
-  await VanitiesDB.deleteStoreItem(itemId)
+  await VanitiesDB.deleteStoreItem(item.id)
   await AuditDB.log(user.id, `vanity.${type}.delete`, { itemId: item.id, title: item.title })
   await reply(ctx, `🗑️ **${escapeMarkdown(item.title)}** foi deletado.`)
 }

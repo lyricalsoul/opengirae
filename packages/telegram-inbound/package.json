@@ -4,6 +4,7 @@
   "type": "module",
   "private": true,
   "dependencies": {
-    "@girae/common": "workspace:*"
+    "@girae/common": "workspace:*",
+    "@girae/database": "workspace:*"
   }
 }

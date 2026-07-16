@@ -1,9 +1,11 @@
 import { DBOS } from "@girae/common/dbos";
 import { findCommand } from "../loader";
 import type { IncomingCommand } from "@girae/common/commands/types";
+import type { CommandArgumentSpec } from "@girae/common/commands";
 import { info, error } from "@girae/common/logger";
 import { passesGuards } from "./guards";
 import { UsersDB } from "@girae/database/users";
+import { resolveCommandArguments } from "./commandArguments";
 
 async function runCommand(
   targetClass: any,
@@ -11,12 +13,21 @@ async function runCommand(
   useWorkflow: boolean,
   cmdCtx: IncomingCommand
 ) {
+  const specs: CommandArgumentSpec[] | undefined = targetClass.commandArguments?.[methodName];
+  const invokeArgs: unknown[] = [cmdCtx];
+
+  if (specs) {
+    const resolved = await resolveCommandArguments(specs, cmdCtx, targetClass.info.usage ?? '');
+    if (!resolved) return; // resolveCommandArguments already replied with the usage/error message
+    invokeArgs.push(resolved);
+  }
+
   if (useWorkflow) {
     await (DBOS.startWorkflow(targetClass, {
       workflowID: cmdCtx.workflowIDToBeAssigned,
-    }) as any)[methodName](cmdCtx);
+    }) as any)[methodName](...invokeArgs);
   } else {
-    await targetClass[methodName](cmdCtx);
+    await targetClass[methodName](...invokeArgs);
   }
 }
 

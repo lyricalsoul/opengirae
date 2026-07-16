@@ -61,6 +61,7 @@
       "name": "@girae/telegram-inbound",
       "dependencies": {
         "@girae/common": "workspace:*",
+        "@girae/database": "workspace:*",
       },
     },
     "website": {

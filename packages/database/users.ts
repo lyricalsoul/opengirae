@@ -62,6 +62,23 @@ export class UsersDB {
       .then(rows => rows[0]);
   })
 
+  static getUserByUsername = maybeTransaction('getUserByUsername', async (client, username: string) => {
+    return await client
+      .select()
+      .from(users)
+      .where(ilike(users.username, username))
+      .limit(1)
+      .then(rows => rows[0]);
+  })
+
+  static touchUsername = maybeTransaction('touchUsername', async (client, telegramId: string, username: string | undefined) => {
+    if (!username) return;
+    await client
+      .update(users)
+      .set({ username })
+      .where(and(eq(users.telegramId, telegramId), sql`${users.username} IS DISTINCT FROM ${username}`));
+  })
+
   static addCoins = maybeTransaction('addCoins', async (client, userId: number, amount: number) => {
     return await client
       .update(users)

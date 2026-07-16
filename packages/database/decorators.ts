@@ -14,6 +14,6 @@ export function maybeTransaction<Args extends unknown[], Return>(
   );
 
   return (...args: Args) => {
-    return DBOS.isInitialized() ? dbosWrapped(...args) : fn(db, ...args);
+    return DBOS.isInitialized() ? dbosWrapped(...args) : db.transaction((tx) => fn(tx, ...args));
   };
 }

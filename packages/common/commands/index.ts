@@ -15,7 +15,7 @@ export class Command {
     description: 'Unimplemented command',
   }
 
-  static async execute(ctx: IncomingCommand) {
+  static async execute(ctx: IncomingCommand, args?: any) {
     throw new Error('Unimplemented')
   }
 }

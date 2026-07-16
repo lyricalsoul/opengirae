@@ -1,4 +1,4 @@
-import { Command } from '@girae/common/commands'
+import { Command, CommandArgument, CommandArgumentType } from '@girae/common/commands'
 import { VanitiesDB } from '@girae/database/vanities'
 import { UsersDB } from '@girae/database/users'
 import { AuditDB } from '@girae/database/audit'
@@ -15,21 +15,10 @@ export default class AddImageBackgroundCommand extends Command {
     aliases: ['setimagebg', 'setimgbg']
   }
 
-  static override async execute(ctx: IncomingCommand) {
-    const query = ctx.args[0]
+  @CommandArgument([{ name: 'item', type: CommandArgumentType.VANITY_ITEM, vanityType: 'background' }])
+  static override async execute(ctx: IncomingCommand, args: { item: NonNullable<Awaited<ReturnType<typeof VanitiesDB.getStoreItemById>>> }) {
+    const item = args.item
     const photoUrl = ctx.message.photoUrl ?? ctx.message.replyTo?.photoUrl
-
-    if (!query) {
-      await reply(ctx, 'Uso: `/addimgbg <ID do papel de parede>`, respondendo a uma foto (ou enviando junto com a legenda).')
-      return
-    }
-
-    const itemId = parseInt(query, 10)
-    const item = !isNaN(itemId) ? await VanitiesDB.getStoreItemById(itemId) : undefined
-    if (!item || item.type !== 'background') {
-      await reply(ctx, 'Papel de parede não encontrado.')
-      return
-    }
 
     if (!photoUrl) {
       await reply(ctx, 'Não encontrei nenhuma foto na mensagem ou na resposta.')

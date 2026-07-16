@@ -7,10 +7,17 @@ import {
   userCards,
   cardDrawHistory,
   cardSubcategories,
-  chocolateFactoryCorrections
+  chocolateFactoryCorrections,
+  trades,
 } from "./schemas/cards";
 import { users } from "./schemas/users";
-import { eq, and, sql, ilike, desc } from "drizzle-orm";
+import { eq, and, sql, ilike, desc, gte } from "drizzle-orm";
+
+export class InsufficientCardError extends Error {
+  constructor(public userId: number, public cardId: number) {
+    super(`user ${userId} does not have enough copies of card ${cardId}`);
+  }
+}
 
 export class CardsDB {
   static getCategory = maybeTransaction('getCategory', async (client, id: number) => {
@@ -95,6 +102,14 @@ export class CardsDB {
 
   static getCategoryByName = maybeTransaction('getCategoryByName', async (client, name: string) => {
     return await client.select().from(categories).where(eq(categories.name, name)).limit(1).then(a => a?.[0]);
+  })
+
+  static searchCategoriesByName = maybeTransaction('searchCategoriesByName', async (client, query: string, limit: number = 100) => {
+    return await client
+      .select({ id: categories.id, name: categories.name, emoji: categories.emoji })
+      .from(categories)
+      .where(ilike(categories.name, `%${query}%`))
+      .limit(limit);
   })
 
   static getRarityByName = maybeTransaction('getRarityByName', async (client, name: string) => {
@@ -261,6 +276,65 @@ export class CardsDB {
     return await client.insert(userCards).values({ userId, cardId }).returning().then(a => a?.[0]);
   })
 
+  static executeTrade = maybeTransaction('executeTrade', async (
+    client,
+    userAId: number, offerA: { cardId: number; count: number }[],
+    userBId: number, offerB: { cardId: number; count: number }[],
+  ) => {
+    if (userAId === userBId) throw new Error('executeTrade: userAId and userBId must differ');
+    for (const offer of [offerA, offerB]) {
+      const ids = offer.map(o => o.cardId);
+      if (new Set(ids).size !== ids.length) throw new Error('executeTrade: an offer must not list the same cardId twice');
+      if (offer.some(o => o.count <= 0)) throw new Error('executeTrade: offer counts must be positive');
+    }
+
+    const decrement = async (userId: number, cardId: number, count: number) => {
+      const [row] = await client
+        .update(userCards)
+        .set({ count: sql`${userCards.count} - ${count}` })
+        .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId), gte(userCards.count, count)))
+        .returning();
+      if (!row) throw new InsufficientCardError(userId, cardId);
+      if (row.count === 0) {
+        await client.delete(userCards).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+      }
+    };
+
+    const increment = async (userId: number, cardId: number, count: number) => {
+      const existing = await client
+        .select()
+        .from(userCards)
+        .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)))
+        .limit(1)
+        .then(a => a?.[0]);
+
+      if (existing) {
+        await client
+          .update(userCards)
+          .set({ count: sql`${userCards.count} + ${count}` })
+          .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+      } else {
+        await client.insert(userCards).values({ userId, cardId, count });
+      }
+    };
+
+    for (const { cardId, count } of offerA) await decrement(userAId, cardId, count);
+    for (const { cardId, count } of offerB) await decrement(userBId, cardId, count);
+    for (const { cardId, count } of offerA) await increment(userBId, cardId, count);
+    for (const { cardId, count } of offerB) await increment(userAId, cardId, count);
+
+    return await client
+      .insert(trades)
+      .values({
+        user1Id: userAId,
+        user2Id: userBId,
+        cardsUser1: offerA.flatMap(o => Array(o.count).fill(o.cardId)),
+        cardsUser2: offerB.flatMap(o => Array(o.count).fill(o.cardId)),
+      })
+      .returning()
+      .then(a => a?.[0]);
+  })
+
   static addCardDrawHistory = maybeTransaction('addCardDrawHistory', async (client, userId: number, cardId: number, categoryId: number, subcategoryId: number) => {
     return await client.insert(cardDrawHistory).values({ userId, cardId, categoryId, subcategoryId }).returning().then(a => a?.[0]);
   })
@@ -393,6 +467,27 @@ export class CardsDB {
     return result?.total ?? 0;
   })
 
+  static getUserOwnedCards = maybeTransaction('getUserOwnedCards', async (client, userId: number) => {
+    return await client
+      .select({
+        id: cards.id,
+        name: cards.name,
+        rarityName: rarities.name,
+        rarityEmoji: rarities.emoji,
+        categoryEmoji: categories.emoji,
+        subcategoryName: subcategories.name,
+        ownedCount: userCards.count,
+      })
+      .from(userCards)
+      .innerJoin(cards, eq(cards.id, userCards.cardId))
+      .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+      .leftJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.isMain, true)))
+      .leftJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
+      .leftJoin(categories, eq(categories.id, subcategories.categoryId))
+      .where(eq(userCards.userId, userId))
+      .orderBy(desc(cards.rarityId), cards.id);
+  })
+
   static deleteSubcategory = maybeTransaction('deleteSubcategory', async (client, id: number) => {
     const cardCount = await client
       .select({ cardCount: sql<number>`CAST(COUNT(${cardSubcategories.cardId}) AS INTEGER)` })
@@ -400,13 +495,6 @@ export class CardsDB {
       .where(eq(cardSubcategories.subcategoryId, id))
       .then(rows => rows[0]?.cardCount ?? 0);
     if (cardCount > 0) return { ok: false as const, reason: 'has_cards' as const };
-
-    const drawCount = await client
-      .select({ drawCount: sql<number>`CAST(COUNT(*) AS INTEGER)` })
-      .from(cardDrawHistory)
-      .where(eq(cardDrawHistory.subcategoryId, id))
-      .then(rows => rows[0]?.drawCount ?? 0);
-    if (drawCount > 0) return { ok: false as const, reason: 'has_history' as const };
 
     await client.delete(subcategories).where(eq(subcategories.id, id));
     return { ok: true as const };

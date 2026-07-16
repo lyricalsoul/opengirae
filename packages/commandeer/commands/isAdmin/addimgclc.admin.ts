@@ -1,4 +1,4 @@
-import { Command } from '@girae/common/commands'
+import { Command, CommandArgument, CommandArgumentType } from '@girae/common/commands'
 import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { AuditDB } from '@girae/database/audit'
@@ -15,25 +15,10 @@ export default class AddImageSubcategoryCommand extends Command {
     aliases: ['setimageclc', 'setimgclc']
   }
 
-  static override async execute(ctx: IncomingCommand) {
-    const query = ctx.args.join(' ').trim()
+  @CommandArgument([{ name: 'subcategory', type: CommandArgumentType.SUBCATEGORY }])
+  static override async execute(ctx: IncomingCommand, args: { subcategory: NonNullable<Awaited<ReturnType<typeof CardsDB.getSubcategory>>> }) {
+    const subcategory = args.subcategory
     const photoUrl = ctx.message.photoUrl ?? ctx.message.replyTo?.photoUrl
-
-    if (!query) {
-      await reply(ctx, 'Uso: `/addimgclc <ID ou nome da subcategoria>`, respondendo a uma foto (ou enviando junto com a legenda).')
-      return
-    }
-
-    const asId = parseInt(query, 10)
-    let subcategory = !isNaN(asId) ? await CardsDB.getSubcategory(asId) : undefined
-    if (!subcategory && isNaN(asId)) {
-      const results = await CardsDB.searchSubcategoriesByName(query, 1)
-      if (results[0]) subcategory = await CardsDB.getSubcategory(results[0].id)
-    }
-    if (!subcategory) {
-      await reply(ctx, 'Subcategoria não encontrada.')
-      return
-    }
 
     if (!photoUrl) {
       await reply(ctx, 'Não encontrei nenhuma foto na mensagem ou na resposta.')

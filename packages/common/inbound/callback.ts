@@ -1,5 +1,14 @@
-import type { StoredStep, Message, IncomingCommand } from '../commands/types'
-import { rawClient, resumeQueue, quickViewQueue, pageQueue, commandQueue } from '../queue'
+import type { StoredStep, Message, IncomingCommand, PendingResponse } from '../commands/types'
+import { rawClient, resumeQueue, quickViewQueue, pageQueue, commandQueue, responseQueue } from '../queue'
+
+const ackCallback = (callbackQueryId: string, content: string) =>
+  responseQueue.add('answerCallbackQuery', {
+    method: 'answerCallbackQuery',
+    callbackQueryId,
+    content,
+    chatId: '',
+    platform: 'telegram',
+  } satisfies PendingResponse)
 
 export async function processCallback(
   callbackData: string,
@@ -56,7 +65,7 @@ export async function processCallback(
     const arg = argParts.join(':')
     if (!handler || isNaN(page) || !authorId || !chatId || !messageId) return
 
-    await pageQueue.add('page', { handler, page, authorId, arg, clickerUserId, chatId, messageId })
+    await pageQueue.add('page', { handler, page, authorId, arg, clickerUserId, chatId, messageId, callbackQueryId })
     return
   }
 
@@ -73,23 +82,32 @@ export async function processCallback(
   const redisKey = `workflow:${workflowID}`
   const raw = await rawClient.hGet(redisKey, eventName)
 
-  // TODO: reply with invalid command
-  if (!raw) return
+  if (!raw) {
+    await ackCallback(callbackQueryId, 'Essa ação expirou...')
+    return
+  }
 
   const step: StoredStep = JSON.parse(raw)
 
-  // TODO: reply with command not for you
-  if (step.restricted === 'author' && !step.authorIds.includes(clickerUserId)) return
+  if (step.restricted === 'author' && !step.authorIds.includes(clickerUserId)) {
+    await ackCallback(callbackQueryId, 'Esse comando não é pra você...')
+    return
+  }
 
   const selected = step.options.find(o => o.id === optionIndex)
   if (!selected) return
 
-  await rawClient.hDel(redisKey, eventName)
+  if (!step.multiUse) await rawClient.hDel(redisKey, eventName)
 
-  await resumeQueue.add('resume', {
-    workflowID,
-    eventName,
-    value: selected.data,
-    messageId,
-  })
+  await Promise.all([
+    resumeQueue.add('resume', {
+      workflowID,
+      eventName,
+      value: selected.data,
+      messageId,
+      clickerUserId,
+    }),
+    
+    ackCallback(callbackQueryId, ''),
+  ])
 }

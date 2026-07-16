@@ -1,3 +1,34 @@
+export enum CommandArgumentType {
+  CARD = 'CARD',
+  CATEGORY = 'CATEGORY',
+  SUBCATEGORY = 'SUBCATEGORY',
+  VANITY_ITEM = 'VANITY_ITEM',
+  USER_MENTION = 'USER_MENTION',
+  NUMBER = 'NUMBER',
+  STRING = 'STRING',
+  HEX_COLOR = 'HEX_COLOR',
+  BOOLEAN = 'BOOLEAN',
+}
+
+interface BaseCommandArgumentSpec<T = any> {
+  name: string;
+  nullable?: boolean;
+  guard?: (value: T, ctx: any) => boolean | string | Promise<boolean | string>;
+}
+
+export type CommandArgumentSpec<T = any> =
+  | (BaseCommandArgumentSpec<T> & { type: CommandArgumentType.VANITY_ITEM; vanityType: 'background' | 'sticker' })
+  | (BaseCommandArgumentSpec<T> & { type: Exclude<CommandArgumentType, CommandArgumentType.VANITY_ITEM> });
+
+export function CommandArgument(specs: CommandArgumentSpec[]) {
+  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+    if (!target.commandArguments) {
+      target.commandArguments = {};
+    }
+    target.commandArguments[propertyKey] = specs;
+  };
+}
+
 export interface SubcommandOptions {
   name: string;
   description: string;

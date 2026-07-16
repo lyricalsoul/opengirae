@@ -1,4 +1,4 @@
-import { Command } from '@girae/common/commands'
+import { Command, CommandArgument, CommandArgumentType } from '@girae/common/commands'
 import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { AuditDB } from '@girae/database/audit'
@@ -16,22 +16,11 @@ export default class AddImageCardCommand extends Command {
     aliases: ['setimage', 'setimg']
   }
 
-  static override async execute(ctx: IncomingCommand) {
-    const query = ctx.args[0]
+  @CommandArgument([{ name: 'card', type: CommandArgumentType.CARD }])
+  static override async execute(ctx: IncomingCommand, args: { card: NonNullable<Awaited<ReturnType<typeof CardsDB.getCardWithDetails>>> }) {
+    const card = args.card
     const photoUrl = ctx.message.photoUrl ?? ctx.message.replyTo?.photoUrl
     const isAnimated = ctx.message.photoUrl ? ctx.message.isAnimatedPhoto : ctx.message.replyTo?.isAnimatedPhoto
-
-    if (!query) {
-      await reply(ctx, 'Uso: `/addimgcard <ID do card>`, respondendo a uma foto (ou enviando junto com a legenda).')
-      return
-    }
-
-    const cardId = parseInt(query, 10)
-    const card = !isNaN(cardId) ? await CardsDB.getCard(cardId) : undefined
-    if (!card) {
-      await reply(ctx, 'Card não encontrado.')
-      return
-    }
 
     if (!photoUrl) {
       await reply(ctx, 'Não encontrei nenhuma foto na mensagem ou na resposta.')

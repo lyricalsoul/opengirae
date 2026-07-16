@@ -50,6 +50,7 @@ ${pageInfo}${EMOJI.browse} Para ver um desses itens, use \`/${viewCommand} id\`.
   return {
     content,
     hasNext: page < totalPages - 1,
+    totalPages,
     extraRows: [filterButtonsRow(filters, active, type)],
   }
 }

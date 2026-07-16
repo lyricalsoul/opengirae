@@ -1,4 +1,4 @@
-import { Command } from '@girae/common/commands'
+import { Command, CommandArgument, CommandArgumentType } from '@girae/common/commands'
 import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { AuditDB } from '@girae/database/audit'
@@ -14,29 +14,25 @@ export default class AddCategoryCommand extends Command {
     aliases: ['addcategoria']
   }
 
-  static override async execute(ctx: IncomingCommand) {
-    const [emoji, ...nameParts] = ctx.args
-    const name = nameParts.join(' ').trim()
-
-    if (!emoji || !name) {
-      await reply(ctx, 'Uso: `/addcategory <emoji> <nome>` (o nome pode ter mais de uma palavra).')
-      return
-    }
-
-    const existing = await CardsDB.getCategoryByName(name)
+  @CommandArgument([
+    { name: 'emoji', type: CommandArgumentType.STRING },
+    { name: 'name', type: CommandArgumentType.STRING },
+  ])
+  static override async execute(ctx: IncomingCommand, args: { emoji: string; name: string }) {
+    const existing = await CardsDB.getCategoryByName(args.name)
     if (existing) {
-      await reply(ctx, `Já existe uma categoria chamada **${escapeMarkdown(name)}**.`)
+      await reply(ctx, `Já existe uma categoria chamada **${escapeMarkdown(args.name)}**.`)
       return
     }
 
     const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
     if (!user) return
 
-    const category = await CardsDB.createCategory(name, emoji)
+    const category = await CardsDB.createCategory(args.name, args.emoji)
     if (!category) return
 
-    await AuditDB.log(user.id, 'category.create', { categoryId: category.id, name, emoji })
+    await AuditDB.log(user.id, 'category.create', { categoryId: category.id, name: args.name, emoji: args.emoji })
 
-    await reply(ctx, `${emoji} Categoria criada: \`${category.id}\`. **${escapeMarkdown(name)}**`)
+    await reply(ctx, `${args.emoji} Categoria criada: \`${category.id}\`. **${escapeMarkdown(args.name)}**`)
   }
 }

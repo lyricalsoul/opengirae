@@ -1,4 +1,4 @@
-import { Command, QuickView } from '@girae/common/commands'
+import { Command, QuickView, CommandArgument, CommandArgumentType } from '@girae/common/commands'
 import { DBOS } from '@dbos-inc/dbos-sdk'
 import { VanitiesDB } from '@girae/database/vanities'
 import { UsersDB } from '@girae/database/users'
@@ -22,14 +22,9 @@ export default class ComprarCommand extends Command {
   }
 
   @DBOS.workflow()
-  static override async execute(ctx: IncomingCommand) {
-    const itemId = parseInt(ctx.args[0] ?? '', 10)
-    if (isNaN(itemId)) {
-      await reply(ctx, 'Uso: `/comprar <ID do item>`')
-      return
-    }
-
-    const item = await VanitiesDB.getStoreItemById(itemId)
+  @CommandArgument([{ name: 'itemId', type: CommandArgumentType.NUMBER }])
+  static override async execute(ctx: IncomingCommand, args: { itemId: number }) {
+    const item = await VanitiesDB.getStoreItemById(args.itemId)
     if (!item || !item.isAvailable || item.type === 'profile') {
       await reply(ctx, 'Item não encontrado.')
       return

@@ -1,6 +1,7 @@
-import { Command } from '@girae/common/commands'
+import { Command, CommandArgument, CommandArgumentType } from '@girae/common/commands'
 import { DBOS } from '@dbos-inc/dbos-sdk'
 import { deleteVanityItem } from '../../services/vanityWizard'
+import { VanitiesDB } from '@girae/database/vanities'
 import type { IncomingCommand } from '@girae/common/commands/types'
 
 export default class DeleteStickerCommand extends Command {
@@ -12,7 +13,8 @@ export default class DeleteStickerCommand extends Command {
   }
 
   @DBOS.workflow()
-  static override async execute(ctx: IncomingCommand) {
-    await deleteVanityItem(ctx, 'sticker')
+  @CommandArgument([{ name: 'item', type: CommandArgumentType.VANITY_ITEM, vanityType: 'sticker' }])
+  static override async execute(ctx: IncomingCommand, args: { item: NonNullable<Awaited<ReturnType<typeof VanitiesDB.getStoreItemById>>> }) {
+    await deleteVanityItem(ctx, 'sticker', args.item)
   }
 }

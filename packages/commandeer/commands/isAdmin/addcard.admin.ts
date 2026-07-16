@@ -1,4 +1,4 @@
-import { Command } from '@girae/common/commands'
+import { Command, CommandArgument, CommandArgumentType } from '@girae/common/commands'
 import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { AuditDB } from '@girae/database/audit'
@@ -21,8 +21,9 @@ export default class AddCardCommand extends Command {
   }
 
   @DBOS.workflow()
-  static override async execute(ctx: IncomingCommand) {
-    const sourceText = ctx.args.join(' ').trim() || ctx.message.replyTo?.content
+  @CommandArgument([{ name: 'content', type: CommandArgumentType.STRING, nullable: true }])
+  static override async execute(ctx: IncomingCommand, args: { content?: string }) {
+    const sourceText = args.content || ctx.message.replyTo?.content
     const photoUrl = ctx.message.photoUrl ?? ctx.message.replyTo?.photoUrl
 
     const isAnimated = ctx.message.photoUrl ? ctx.message.isAnimatedPhoto : ctx.message.replyTo?.isAnimatedPhoto

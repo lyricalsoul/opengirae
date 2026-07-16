@@ -1,5 +1,5 @@
-import { Command, Page } from '@girae/common/commands'
-import { reply, toPageButton } from '@girae/common/dbos/messaging'
+import { Command, Page, CommandArgument, CommandArgumentType } from '@girae/common/commands'
+import { reply, toPageButton, pageNavRow } from '@girae/common/dbos/messaging'
 import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import type { IncomingCommand } from '@girae/common/commands/types'
@@ -58,6 +58,7 @@ ${pageInfo}${EMOJI.browse} Para ver um desses cards, use \`/card id\`.`
     content,
     photoUrl: subcategory.imageUrl ?? undefined,
     hasNext: page < totalPages - 1,
+    totalPages,
     extraRows: [filterButtonsRow(FILTERS, active, rest)],
   }
 }
@@ -70,47 +71,19 @@ export default class CollectionCommand extends Command {
     aliases: ['sub', 'colec', 'collec', 'col'],
   }
 
-  static override async execute(ctx: IncomingCommand) {
-    const query = ctx.args.join(' ').trim()
-    if (!query) {
-      await reply(ctx, 'Uso: `/clc <nome ou ID da subcategoria>`')
-      return
-    }
-
-    const asId = parseInt(query, 10)
-    let subcategoryId: number | undefined
-
-    if (!isNaN(asId)) {
-      const subcategory = await CardsDB.getSubcategory(asId)
-      if (!subcategory) {
-        await reply(ctx, 'Não encontrei uma subcategoria com esse ID.')
-        return
-      }
-      subcategoryId = subcategory.id
-    } else {
-      const results = await CardsDB.searchSubcategoriesByName(query, 100)
-      if (results.length === 0) {
-        await reply(ctx, 'Não encontrei uma subcategoria com esse nome.')
-        return
-      }
-      if (results.length > 1) {
-        const list = results.map(s => `${s.categoryEmoji} \`${s.id}\`. **${escapeMarkdown(s.name)}**`).join('\n')
-        await reply(ctx, `${EMOJI.search} **${results.length}** resultados encontrados:\n\n${list}\n\nPara ver uma dessas subcategorias, use \`/clc id\``)
-        return
-      }
-      subcategoryId = results[0]!.id
-    }
-
-    const arg = buildFilterArg([], String(subcategoryId))
+  @CommandArgument([{ name: 'subcategory', type: CommandArgumentType.SUBCATEGORY }])
+  static override async execute(ctx: IncomingCommand, args: { subcategory: NonNullable<Awaited<ReturnType<typeof CardsDB.getSubcategory>>> }) {
+    const arg = buildFilterArg([], String(args.subcategory.id))
     const page = await renderPage(arg, 0, ctx.message.author.id)
     if (!page) return
 
+    const navRow = pageNavRow('clc', arg, 0, page.hasNext, page.totalPages)
     await reply(ctx, {
       content: page.content,
       photoUrl: page.photoUrl,
       buttonRows: [
         ...page.extraRows.map(row => row.map(b => toPageButton('clc', b))),
-        ...(page.hasNext ? [[toPageButton('clc', { text: 'Próxima ➡️', arg, page: 1 })]] : []),
+        ...(navRow.length ? [navRow] : []),
       ],
     })
   }
