@@ -1,6 +1,6 @@
 import { users, userProfiles } from "./schemas/users";
 import { maybeTransaction } from "./decorators";
-import { eq, sql, and, gte, ilike, desc } from "drizzle-orm";
+import { eq, sql, and, or, gte, ilike, desc } from "drizzle-orm";
 
 type UserSortField = 'displayName' | 'coins' | 'usedDraws' | 'isBanned' | 'isAdmin';
 
@@ -71,12 +71,17 @@ export class UsersDB {
       .then(rows => rows[0]);
   })
 
-  static touchUsername = maybeTransaction('touchUsername', async (client, telegramId: string, username: string | undefined) => {
-    if (!username) return;
+  static touchUsername = maybeTransaction('touchUsername', async (client, telegramId: string, username: string | undefined, displayName?: string) => {
+    const set: Partial<typeof users.$inferInsert> = {};
+    const changed = [];
+    if (username) { set.username = username; changed.push(sql`${users.username} IS DISTINCT FROM ${username}`); }
+    if (displayName) { set.displayName = displayName; changed.push(sql`${users.displayName} IS DISTINCT FROM ${displayName}`); }
+    if (changed.length === 0) return;
+
     await client
       .update(users)
-      .set({ username })
-      .where(and(eq(users.telegramId, telegramId), sql`${users.username} IS DISTINCT FROM ${username}`));
+      .set(set)
+      .where(and(eq(users.telegramId, telegramId), or(...changed)));
   })
 
   static addCoins = maybeTransaction('addCoins', async (client, userId: number, amount: number) => {

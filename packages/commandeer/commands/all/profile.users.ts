@@ -4,7 +4,6 @@ import { UsersDB } from '@girae/database/users'
 import { CardsDB } from '@girae/database/cards'
 import { VanitiesDB } from '@girae/database/vanities'
 import type { IncomingCommand } from '@girae/common/commands/types'
-import { refreshAvatarIfStale } from '../../services/avatar'
 import { generateProfileImage, DEFAULT_BACKGROUND_URL } from '../../services/ditto'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 
@@ -37,7 +36,8 @@ export default class ProfileCommand extends Command {
       CardsDB.getUserCardsCount(user.id)
     ])
 
-    const avatarUrl = await refreshAvatarIfStale(user.id, user.telegramId, user.avatarUrl, user.avatarUpdatedAt)
+    // kept fresh by the inbound layer before this command ever runs - see profileData.ts
+    const avatarUrl = user.avatarUrl
 
     const background = vanities.find(v => v.id === profile.equipedBackgroundId)
     const sticker = vanities.find(v => v.id === profile.equipedStickerId)

@@ -3,7 +3,7 @@ import { CardsDB } from '@girae/database/cards'
 import { DBOS } from '@dbos-inc/dbos-sdk'
 import { reply } from '@girae/common/dbos/messaging'
 import { uploadCardImage } from '../../services/cardImage'
-import { uploadFromUrl } from '../../services/storage'
+import { uploadFromUrl } from '@girae/common/utilities/storage'
 import { runCardWizard } from '../../services/cardWizard'
 import type { IncomingCommand } from '@girae/common/commands/types'
 

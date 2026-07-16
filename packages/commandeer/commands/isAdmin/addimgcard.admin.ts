@@ -4,7 +4,7 @@ import { UsersDB } from '@girae/database/users'
 import { AuditDB } from '@girae/database/audit'
 import { reply } from '@girae/common/dbos/messaging'
 import { uploadCardImage } from '../../services/cardImage'
-import { uploadFromUrl } from '../../services/storage'
+import { uploadFromUrl } from '@girae/common/utilities/storage'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 

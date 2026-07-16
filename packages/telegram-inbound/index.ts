@@ -5,6 +5,8 @@ import { processCallback } from '@girae/common/inbound/callback'
 import { info } from '@girae/common/logger'
 import { UsersDB } from '@girae/database/users'
 import { commandQueue } from '@girae/common/queue'
+import { uploadFromUrl } from '@girae/common/utilities/storage'
+import { error } from '@girae/common/logger'
 
 const tg = new TelegramClient(process.env.TELEGRAM_TOKEN!)
 
@@ -41,7 +43,13 @@ async function refreshAvatarIfStale(telegramId: string, displayName: string) {
   const file = await photo.fetch()
   if (!file.url) return
 
-  await UsersDB.updateAvatar(user.id, file.url)
+  const avatarUrl = await uploadFromUrl(file.url, 'avatars').catch((e) => {
+    error('telegram-inbound', `failed to re-host avatar for ${telegramId}: ${e}`)
+    return null
+  })
+  if (!avatarUrl) return
+
+  await UsersDB.updateAvatar(user.id, avatarUrl)
 }
 
 const stripBotMention = (content: string): string | null => {
@@ -116,7 +124,7 @@ tg.on('message', async (msg) => {
     ...await resolveMedia(msg)
   }
 
-  UsersDB.touchUsername(m.author.id, msg.author!.username).catch(() => undefined)
+  UsersDB.touchUsername(m.author.id, msg.author!.username, m.author.name).catch(() => undefined)
   await refreshAvatarIfStale(m.author.id, m.author.name)
 
   await processCommand(m)

@@ -1,5 +1,5 @@
 import sharp from "sharp"
-import { uploadBytes } from "./storage"
+import { uploadBytes } from "@girae/common/utilities/storage"
 
 export const CARD_WIDTH = 900
 export const CARD_HEIGHT = 1260
