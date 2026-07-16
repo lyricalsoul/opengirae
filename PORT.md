@@ -24,6 +24,7 @@ something new or rename/drop a command — it's the fastest way to answer
 | `/card` (`view`,`ver`) + `cardinfo` quickview | `cards/card.ts` | all | plain + `@QuickView` |
 | `/cat` (`cats`,`ctg`) | `cards/cat.ts` | all | plain + `@Page` |
 | `/clc` (`sub`,`colec`,`collec`,`col`) w/ `1-5` filters | `cards/clc.ts` | all | plain + `@Page` + `pageFilters` |
+| `/cts` w/ `1-3` rarity filters | `cards/cts.ts` + `scenes/crds.ts` | all | plain + `@Page` + `pageFilters` |
 | `/bg` (`background`,`papeldeparede`) | `vanity/bg.ts` (view/search+browse; buy split into `/comprar`) | all | plain + shared `@Page` `'vanities'` |
 | `/sticker` (`figurinha`) | `vanity/sticker.ts` (same split) | all | plain + shared `@Page` `'vanities'` |
 | `/comprar` | `vanity/comprar.ts` | all | DBOS workflow + `equip` `@QuickView` |
@@ -40,7 +41,16 @@ something new or rename/drop a command — it's the fastest way to answer
 | `/addimgbg` (`setimagebg`,`setimgbg`) | `admin/setimagebg.ts` | isAdmin | plain |
 | `/delcard` | — (old bot had no confirm-button delete; new) | isAdmin | DBOS workflow (confirm/cancel, same shape as `/comprar`) |
 | `/setcardsub` (`setcardsubcat`) | — (no old equivalent, new) | isAdmin | plain |
+| `/mergesub` | — (not verified against old file) | isAdmin | DBOS workflow (confirm/cancel) |
+| `/delsubcategory` (`delsub`) | — (not verified against old file) | isAdmin | DBOS workflow (confirm/cancel, same shape as `/delcard`) |
+| `/chocolate` | — (not verified against old file) | isAdmin | plain |
+| `/editbg` | — (edit branch over `vanityWizard.ts`, same idea as `/editcard`) | isAdmin | DBOS workflow (`vanityWizard.ts`) |
+| `/editsticker` | — (edit branch over `vanityWizard.ts`, same idea as `/editcard`) | isAdmin | DBOS workflow (`vanityWizard.ts`) |
+| `/delbg` | — (not verified against old file) | isAdmin | DBOS workflow (confirm/cancel, same shape as `/delcard`) |
+| `/delsticker` | — (not verified against old file) | isAdmin | DBOS workflow (confirm/cancel, same shape as `/delcard`) |
 | `/commands` (`comandos`,`help`,`ajuda`) | — (no old equivalent, new) | all | plain |
+| `/trade` (`trocar`,`troca`) | `cards/trade.ts` + `scenes/start-trade.ts` | all | DBOS workflow (real Telegram deep-link DM negotiation, no `strade`/`htroca`) |
+| `/add` (`adicionar`) / `/remove` (`rem`) | — (no old equivalent, new) | all | plain — quick add/remove a card to/from your active `/trade` offer without leaving the DM |
 
 ## Status: what's left (surveyed, not yet built)
 
@@ -49,23 +59,23 @@ file not in the table above. Re-verify against the old file before starting
 any of these — this is a snapshot, not a spec.
 
 **Easy** (fits existing patterns, no new subsystem): `addalb` (addcard preset
-wrapper), `uploadurl`, `delbg`, `delsticker`, `delsubcategory`,
+wrapper), `uploadurl`,
 `transfercards`, `setapelido`, `giraeban` (needs `isBanned`+`banMessage`
 columns, already exist on `users`), `eval` (needs a new `isDeveloper` guard),
-`cts` (same `@Page` shape as `/clc`, no subcategory scoping), `rep`/`reputação`
-(needs a daily-cooldown flag), `inventory`/`loja` (old versions are already
+`rep`/`reputação` (needs a daily-cooldown flag), `inventory`/`loja` (old versions are already
 just stub/fallback text).
 
-**Complicated** (real new work, no new subsystem): `editbg`/`editsticker`
-(edit branch over `vanityWizard.ts`, same idea as `/editcard` over
-`cardWizard.ts`), `doar` (coin/card gift with confirm buttons + cooldowns —
-**not** trading, one-way, no negotiation), `chicoin` (shares `doar`'s
-coin-transfer path). `catlock` (restrict which categories a group can draw
-from) — needs one new per-group config table + one check in `/girar`;
-classified Complicated, not Major, if you're fine with that scope.
+**Complicated** (real new work, no new subsystem): `doar` (coin/card gift
+with confirm buttons + cooldowns — **not** trading, one-way, no negotiation),
+`chicoin` (shares `doar`'s coin-transfer path). `catlock` (restrict which
+categories a group can draw from) — needs one new per-group config table +
+one check in `/girar`; classified Complicated, not Major, if you're fine with
+that scope.
 
 **Major rework** (blocked on a subsystem that doesn't exist — say so, don't
-half-build it): `trade`/`strade`/`htroca` (no trade system), `conectarconta`/
+half-build it): `strade`/`htroca` (quick 1-for-1 trade and admin trade-history
+report — not ported; `/trade`'s full negotiated flow now covers the actual trading
+need, see the status table and "Real Telegram DMs" below), `conectarconta`/
 `removerconta`/`contas`/`buscar` (no account-linking subsystem — `buscar` is
 double-blocked, also needs per-user card image prefs), `uploadvid` (needs
 per-user card image prefs + a staff-approval flow), `fm` (no Last.fm
@@ -103,10 +113,10 @@ packages/commandeer/commands/<guards>/<name>.<category>.ts
 - Every command file `export default class X extends Command` from
   `@girae/common/commands`, with `static override info = { name, description,
   usage?, aliases?, useWorkflow? }` and `static override async execute(ctx:
-  IncomingCommand)`. `usage` (e.g. `'/card <nome ou ID do personagem>'`) is
-  shown by `/commands` and should mirror whatever the command's own
-  missing-args reply already says — set it on every new command, not just
-  ones with a `Uso:` string. `listCommands()` (`packages/commandeer/loader.ts`)
+  IncomingCommand, args?)`. `usage` (e.g. `'/card <nome ou ID do personagem>'`) is
+  shown by `/commands` **and** is what a failed `@CommandArgument` resolution
+  falls back to (see below) — set it on every new command, not just ones with
+  a `Uso:` string. `listCommands()` (`packages/commandeer/loader.ts`)
   exposes the full loaded list (module/category/guards) for anything that
   needs to enumerate commands, e.g. `/commands`' admin-gated section.
 - **Guards**: `packages/commandeer/services/guards.ts`. Currently only
@@ -119,7 +129,102 @@ packages/commandeer/commands/<guards>/<name>.<category>.ts
 - **Subcommands**: `@Subcommand({ name, description, aliases?, isWorkflow? })`
   from `@girae/common/commands` on a static method — see
   `profile.users.ts`'s `emo`/`edit` subcommands. Dispatch strips the
-  subcommand name from `ctx.args` before calling the handler.
+  subcommand name from `ctx.args` before calling the handler. `@CommandArgument`
+  stacks on a `@Subcommand` method exactly the same way as on `execute` (see
+  `profile.users.ts`'s `emo` subcommand).
+
+## Command arguments: `@CommandArgument`
+
+Centralizes what used to be ~15 near-identical copies of "parse `ctx.args`,
+look something up, handle 0/1/N results, reply with a usage string." Declare
+the positional argument list once; the resolved values arrive as a second
+`args` param instead of the command re-parsing `ctx.args` itself:
+
+```ts
+import { CommandArgument, CommandArgumentType } from '@girae/common/commands'
+
+@CommandArgument([
+  { name: 'category', type: CommandArgumentType.CATEGORY },
+  { name: 'name', type: CommandArgumentType.STRING },
+])
+static override async execute(ctx: IncomingCommand, args: {
+  category: NonNullable<Awaited<ReturnType<typeof CardsDB.getCategory>>>
+  name: string
+}) {
+  // args.category is already resolved, validated, non-null
+}
+```
+
+(the resolved value's type is whatever the underlying `CardsDB`/`VanitiesDB`
+lookup returns — there's no generated type per spec, write the `args`
+annotation by hand matching whichever DB method that type resolves through,
+same as every migrated command already does)
+
+- **Types** (`CommandArgumentType`, `packages/common/commands/decorators.ts`):
+  `NUMBER`, `STRING`, `HEX_COLOR` (normalizes to a leading `#`), `BOOLEAN`
+  (`yes`/`sim`/`1`/`on`/`ativar` → `true`; `no`/`nao`/`não`/`0`/`off`/
+  `desativar` → `false`, case-insensitive; anything else fails rather than
+  silently defaulting), `USER_MENTION` (reply-to always wins over a typed
+  arg; else `@username` DB lookup or a raw numeric telegram ID), `CARD` /
+  `CATEGORY` / `SUBCATEGORY` (numeric → lookup by ID; else fuzzy `ilike`
+  search with 0/1/N-result handling — a disambiguation list on N, same shape
+  every hand-rolled command used to build itself), `VANITY_ITEM` (same
+  ID-or-fuzzy-name shape as `CARD`, but needs a fixed `vanityType:
+  'background' | 'sticker'` on the spec since `VanitiesDB` has no single
+  "any vanity item" lookup — this is why `/comprar`'s `itemId` is still a
+  plain `NUMBER`, not `VANITY_ITEM`: it accepts *either* type, and the type
+  has no way to search both at once).
+- **Only the last spec in the array is greedy** (joins every remaining
+  token) — and only for STRING/CARD/CATEGORY/SUBCATEGORY/VANITY_ITEM types;
+  NUMBER/USER_MENTION/HEX_COLOR/BOOLEAN always mean exactly one token,
+  greedy position or not. Every earlier spec eats exactly one token. This is
+  what lets `addsubcategory.admin.ts` do `<id da categoria> <nome com
+  espaços>` and `setcardsub.admin.ts` do `<ID do card> <ID ou nome da
+  subcategoria>` without any special-casing in the command body.
+- **`nullable: true`** — a missing token resolves to `undefined` instead of
+  failing. Use this for "browse everything" defaults (`/cat`, `/bg`,
+  `/sticker` with no args) and "optional, default to self" args (`/profile
+  [@user]`) — the command body decides the default (`args.target ?? ctx.message.author.id`),
+  the spec just decides whether *absence* is an error.
+- **`guard?: (value, ctx) => boolean | string | Promise<boolean | string>`**
+  — runs after a successful type-parse. Return `false` for the generic
+  `Uso: ...` fallback, or a string to show a specific message instead (e.g.
+  `/bio`'s 100-character cap).
+- **No cross-argument validation.** A guard only sees its own value, not a
+  sibling arg's — `/mergesub`'s `fromId !== toId` check can't live in either
+  spec's `guard` and stays a manual check in the command body, right after
+  both resolve.
+- **Resolution failures reply exactly once**, then the command's `execute`/
+  `@Subcommand` method is never called: a type-specific message (not-found,
+  N-result disambiguation) when the parser has one, otherwise the class's
+  own `info.usage` wrapped as `` Uso: `...` ``. This is why `CATEGORY`'s
+  not-found message lists every existing category (mirrors what `/cat`,
+  `/addsubcategory`, `/addimgcat` used to each build by hand) and `CARD`/
+  `SUBCATEGORY`/`VANITY_ITEM`'s N-result message is the same disambiguation
+  list shape as before — the type owns building that reply now, not the
+  command.
+- **Not for `@QuickView`/`@Page`** — those take a single already-opaque
+  `arg` string from a totally different dispatch path (see "Stateless
+  callbacks" below), not `ctx.args`. `@CommandArgument` only applies to
+  `execute`/`@Subcommand` methods.
+- Resolver lives in `packages/commandeer/services/commandArguments.ts`,
+  split into a pure core (`parseCommandArguments` — no Telegram I/O beyond
+  the DB lookups CARD/CATEGORY/SUBCATEGORY/VANITY_ITEM/USER_MENTION need, so
+  it's safe and fast to unit test directly) and a thin shell
+  (`resolveCommandArguments`, wired into `packages/commandeer/services/commands.ts`'s
+  `runCommand`) that sends the actual reply on failure. Tests:
+  `packages/commandeer/tests/commandArguments/parsing.test.ts` — use
+  `platform: 'none'` (a genuine no-op in `answerer/handler.ts`) on any fake
+  `IncomingCommand` that needs to exercise the shell without a mocking
+  framework or a live Telegram send.
+- **Existing NUMBER-only admin ID args are a deliberate choice, not an
+  oversight** — wherever a command could plausibly accept a fuzzy name
+  instead of a bare ID, it already does (`/delcard`, `/editcard`,
+  `/addimgcard`, `/mergesub`, `/setcardsub`, the `del*`/`edit*` vanity
+  commands are all `CARD`/`SUBCATEGORY`/`VANITY_ITEM` now, not `NUMBER`).
+  `/comprar` is the one remaining `NUMBER` and it's `NUMBER` for the type-
+  ambiguity reason above, not because nobody got around to it — don't
+  "fix" it back to a fuzzy type without also solving that ambiguity.
 
 ## DBOS vs. plain commands vs. pagination
 
@@ -148,15 +253,33 @@ that can't be re-derived from scratch, it's a DBOS workflow.
 ## Messaging (`packages/common/dbos/messaging.ts`)
 
 - `reply(ctx, content)` — `content` is either a plain `MessageReply` (string
-  or `{content, photoUrl?, editMessageId?, buttons?}`) or `InlineReplyOptions`
-  (`{content, eventName, options, restricted, rows?, ...}` — the
-  DBOS-`recv`-coupled button flow, only meaningful inside a workflow).
-- Method (`sendMessage`/`sendPhoto`/`sendAnimation`/`editMessageText`/
-  `editMessageCaption`) is picked automatically from `photoUrl`/
-  `editMessageId`/animated-extension — callers never choose it.
+  or `{content, photoUrl?, editMessageId?, buttons?, buttonRows?,
+  captionOnly?}`) or `InlineReplyOptions` (`{content, eventName, options,
+  restricted, rows?, ...}` — the DBOS-`recv`-coupled button flow, only
+  meaningful inside a workflow). **Returns `Promise<string | undefined>`** —
+  the sent/edited message's ID on success, `undefined` if the send
+  ultimately failed after retries. This is a real capability, not just a
+  side effect: it's what lets `/trade` track `dmMessageId`/`groupMessageId`
+  and edit those exact messages in place later from a totally different
+  event (a `@QuickView` add/remove click on a different message entirely).
+- **Method selection**: no `photoUrl` → `sendMessage`/`editMessageText`.
+  `photoUrl` + no `editMessageId` → `sendPhoto`/`sendAnimation` (new
+  message). `photoUrl` + `editMessageId` → `editMessageMedia` **unless**
+  `captionOnly: true`, in which case `editMessageCaption`. Pass
+  `captionOnly: true` when you're re-editing a message that already has
+  this *exact* photo attached and only the caption/buttons changed —
+  `editMessageMedia` with an unchanged URL is what Telegram answers with
+  "message is not modified" (see `/trade`'s finalize-step "waiting on X"
+  nudges, which reuse one cached image URL across every repeat edit).
 - **GIFs**: Telegram rejects `sendPhoto` for gifs/videos — `isAnimatedMediaUrl()`
   sniffs the outgoing URL's extension (`.gif`/`.mp4`/`.webm`) and routes to
   `sendAnimation` instead, automatically, for every `photoUrl` you pass.
+- A permanently failed send (bad content, blocked user, rate limit exhausted
+  after 3 retries) does **not** throw into the calling workflow —
+  `settleReply()` catches and logs it, returning `undefined`. Don't remove
+  this: `reply()` awaiting the job's result is what makes the return value
+  above useful, but a workflow crashing because one Telegram send failed
+  would be strictly worse than the old fire-and-forget behavior.
 - `deleteMsg(ctx, messageId)`.
 - `awaitTextReply(cmd, eventName)` — registers the sender's *next* plain
   (non-`/`) message to resume a workflow via `DBOS.recv<{value}>(eventName)`.
@@ -202,13 +325,128 @@ static override async execute(ctx: IncomingCommand) {
   `eventName` can be reused across loop iterations (each `reply()` call
   re-registers it) — this is how `/addcard`'s edit-any-field loop works.
 - `restricted: 'author'` limits clicks to the original sender; enforced in
-  `packages/inbounder/callback.ts`. **Order matters there**: the pending
+  `packages/common/inbound/callback.ts`. **Order matters there**: the pending
   event's Redis hash field must be `hDel`'d *after* the `restricted`/option
   checks pass, not before — deleting first (a real bug, since fixed) means a
   non-author's click (or any click with a stale/invalid option index)
   permanently destroys the event, and the real author's subsequent click then
   hits a missing key and silently no-ops forever, even though the buttons are
   still visibly there.
+
+## Multi-party button flows: `awaitMultiPartyChoice`
+
+`reply()`'s `InlineReplyOptions` already supports `authorIds: string[]` (more than one
+allowed clicker), but on its own that only answers "is this click from an allowed
+person," not "which of them clicked, and is *this* click valid right now." Two gaps
+closed for this (`packages/common/dbos/messaging.ts`, `packages/common/inbound/callback.ts`,
+`packages/commandeer/worker.ts`), both additive — every existing single-author workflow
+is unaffected:
+
+- `InlineReplyOptions`/`StoredStep` gained `multiUse?: boolean` (default off = today's
+  behavior). When set, `callback.ts` does **not** auto-`hDel` the pending event after a
+  click — an invalid click (wrong role, stale state) is simply ignored and the buttons
+  stay live for the next click, instead of the old single-consumer behavior where *any*
+  authorized click — even an invalid one — permanently destroyed the event (the exact
+  bug this section already warned about for the single-author case, just not yet closed
+  for "right group, wrong role").
+- `clickerUserId` is threaded through `callback.ts` → the resume queue → `worker.ts`'s
+  `resumeWorker` → `DBOS.send`, so a workflow's `DBOS.recv<{value, messageId,
+  clickerUserId}>()` knows *who* clicked, not just that an allowed person did.
+
+Don't hand-roll the loop over these primitives — use
+`awaitMultiPartyChoice(cmd, eventName, content, options, authorIds, isValid,
+timeoutSeconds?)` (`packages/common/dbos/messaging.ts`, next to `reply()`/
+`awaitTextReply`). It posts the buttons (`multiUse: true` under the hood), loops
+`DBOS.recv` until a click satisfies your `isValid(choice)` predicate, explicitly
+`hDel`s the event once it does, and returns `{data, clickerUserId, messageId}` (or
+`null` on timeout, if you passed one). `isValid` can carry its own mutable state
+across calls (see `/trade`'s finalize step, which accumulates two separate "I'm done"
+clicks before resolving). Any future two-or-more-party confirm (a counter-offer flow,
+a dual-staff-approval gate) should reach for this instead of re-deriving the
+`multiUse`/`clickerUserId` mechanics.
+
+## Real Telegram DMs, without a "send to anyone" primitive
+
+`/trade` needed the new bot's first genuine private-message flow. The new bot has
+**no** "send a DM to an arbitrary user" function, and deliberately doesn't need one —
+Telegram itself forbids a bot from messaging a user who hasn't messaged it first, so
+any such primitive would just fail silently against that platform rule anyway. Instead:
+
+1. Post a **URL button** (not a callback button) pointing to
+   `https://t.me/{botUsername}?start=<payload>` — `getBotUsername()`
+   (`packages/commandeer/services/botInfo.ts`, lazy `tg.getMe()`, cached for the
+   process lifetime) supplies the username.
+2. Clicking it opens a private chat with the bot and sends `/start <payload>` **as
+   that user** — this is what legitimizes everything that follows. `start.main.ts`
+   dispatches on the payload (currently just `trade`); extend it, don't create a
+   second `/start`-like command, for any future deep-link need.
+3. From inside a running workflow that only knows the *original* (e.g. group) chat,
+   message into the private chat that `/start` just opened by building a shallow
+   override of the `IncomingCommand` — same `workflowIDToBeAssigned`, swapped
+   `message.chat`/`message.author` — and calling the ordinary `reply()` with it. No
+   messaging-layer changes needed for this part: button-click routing (`workflow:{id}`
+   Redis hash, `DBOS.recv`/`DBOS.send`) is keyed by workflow ID, not chat. See
+   `sideCtx()` in `trade.cards.ts`.
+
+**Views updated from external events**: `reply()` returns the sent/edited message's
+ID (see "Messaging" above), so a view can be re-edited in place later even when the
+trigger is a completely different message's button — `/trade`'s DM offer display
+re-renders in place every time a card is added/removed via `@QuickView`s on the
+`/card` command's buttons, not the DM message itself. `/trade` tracks
+`dmMessageId`/`groupMessageId` per side in its Redis state (see below) precisely so
+each re-render knows which message to edit. This used to be a real limitation
+(`reply()` was fire-and-forget) — it isn't anymore; don't reintroduce a
+send-a-fresh-message-every-time workaround for a new command that needs the same
+shape, just track the returned message ID like `/trade` does.
+
+## Negotiation state for multi-step, multi-party flows: Redis, not workflow closures
+
+`/trade`'s add/remove/ready actions arrive via `@QuickView`s (`tradeCard`,
+`tradeReady` in `trade.cards.ts`) triggered from a *different* command (`/card`'s
+button) or a different message than the one the workflow is currently blocked
+rendering. A `@QuickView` handler has no access to a specific running workflow's local
+variables — it's resolved globally by name (see "Stateless callbacks" above) and runs
+as a plain stateless request handler. So the negotiation state (both offers, ready
+flags, which DM chat is open for each side) lives in Redis (`trade:state:{workflowID}`,
+JSON blob, TTL-refreshed on every write), not in the workflow function's closure. The
+QuickView handlers do the actual validation and mutation against that state directly
+(same "a real mutation riding the popup mechanism" shape already established for
+`equip`) and then send a lightweight ping into the workflow's `DBOS.recv` loop, which
+just re-reads the current state and re-renders — it doesn't own or duplicate the
+mutation logic. Reach for this shape whenever a workflow needs to react to actions that
+don't arrive as a click on a message the workflow itself is holding open.
+
+**The Ditto trade image is always attached, from the very first message.**
+`renderTradeImage()` never returns `null` — a Ditto failure falls back to
+`FALLBACK_TRADE_IMAGE` (a static placeholder URL) instead of omitting the
+photo. This matters more than it looks: without a guaranteed image, one
+unlucky Ditto hiccup on the *first* render of a message would create it as
+plain text (no `photoUrl` that tick), and every later tick's attempt to
+attach a photo to that now-existing message is a `captionOnly: false` edit
+— fine, `editMessageMedia` does support converting a text message to a
+photo message (verified against Telegram's own API directly, despite it
+looking like it shouldn't work). The group/invite message gets its image
+from message #1 (computed via `emptyOffersState()` before the accept/decline
+buttons even go out), specifically so nothing downstream has to special-case
+"this message might still be text-only."
+
+**`telegramsjs`'s `editMessageMedia` wrapper is broken for URL-based media
+— call the HTTP API directly instead.** `packages/answerer/platforms/telegram.ts`'s
+`editMessageMediaRaw()` bypasses `tg.editMessageMedia()` entirely. The
+library's request builder switches to multipart form-encoding whenever a
+payload has a top-level `media` key (checked by field *name*, not shape),
+then its multipart serializer only knows how to attach a plain string/
+buffer/stream under that key. `editMessageMedia`'s `media` param is a
+*nested* `{type, media, caption}` object (unlike `sendPhoto`'s bare-string
+`photo`), so it silently fails to serialize at all and Telegram rejects the
+request with `Bad Request: parameter "media" is required` — every single
+time, not intermittently. `sendPhoto`/`sendAnimation` are unaffected (their
+media value really is a plain string). Confirmed by testing the raw HTTP
+call directly against Telegram's API with a bogus message ID: the error
+changed from "media is required" to "message to edit not found" once the
+payload was built by hand, proving the payload shape itself — not Ditto,
+not this codebase's message-flow logic — was the actual defect. Don't route
+`editMessageMedia` back through the library without re-verifying this.
 
 ## Shared wizards: when two commands need (almost) the same workflow
 
@@ -251,6 +489,19 @@ one command file:
   reports "already owned" instead of crashing — same shape as `/comprar`'s
   `23505` handling. Don't build cascade/soft-delete logic for this; the FK
   constraint *is* the safety net.
+- **`CardsDB.deleteSubcategory(id)` is the opposite call**: it *does* cascade
+  (`cardSubcategories`, `cardDrawHistory`, `chocolateFactoryCorrections` all
+  have `onDelete: cascade` referencing `subcategories.id`) and is gated
+  purely on current card count (`has_cards` if any card still lists this
+  subcategory). The asymmetry is deliberate, not an oversight: a card's
+  owner/draw-history rows are real user-owned state worth protecting behind
+  a hard FK rejection; a subcategory's draw-history rows and chocolate-
+  factory name corrections are just bookkeeping that's fine to disappear
+  alongside the subcategory itself — the old version additionally blocked
+  deletion on any *historical* draw from that subcategory, which meant a
+  subcategory that had been fully emptied of cards could still never be
+  deleted. See `/delsubcategory` and
+  `packages/database/tests/subcategory/deleteSubcategory.test.ts`.
 
 ## Stateless callbacks: `@QuickView` and `@Page`
 
@@ -289,24 +540,34 @@ mechanism, which is fine since the write is idempotent-safe and instant
 ```ts
 @Page({ name: 'cat', restricted: true })
 static async catPage(arg: string, page: number, authorId: string) {
-  return { content, photoUrl?, hasNext }  // or null if arg no longer resolves
+  return { content, photoUrl?, hasNext, totalPages? }  // or null if arg no longer resolves
 }
 ```
 
 - Callback data: `pg:{handler}:{page}:{authorId}:{arg}` — fully
   self-describing, no TTL, works indefinitely.
-- `restricted: true` makes the `{pages}` worker drop clicks from anyone but
-  `authorId` (silent no-op, matches the workflow buttons' convention — no
-  "not for you" message). Set this whenever the page content is
-  viewer-specific (e.g. `/clc`'s per-user ownership counts derive `authorId`
-  as "the viewer" — safe *only* because `restricted: true` guarantees the
-  clicker is always the original author).
+- `restricted: true` makes the `{pages}` worker **ack the callback with a
+  "Essa ação não é sua! 😅" alert** and drop the click otherwise (this used
+  to be a silent no-op — real bug, the click's loading spinner just sat
+  there forever with no feedback at all; fixed by threading
+  `callbackQueryId` through `callback.ts`'s `pg:` branch into the
+  `pageQueue` job, which `pageWorker` didn't have before). Set `restricted`
+  whenever the page content is viewer-specific (e.g. `/clc`'s per-user
+  ownership counts derive `authorId` as "the viewer" — safe *only* because
+  `restricted: true` guarantees the clicker is always the original author).
+- **`totalPages`**: return it whenever you can compute it (every current
+  `@Page` handler does) — it's what powers the first/prev/next/last nav row
+  below. Omitting it just means "first"/"last" never show, `hasNext` alone
+  still drives prev/next fine.
 - Trigger the first page directly from the command's own `execute()` by
   calling the same rendering function the `@Page` handler calls (see
   `cat.cards.ts`/`clc.cards.ts` — both have a shared `renderPage()` used by
   both `execute` and the decorated method, so there's exactly one place that
-  builds the content string). Wire subsequent pages via
-  `buttons: [{ text: 'Próxima ➡️', page: { handler, arg, page: 1 } }]`.
+  builds the content string) **and** the same `pageNavRow()` helper the
+  worker uses (see below) — don't hand-build page 0's button row separately,
+  that's exactly how "last" ended up missing from the first page for every
+  `@Page` command at once (each one hand-rolled its own single "next"
+  button instead of calling the shared nav-row builder).
 - **Why not DBOS**: a Prev/Next click is fully re-derivable from `(handler,
   page, arg)` — there's no real state to persist across clicks, and parking
   a DBOS workflow around just to answer that would burn workflow bookkeeping
@@ -365,6 +626,18 @@ conversion a command's `execute()` needs when it renders page 0 directly
 per command; three copies of the same three-line conversion was the signal
 it needed to be shared.
 
+**The nav row itself** (prev/next, plus first/last when there's more than
+one page to skip) is `pageNavRow(handler, arg, page, hasNext, totalPages)`
+(also in `messaging.ts`) — returns a single `ButtonSpec[]` row, `[]` if
+there's nothing to show. `pageWorker` (`worker.ts`) needs the same layout
+logic but builds raw `callbackData` strings instead of going through
+`reply()`'s `resolveButton`, so it calls the lower-level `pageNavSteps(page,
+hasNext, totalPages)` (returns `{text, page}[]`) and maps that itself. Both
+a command's `execute()` (page 0) and every subsequent `pageWorker` render
+must go through one of these two — first/last only appearing after the
+first click (not on the initial render) was exactly the bug caused by each
+command hand-building its own page-0 row instead.
+
 ### A `@Page` handler doesn't have to belong to the command that uses it
 
 `@Page`/`@QuickView` names are resolved in a **global** registry
@@ -389,7 +662,7 @@ buttons: [{ text: '💸 Comprar', runCommand: { name: 'comprar', args: [String(i
 ```
 
 `reply()` encodes this as `cmd:{name}:{args.join(',')}` (args must not
-contain commas). `inbounder/callback.ts`'s `cmd:` branch synthesizes an
+contain commas). `packages/common/inbound/callback.ts`'s `cmd:` branch synthesizes an
 `IncomingCommand`/`Message` from the callback's author/chat info and pushes
 it straight onto the normal `commandQueue` — from there it's indistinguishable
 from a typed command, guards included. This means a workflow reachable via a
@@ -437,7 +710,7 @@ duplicate "button version" of the same flow to keep in sync.
   route the output through `Bun.Image` afterward, that's a wasted
   decode/re-encode.
 - **Animated sources** (GIFs, arrive as Telegram `animation`, not `photo` —
-  see `Message.isAnimatedPhoto` set in `packages/inbounder/index.ts`) must
+  see `Message.isAnimatedPhoto` set in `packages/telegram-inbound/index.ts`) must
   **skip** the crop pipeline entirely — `uploadFromUrl` directly, not
   `uploadCardImage`. See the `isAnimated` branch in `addcard.admin.ts`.
 - Bucket layout: flat top-level folders per asset kind (`cards/`,
@@ -489,6 +762,17 @@ staff command does this — do it for every new one too, don't skip it.
   `DBOS.launch()`/`DBOS.shutdown()` round trip, both return correct data.
   **Do not use `@dataSource.transaction()` for new methods** - use
   `maybeTransaction()`, matching every existing method.
+- **`maybeTransaction()`'s non-DBOS fallback is a real transaction too, not just "no
+  DBOS bootstrap needed."** Outside `DBOS.isInitialized()` (a plain script, a `bun
+  test`), it wraps the call in `db.transaction(...)`, so a multi-statement method
+  (e.g. `CardsDB.executeTrade`) still rolls back atomically on throw. This was *not*
+  true before `/trade` needed it — the fallback used to call `fn(db, ...)` directly
+  against the ambient, non-transactional client, so every existing multi-statement
+  `maybeTransaction` method (e.g. `purchaseItem`) was silently non-atomic outside
+  DBOS, just untested because nothing had exercised that path with more than one
+  statement. Fixed once in `decorators.ts`, not per-caller. A money-path method with
+  more than one statement should have a `bun:test` exercising the rollback case
+  directly against the dev DB (see `cards.test.ts`) — that's what caught this.
 - Why not a real `@decorator`: TS's legacy/experimental decorators (this repo
   uses `experimentalDecorators`, matching `@dataSource.transaction()`'s own
   style) can't reshape a method's *declared* type, so a decorator can't hide
@@ -521,8 +805,9 @@ subcategory, tag, owner, quickView, search, dice, page, browse, ...) and
 `cativeiroEmoji(count)` (9-tier ownership-streak badge, ported verbatim from
 old bot's thresholds). **Rarity emoji comes from the DB** (`rarities.emoji`
 column) — never hardcode a rarity→emoji map like the old bot's `MEDAL_MAP`
-did; this schema already supports arbitrary rarities (a 4th, "Mítico", exists
-that the old bot's 3-entry map couldn't express).
+did; this schema supports arbitrary rarities even though only the same 3
+(Comum/Raro/Lendário) exist today, confirmed against the live DB — don't
+assume a 4th rarity exists anywhere in this codebase's docs or code.
 
 All replies are **Markdown** (`**bold**`, `` `code` ``, `_italic_`), not the
 old bot's HTML (`<b>`, `<code>`, `<i>`) — `processMarkdown()` in
@@ -532,7 +817,7 @@ into a reply string.
 ## Telegram-specific gotchas already handled
 
 - **Group `@mention` targeting** (`/album@otherbot`): stripped/filtered in
-  `packages/inbounder/index.ts`'s `stripBotMention()`, reading
+  `packages/telegram-inbound/index.ts`'s `stripBotMention()`, reading
   `tg.user.username`. If the mention doesn't match our bot, the message is
   dropped before it ever reaches a queue. This only applies to Telegram —
   don't add it to `handler.ts` (platform-agnostic).
@@ -544,8 +829,22 @@ into a reply string.
   Telegram's photo compression — the normal way admins attach card/vanity
   art) arrives as `document` instead, resolved only when
   `document.mimeType` starts with `image/`. See `resolveMedia()` in
-  `inbounder/index.ts`; all three feed the same `Message.photoUrl`, so no
+  `packages/telegram-inbound/index.ts`; all three feed the same `Message.photoUrl`, so no
   command needs to care which one it was.
+- **Telegram never includes a profile photo URL on inbound updates** — a
+  user's `avatarUrl` has to be fetched separately (`tg.getUserProfilePhotos()`)
+  and is only worth doing occasionally, not on every message.
+  `packages/telegram-inbound/index.ts`'s `refreshAvatarIfStale()` runs on
+  every inbound message and callback query, refreshing at most once per
+  24h per user (`avatarUpdatedAt`). **Anything that needs a real avatar URL
+  must go through a user who's actually messaged/clicked something recently**
+  — a brand-new user's row starts with `avatarUrl: ''` until their first
+  inbound event. This bit `/trade`'s Ditto image generation directly: an
+  empty `avatarURL` string makes Ditto's builder fail outright (confirmed via
+  direct API testing, not assumed), and unlike a missing card image (which
+  just renders with fewer cards), there's no silent-degradation path for a
+  missing avatar — hence the refresh living in the platform-ingestion layer,
+  not scattered into every command that happens to need an avatar.
 - **Reply retries**: every queued response (`packages/common/dbos/messaging.ts`'s
   `RESPONSE_JOB_OPTIONS`) retries 3x with exponential backoff — transient
   network blips talking to Telegram used to silently drop replies with zero
@@ -569,15 +868,20 @@ into a reply string.
   already-`JSON.stringify`'d string (which the multipart path *does* pass
   through correctly, as a plain form field); `sendMessage`/`editMessage*`
   keep the raw object, since double-stringifying there would break the JSON
-  body instead.
+  body instead. **Same root cause bit a second time** for `editMessageMedia`
+  specifically (see "Negotiation state..." above) — `telegramsjs`'s
+  multipart auto-detection keys off field *names*, not payload shape, and
+  its multipart serializer's field-by-field handling is incomplete/wrong for
+  several of Telegram's actual parameter shapes. Treat any new `tg.*` call
+  whose params include `media`/`photo`/`animation`/etc. as suspect until
+  verified against the real HTTP response, not just "it compiled and didn't
+  throw."
 
 ## Known, deliberate gaps (don't silently rebuild these)
 
 Say these out loud when porting something that touches them — don't quietly
 half-implement:
 
-- Trade sessions (old `/card`'s "add to trade" buttons) — no trade system
-  exists.
 - Last.fm scrobble integration — no music-service integration exists.
 - Per-user custom card image preferences — no schema for this.
 - `/clc i` (image-forward mode, a distinct display mode from the normal list
@@ -590,18 +894,21 @@ half-implement:
 
 ## Missing-argument handling
 
-Default reflex is a bare `Uso: /foo <arg>` string, but if the command already
-has a meaningful **bounded** fallback listing for "not found" (e.g. `/cat`'s
-"category not found, here are all of them"), reuse that same fallback for
-"no argument given" too — factor it into one shared function taking just a
-header string, don't duplicate the list-building. Missing-arg and not-found
-are the same underlying situation ("I don't know which one you mean") and
-should render the same way. Only keep a bare usage string when there's no
-sane bounded "show everything" list to fall back to (e.g. `/card`, `/clc`,
-`/favcard` — could be hundreds/thousands of cards, not a meaningful default
-listing) — `/bg`/`/sticker` already do this the other way, defaulting to
-their paginated browse-all view on no args, which was there before this
-convention was named.
+Mostly superseded by `@CommandArgument` now (see above) — a type's own
+not-found/disambiguation reply already covers "I don't know which one you
+mean" for `CARD`/`CATEGORY`/`SUBCATEGORY`/`VANITY_ITEM`, and `nullable:
+true` covers "no argument given" for the two shapes that actually differ:
+
+- **Bare usage string, no fallback list** (`/card`, `/clc`, `/favcard`) —
+  there's no sane bounded "show everything" list (could be hundreds/
+  thousands of cards), so a missing/unresolved arg just isn't `nullable`
+  and falls back to `info.usage`.
+- **Default to a paginated browse-all view on no args** (`/bg`, `/sticker`,
+  `/cat`) — the arg is `nullable: true`, and the command body checks
+  `args.category`/`args.item` for `undefined` to decide "show the browse
+  view" vs. "show this one specific thing." This was a hand-rolled
+  convention before `@CommandArgument` existed; it's just what `nullable`
+  means now.
 
 ## Porting checklist
 
@@ -610,13 +917,17 @@ convention was named.
    the relevant `*DB` class before adding new ones.
 3. Pick a tier: plain command / DBOS workflow / `@Page` pagination (see
    above) — default to the cheapest one that fits.
-4. Decide guard folder (`all` vs `isAdmin` vs a new guard) and aliases
+4. Declare a `@CommandArgument` spec for anything beyond a no-arg command
+   (see above) instead of hand-parsing `ctx.args` — check whether an
+   existing type already covers the lookup before reaching for `STRING`/
+   `NUMBER` as a fallback.
+5. Decide guard folder (`all` vs `isAdmin` vs a new guard) and aliases
    (include the old command name if you're renaming).
-5. Reuse `EMOJI`/`cativeiroEmoji` from `constants.ts`; add new shared emoji
+6. Reuse `EMOJI`/`cativeiroEmoji` from `constants.ts`; add new shared emoji
    there rather than inlining ad-hoc ones in the command file.
-6. If it touches images: crop only if it's card art
+7. If it touches images: crop only if it's card art
    (`cardImage.ts`); otherwise `uploadFromUrl` raw. Skip crop for animated
    sources.
-7. Staff mutation? Call `AuditDB.log`.
-8. State explicitly, in your summary, what you dropped and why.
-9. `bunx tsc --noEmit -p .` clean before calling it done.
+8. Staff mutation? Call `AuditDB.log`.
+9. State explicitly, in your summary, what you dropped and why.
+10. `bunx tsc --noEmit -p .` clean before calling it done.
