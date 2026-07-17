@@ -31,28 +31,47 @@ export default class DelCommand extends Command {
       }
       cardIds.push(parseInt(token, 10))
     }
-    const uniqueIds = [...new Set(cardIds)]
+
+    // a repeated ID means "discard that many copies" (e.g. `864 864` = 2x card 864)
+    const requestedQty = new Map<number, number>()
+    for (const id of cardIds) requestedQty.set(id, (requestedQty.get(id) ?? 0) + 1)
 
     const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
     if (!user) return
 
-    const ownedIds = await CardsDB.getOwnedCardIds(user.id, uniqueIds)
-    if (ownedIds.length === 0) {
-      await reply(ctx, 'Você não possui nenhum desses cards.')
+    const owned = await CardsDB.getOwnedCardQuantities(user.id, [...requestedQty.keys()])
+    const ownedCountById = new Map(owned.map(o => [o.cardId, o.count]))
+
+    // keep only IDs where the user actually has enough copies for what was requested
+    const finalIds: number[] = []
+    for (const [cardId, qty] of requestedQty) {
+      const have = ownedCountById.get(cardId) ?? 0
+      if (have >= qty) {
+        for (let i = 0; i < qty; i++) finalIds.push(cardId)
+      }
+    }
+
+    if (finalIds.length === 0) {
+      await reply(ctx, 'Você não possui esses cards em quantidade suficiente.')
       return
     }
 
-    const cards = await CardsDB.getCardsByIds(ownedIds)
+    const finalQty = new Map<number, number>()
+    for (const id of finalIds) finalQty.set(id, (finalQty.get(id) ?? 0) + 1)
+    const uniqueFinalIds = [...finalQty.keys()]
+
+    const cards = await CardsDB.getCardsByIds(uniqueFinalIds)
     const cardsById = new Map(cards.map(c => [c.id, c]))
 
-    const estimatedTotal = ownedIds.reduce((sum, id) => sum + (CARD_DISCARD_REWARDS[cardsById.get(id)!.rarityName] ?? 0), 0)
-    const list = ownedIds.map(id => {
+    const estimatedTotal = finalIds.reduce((sum, id) => sum + (CARD_DISCARD_REWARDS[cardsById.get(id)!.rarityName] ?? 0), 0)
+    const list = uniqueFinalIds.map(id => {
       const card = cardsById.get(id)!
-      return `${card.rarityEmoji} \`${card.id}\`. **${escapeMarkdown(card.name)}**`
+      const qty = finalQty.get(id)!
+      return `${card.rarityEmoji} \`${card.id}\`. **${escapeMarkdown(card.name)}**${qty > 1 ? ` (\`${qty}x\`)` : ''}`
     }).join('\n')
 
     const messageId = await reply(ctx, {
-      content: `🗑 Descartar ${ownedIds.length > 1 ? `${ownedIds.length} cards` : 'este card'}?\n\n${list}\n\nVocê receberá **${estimatedTotal}** moedas. Essa ação não pode ser desfeita.`,
+      content: `🗑 Descartar ${finalIds.length > 1 ? `${finalIds.length} cards` : 'este card'}?\n\n${list}\n\nVocê receberá **${estimatedTotal}** moedas. Essa ação não pode ser desfeita.`,
       eventName: CONFIRM_EVENT,
       restricted: 'author',
       options: [{ title: '✅ Confirmar', data: true }, { title: '❌ Cancelar', data: false }],
@@ -66,17 +85,17 @@ export default class DelCommand extends Command {
       return
     }
 
-    const result = await CardsDB.discardUserCards(user.id, ownedIds)
+    const result = await CardsDB.discardUserCards(user.id, finalIds)
     if (!result.ok) {
       await reply(ctx, {
-        content: `Você não possui mais o card \`${result.cardId}\`. Nenhum card foi removido.`,
+        content: `Você não possui mais o card \`${result.cardId}\` em quantidade suficiente. Nenhum card foi removido.`,
         editMessageId: confirmedMessageId,
       })
       return
     }
 
     await reply(ctx, {
-      content: `🗑 ${ownedIds.length > 1 ? `${ownedIds.length} cards descartados` : 'Card descartado'}. Você recebeu **${result.totalCoinsAwarded}** moedas.`,
+      content: `🗑 ${finalIds.length > 1 ? `${finalIds.length} cards descartados` : 'Card descartado'}. Você recebeu **${result.totalCoinsAwarded}** moedas.`,
       editMessageId: confirmedMessageId,
     })
   }

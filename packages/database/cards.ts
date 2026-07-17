@@ -82,13 +82,12 @@ export class CardsDB {
       .where(inArray(cards.id, ids));
   })
 
-  static getOwnedCardIds = maybeTransaction('getOwnedCardIds', async (client, userId: number, cardIds: number[]) => {
+  static getOwnedCardQuantities = maybeTransaction('getOwnedCardQuantities', async (client, userId: number, cardIds: number[]) => {
     if (cardIds.length === 0) return [];
     return await client
-      .select({ cardId: userCards.cardId })
+      .select({ cardId: userCards.cardId, count: userCards.count })
       .from(userCards)
-      .where(and(eq(userCards.userId, userId), inArray(userCards.cardId, cardIds), gte(userCards.count, 1)))
-      .then(rows => rows.map(r => r.cardId));
+      .where(and(eq(userCards.userId, userId), inArray(userCards.cardId, cardIds), gte(userCards.count, 1)));
   })
 
   static getCardForEdit = maybeTransaction('getCardForEdit', async (client, id: number) => {
@@ -819,7 +818,9 @@ export class CardsDB {
   })
 
   static discardUserCards = maybeTransaction('discardUserCards', async (client, userId: number, cardIds: number[]) => {
-    const uniqueIds = [...new Set(cardIds)];
+    const requestedQty = new Map<number, number>();
+    for (const id of cardIds) requestedQty.set(id, (requestedQty.get(id) ?? 0) + 1);
+    const uniqueIds = [...requestedQty.keys()];
     if (uniqueIds.length === 0) return { ok: true as const, results: [], totalCoinsAwarded: 0 };
 
     const owned = await client
@@ -831,25 +832,26 @@ export class CardsDB {
 
     const ownedById = new Map(owned.map(o => [o.cardId, o]));
 
-    for (const cardId of uniqueIds) {
+    for (const [cardId, qty] of requestedQty) {
       const row = ownedById.get(cardId);
-      if (!row || row.count <= 0) return { ok: false as const, reason: 'missing_or_not_owned' as const, cardId };
+      if (!row || row.count < qty) return { ok: false as const, reason: 'missing_or_not_owned' as const, cardId };
     }
 
     const results: { cardId: number; remainingCount: number; coinsAwarded: number }[] = [];
     let totalCoinsAwarded = 0;
 
-    for (const cardId of uniqueIds) {
+    for (const [cardId, qty] of requestedQty) {
       const row = ownedById.get(cardId)!;
-      const reward = CARD_DISCARD_REWARDS[row.rarityName] ?? 0;
+      const reward = (CARD_DISCARD_REWARDS[row.rarityName] ?? 0) * qty;
+      const remaining = row.count - qty;
 
-      if (row.count <= 1) {
+      if (remaining <= 0) {
         await client.delete(userCards).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
       } else {
-        await client.update(userCards).set({ count: sql`${userCards.count} - 1` }).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+        await client.update(userCards).set({ count: sql`${userCards.count} - ${qty}` }).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
       }
 
-      results.push({ cardId, remainingCount: Math.max(0, row.count - 1), coinsAwarded: reward });
+      results.push({ cardId, remainingCount: Math.max(0, remaining), coinsAwarded: reward });
       totalCoinsAwarded += reward;
     }
 

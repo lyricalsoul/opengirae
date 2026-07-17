@@ -80,4 +80,30 @@ describe("CardsDB.discardUserCards", () => {
     const remaining = await db.select().from(userCards).where(eq(userCards.userId, userId));
     expect(remaining).toHaveLength(2);
   });
+
+  test("a repeated card id discards that many copies, not the id once", async () => {
+    await db.update(userCards).set({ count: 3 }).where(eq(userCards.userId, userId));
+
+    const result = await CardsDB.discardUserCards(userId, [ownedCardAId, ownedCardAId]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.totalCoinsAwarded).toBe(CARD_DISCARD_REWARDS.Comum! * 2);
+    expect(result.results).toEqual([{ cardId: ownedCardAId, remainingCount: 1, coinsAwarded: CARD_DISCARD_REWARDS.Comum! * 2 }]);
+
+    const [remaining] = await db.select().from(userCards).where(eq(userCards.cardId, ownedCardAId));
+    expect(remaining!.count).toBe(1);
+  });
+
+  test("requesting more copies than owned aborts the entire batch", async () => {
+    // beforeEach seeds count: 1 for both cards - asking for 2 copies of A must fail
+    const result = await CardsDB.discardUserCards(userId, [ownedCardAId, ownedCardAId, ownedCardBId]);
+    expect(result).toEqual({ ok: false, reason: 'missing_or_not_owned', cardId: ownedCardAId });
+
+    const remaining = await db.select().from(userCards).where(eq(userCards.userId, userId));
+    expect(remaining).toHaveLength(2);
+
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    expect(user!.coins).toBe(0);
+  });
 });
