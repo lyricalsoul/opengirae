@@ -9,6 +9,7 @@
 
 <svelte:head>
 	<link rel="icon" type="image/png" href={favicon} />
+	<script defer data-domain="girae.io" src="https://plausible.lyricalsoul.io/js/script.js"></script>
 </svelte:head>
 
 {@render children()}
