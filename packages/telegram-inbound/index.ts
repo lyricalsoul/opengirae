@@ -4,7 +4,7 @@ import { processCommand } from '@girae/common/inbound/handler'
 import { processCallback } from '@girae/common/inbound/callback'
 import { info } from '@girae/common/logger'
 import { UsersDB } from '@girae/database/users'
-import { commandQueue } from '@girae/common/queue'
+import { commandQueue, responseQueue } from '@girae/common/queue'
 import { refreshAvatar } from '@girae/common/avatarRefresh'
 
 const tg = new TelegramClient(process.env.TELEGRAM_TOKEN!)
@@ -146,6 +146,7 @@ if (webhookUrl) {
   if (dropPendingUpdates) {
     info('telegram-inbound', 'POLL_DROP_PENDING_UPDATES set, dropping pending updates and queued commands on start')
     await commandQueue.drain(true)
+    await responseQueue.drain(true)
     tg.polling.offset = 2147483647
     // somehow none of this works...
     // TODO: figure out why telegramjs is trash
