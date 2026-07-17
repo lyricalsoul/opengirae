@@ -13,6 +13,7 @@
 		"auth:schema": "better-auth generate --config src/lib/server/auth.ts --output src/lib/server/db/auth.schema.ts --yes"
 	},
 	"dependencies": {
+		"@girae/common": "workspace:*",
 		"@girae/database": "workspace:*",
 		"@opentelemetry/api": "^1.9.1",
 		"@opentelemetry/context-async-hooks": "^2.9.0",
@@ -21,12 +22,15 @@
 		"@opentelemetry/exporter-trace-otlp-proto": "^0.220.0",
 		"@opentelemetry/sdk-logs": "^0.220.0",
 		"@opentelemetry/sdk-trace-base": "^2.9.0",
+		"@tma.js/init-data-node": "^2.0.8",
+		"@tma.js/sdk-svelte": "^1.0.23",
 		"@trpc/client": "^10.45.2",
 		"@trpc/server": "^10.45.2",
 		"ag-grid-community": "^36.0.0",
 		"bits-ui": "^2.18.1",
 		"chart.js": "^4.5.1",
 		"clsx": "^2.1.1",
+		"konsta": "^5.2.0",
 		"tailwind-merge": "^3.6.0",
 		"trpc-sveltekit": "^3.6.3",
 		"winston": "^3.19.0",
