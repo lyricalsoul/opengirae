@@ -8,6 +8,7 @@ import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 
 const CONFIRM_EVENT = 'del:confirm'
+const MAX_CARDS_PER_REQUEST = 50
 
 export default class DelCommand extends Command {
   static override info = {
@@ -22,6 +23,11 @@ export default class DelCommand extends Command {
   @CommandArgument([{ name: 'ids', type: CommandArgumentType.STRING }])
   static override async execute(ctx: IncomingCommand, args: { ids: string }) {
     const tokens = args.ids.split(/\s+/).filter(Boolean)
+
+    if (tokens.length > MAX_CARDS_PER_REQUEST) {
+      await reply(ctx, `Você só pode descartar até ${MAX_CARDS_PER_REQUEST} cards de uma vez.`)
+      return
+    }
 
     const cardIds: number[] = []
     for (const token of tokens) {
