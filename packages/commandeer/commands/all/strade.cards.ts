@@ -4,6 +4,9 @@ import { CardsDB, InsufficientCardError } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { reply, deleteMsg, awaitMultiPartyChoice } from '@girae/common/dbos/messaging'
 import { generateTradeImage } from '@girae/common/ditto'
+import { refreshAvatar } from '@girae/common/avatarRefresh'
+import { DEFAULT_AVATAR_URL } from '@girae/database/constants'
+import { tg } from '../../services/botInfo'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 
@@ -71,9 +74,16 @@ export default class SimpleTradeCommand extends Command {
       return
     }
 
+    const [refreshedProposer, refreshedTarget] = await Promise.all([
+      refreshAvatar(tg, ctx.message.author.id, proposerName, { force: true }),
+      refreshAvatar(tg, targetTelegramId, targetName, { force: true }),
+    ])
+    const proposerAvatarUrl = refreshedProposer?.avatarUrl || DEFAULT_AVATAR_URL
+    const targetAvatarUrl = refreshedTarget?.avatarUrl || DEFAULT_AVATAR_URL
+
     const image = await generateTradeImage({
-      user1: { avatarURL: proposerUser.avatarUrl, name: proposerName, cards: args.myCard.imageUrl ? [args.myCard.imageUrl] : [] },
-      user2: { avatarURL: targetUser.avatarUrl, name: targetName, cards: args.theirCard.imageUrl ? [args.theirCard.imageUrl] : [] },
+      user1: { avatarURL: proposerAvatarUrl, name: proposerName, cards: args.myCard.imageUrl ? [args.myCard.imageUrl] : [] },
+      user2: { avatarURL: targetAvatarUrl, name: targetName, cards: args.theirCard.imageUrl ? [args.theirCard.imageUrl] : [] },
     }).catch(() => null) ?? { url: FALLBACK_TRADE_IMAGE }
 
     const content = `💱 Troca entre ${mention(ctx.message.author.id, proposerName)} e ${mention(targetTelegramId, targetName)}\n\n🃏 **${escapeMarkdown(proposerName)}** está oferecendo:\n\n${cardLine(args.myCard)}\n\n🃏 **${escapeMarkdown(targetName)}** está oferecendo:\n\n${cardLine(args.theirCard)}\n\nCliquem em **✅ Confirmar** para finalizar a troca, ou **❌ Cancelar** para cancelar a troca.\nAtenção: a troca será desfeita caso um dos usuários clique em cancelar. Preste atenção!`

@@ -4,7 +4,9 @@ import { CardsDB, InsufficientCardError } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { reply, deleteMsg, awaitMultiPartyChoice } from '@girae/common/dbos/messaging'
 import { generateTradeImage } from '@girae/common/ditto'
-import { getBotUsername } from '../../services/botInfo'
+import { refreshAvatar } from '@girae/common/avatarRefresh'
+import { DEFAULT_AVATAR_URL } from '@girae/database/constants'
+import { getBotUsername, tg } from '../../services/botInfo'
 import { rawClient } from '@girae/common/queue'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
@@ -206,8 +208,12 @@ export default class TradeCommand extends Command {
 
     const proposerName = proposerUser.displayName
     const targetName = targetUser.displayName
-    const proposerAvatarUrl = proposerUser.avatarUrl
-    const targetAvatarUrl = targetUser.avatarUrl
+    const [refreshedProposer, refreshedTarget] = await Promise.all([
+      refreshAvatar(tg, ctx.message.author.id, proposerName, { force: true }),
+      refreshAvatar(tg, targetTelegramId, targetName, { force: true }),
+    ])
+    const proposerAvatarUrl = refreshedProposer?.avatarUrl || DEFAULT_AVATAR_URL
+    const targetAvatarUrl = refreshedTarget?.avatarUrl || DEFAULT_AVATAR_URL
     const sideOf = (telegramId: string): Side => telegramId === targetTelegramId ? 'target' : 'proposer'
     const telegramIdOf = (side: Side) => side === 'proposer' ? ctx.message.author.id : targetTelegramId
     const nameOf = (side: Side) => side === 'proposer' ? proposerName : targetName
