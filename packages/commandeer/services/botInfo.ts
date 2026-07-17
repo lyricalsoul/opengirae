@@ -1,6 +1,6 @@
 import { TelegramClient } from "telegramsjs"
 
-const tg = new TelegramClient(process.env.TELEGRAM_TOKEN!)
+export const tg = new TelegramClient(process.env.TELEGRAM_TOKEN!)
 
 let cachedUsername: string | null = null
 

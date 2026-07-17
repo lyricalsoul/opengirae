@@ -5,8 +5,7 @@ import { processCallback } from '@girae/common/inbound/callback'
 import { info } from '@girae/common/logger'
 import { UsersDB } from '@girae/database/users'
 import { commandQueue } from '@girae/common/queue'
-import { uploadFromUrl } from '@girae/common/utilities/storage'
-import { error } from '@girae/common/logger'
+import { refreshAvatar } from '@girae/common/avatarRefresh'
 
 const tg = new TelegramClient(process.env.TELEGRAM_TOKEN!)
 
@@ -28,29 +27,7 @@ const resolveMedia = async (msg: any): Promise<{ photoUrl?: string, isAnimatedPh
   return { photoUrl: file.url ?? undefined }
 }
 
-const AVATAR_TTL_MS = 24 * 60 * 60 * 1000
-
-async function refreshAvatarIfStale(telegramId: string, displayName: string) {
-  const user = await UsersDB.ensureUser({ telegramId, displayName, avatarUrl: '' })
-  if (!user) return
-  const isStale = !user.avatarUrl || !user.avatarUpdatedAt || Date.now() - user.avatarUpdatedAt.getTime() > AVATAR_TTL_MS
-  if (!isStale) return
-
-  const photos = await tg.getUserProfilePhotos({ userId: telegramId, limit: 1 })
-  const photo = photos?.photos?.[0]?.[0]
-  if (!photo) return
-
-  const file = await photo.fetch()
-  if (!file.url) return
-
-  const avatarUrl = await uploadFromUrl(file.url, 'avatars').catch((e) => {
-    error('telegram-inbound', `failed to re-host avatar for ${telegramId}: ${e}`)
-    return null
-  })
-  if (!avatarUrl) return
-
-  await UsersDB.updateAvatar(user.id, avatarUrl)
-}
+const refreshAvatarIfStale = (telegramId: string, displayName: string) => refreshAvatar(tg, telegramId, displayName)
 
 const stripBotMention = (content: string): string | null => {
   if (!content.startsWith('/')) return content

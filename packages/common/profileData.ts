@@ -2,6 +2,7 @@ import { UsersDB } from '@girae/database/users'
 import { CardsDB } from '@girae/database/cards'
 import { VanitiesDB } from '@girae/database/vanities'
 import { DEFAULT_BACKGROUND_URL, type DittoProfileData } from './ditto'
+import { DEFAULT_AVATAR_URL } from '@girae/database/constants'
 
 export async function buildProfileData(
   telegramId: string,
@@ -21,7 +22,7 @@ export async function buildProfileData(
     CardsDB.getUserCardsCount(user.id)
   ])
 
-  const avatarUrl = user.avatarUrl
+  const avatarUrl = user.avatarUrl || DEFAULT_AVATAR_URL
 
   const background = vanities.find(v => v.id === profile.equipedBackgroundId)
   const sticker = vanities.find(v => v.id === profile.equipedStickerId)

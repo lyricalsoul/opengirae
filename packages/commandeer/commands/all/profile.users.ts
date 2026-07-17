@@ -3,9 +3,12 @@ import { reply } from '@girae/common/dbos/messaging'
 import { UsersDB } from '@girae/database/users'
 import { CardsDB } from '@girae/database/cards'
 import { VanitiesDB } from '@girae/database/vanities'
+import { DEFAULT_AVATAR_URL } from '@girae/database/constants'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { generateProfileImage, DEFAULT_BACKGROUND_URL } from '@girae/common/ditto'
+import { refreshAvatar } from '@girae/common/avatarRefresh'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
+import { tg } from '../../services/botInfo'
 
 export default class ProfileCommand extends Command {
   static override info = {
@@ -30,14 +33,14 @@ export default class ProfileCommand extends Command {
     const equippedIds = [profile.equipedBackgroundId, profile.equipedStickerId, profile.equipedProfileId]
       .filter((id): id is number => id != null)
 
-    const [favoriteCard, vanities, cardsCount] = await Promise.all([
+    const [favoriteCard, vanities, cardsCount, refreshedUser] = await Promise.all([
       user.favoriteCardId ? CardsDB.getCardWithDetails(user.favoriteCardId) : null,
       VanitiesDB.getStoreItemsByIds(equippedIds),
-      CardsDB.getUserCardsCount(user.id)
+      CardsDB.getUserCardsCount(user.id),
+      refreshAvatar(tg, targetTelegramId, user.displayName, { force: true })
     ])
 
-    // kept fresh by the inbound layer before this command ever runs - see profileData.ts
-    const avatarUrl = user.avatarUrl
+    const avatarUrl = refreshedUser?.avatarUrl || DEFAULT_AVATAR_URL
 
     const background = vanities.find(v => v.id === profile.equipedBackgroundId)
     const sticker = vanities.find(v => v.id === profile.equipedStickerId)
