@@ -7,6 +7,8 @@ import { reply } from '@girae/common/dbos/messaging'
 import { rawClient } from '@girae/common/queue'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
+import { addHours, formatDistanceToNow, startOfHour } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 
 export default class GirarCommand extends Command {
   static override info = {
@@ -43,7 +45,9 @@ export default class GirarCommand extends Command {
     }
 
     if (user.usedDraws >= user.maxDraws) {
-      await reply(ctx, "Ah... sinto muito, mas você já girou os cards que podia por agora. 😣\nVocê receberá mais giros amanhã.");
+      const nextRegen = startOfHour(addHours(new Date(), 1));
+      const timeUntil = formatDistanceToNow(nextRegen, { locale: ptBR, addSuffix: true });
+      await reply(ctx, `Ah... sinto muito, mas você já girou os cards que podia por agora. 😣\nVocê receberá mais giros **${timeUntil}**.`);
       return;
     }
 
