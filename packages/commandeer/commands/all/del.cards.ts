@@ -3,7 +3,7 @@ import { DBOS } from '@dbos-inc/dbos-sdk'
 import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { CARD_DISCARD_REWARDS } from '@girae/database/constants'
-import { reply, deleteMsg } from '@girae/common/dbos/messaging'
+import { reply } from '@girae/common/dbos/messaging'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 
@@ -15,6 +15,7 @@ export default class DelCommand extends Command {
     description: 'Descarta um ou mais cards em troca de moedas',
     usage: '/del <ID> [ID2] [ID3] ...',
     aliases: ['deletar'],
+    useWorkflow: true,
   }
 
   @DBOS.workflow()
@@ -35,23 +36,23 @@ export default class DelCommand extends Command {
     const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
     if (!user) return
 
-    const cards = await CardsDB.getCardsByIds(uniqueIds)
-    const cardsById = new Map(cards.map(c => [c.id, c]))
-
-    const missing = uniqueIds.filter(id => !cardsById.has(id))
-    if (missing.length > 0) {
-      await reply(ctx, `Você não possui o card \`${missing[0]}\`. Nenhum card foi removido.`)
+    const ownedIds = await CardsDB.getOwnedCardIds(user.id, uniqueIds)
+    if (ownedIds.length === 0) {
+      await reply(ctx, 'Você não possui nenhum desses cards.')
       return
     }
 
-    const estimatedTotal = uniqueIds.reduce((sum, id) => sum + (CARD_DISCARD_REWARDS[cardsById.get(id)!.rarityName] ?? 0), 0)
-    const list = uniqueIds.map(id => {
+    const cards = await CardsDB.getCardsByIds(ownedIds)
+    const cardsById = new Map(cards.map(c => [c.id, c]))
+
+    const estimatedTotal = ownedIds.reduce((sum, id) => sum + (CARD_DISCARD_REWARDS[cardsById.get(id)!.rarityName] ?? 0), 0)
+    const list = ownedIds.map(id => {
       const card = cardsById.get(id)!
       return `${card.rarityEmoji} \`${card.id}\`. **${escapeMarkdown(card.name)}**`
     }).join('\n')
 
     const messageId = await reply(ctx, {
-      content: `🗑 Descartar ${uniqueIds.length > 1 ? `${uniqueIds.length} cards` : 'este card'}?\n\n${list}\n\nVocê receberá **${estimatedTotal}** moedas. Essa ação não pode ser desfeita.`,
+      content: `🗑 Descartar ${ownedIds.length > 1 ? `${ownedIds.length} cards` : 'este card'}?\n\n${list}\n\nVocê receberá **${estimatedTotal}** moedas. Essa ação não pode ser desfeita.`,
       eventName: CONFIRM_EVENT,
       restricted: 'author',
       options: [{ title: '✅ Confirmar', data: true }, { title: '❌ Cancelar', data: false }],
@@ -59,15 +60,24 @@ export default class DelCommand extends Command {
 
     const selection = await DBOS.recv<{ value: boolean, messageId?: string }>(CONFIRM_EVENT)
     const confirmedMessageId = selection?.messageId ?? messageId
-    if (confirmedMessageId) await deleteMsg(ctx, confirmedMessageId)
-    if (!selection?.value) return
 
-    const result = await CardsDB.discardUserCards(user.id, uniqueIds)
-    if (!result.ok) {
-      await reply(ctx, `Você não possui mais o card \`${result.cardId}\`. Nenhum card foi removido.`)
+    if (!selection?.value) {
+      if (confirmedMessageId) await reply(ctx, { content: '❌ Descarte cancelado.', editMessageId: confirmedMessageId })
       return
     }
 
-    await reply(ctx, `🗑 ${uniqueIds.length > 1 ? `${uniqueIds.length} cards descartados` : 'Card descartado'}. Você recebeu **${result.totalCoinsAwarded}** moedas.`)
+    const result = await CardsDB.discardUserCards(user.id, ownedIds)
+    if (!result.ok) {
+      await reply(ctx, {
+        content: `Você não possui mais o card \`${result.cardId}\`. Nenhum card foi removido.`,
+        editMessageId: confirmedMessageId,
+      })
+      return
+    }
+
+    await reply(ctx, {
+      content: `🗑 ${ownedIds.length > 1 ? `${ownedIds.length} cards descartados` : 'Card descartado'}. Você recebeu **${result.totalCoinsAwarded}** moedas.`,
+      editMessageId: confirmedMessageId,
+    })
   }
 }

@@ -82,6 +82,15 @@ export class CardsDB {
       .where(inArray(cards.id, ids));
   })
 
+  static getOwnedCardIds = maybeTransaction('getOwnedCardIds', async (client, userId: number, cardIds: number[]) => {
+    if (cardIds.length === 0) return [];
+    return await client
+      .select({ cardId: userCards.cardId })
+      .from(userCards)
+      .where(and(eq(userCards.userId, userId), inArray(userCards.cardId, cardIds), gte(userCards.count, 1)))
+      .then(rows => rows.map(r => r.cardId));
+  })
+
   static getCardForEdit = maybeTransaction('getCardForEdit', async (client, id: number) => {
     return await client
       .select({
