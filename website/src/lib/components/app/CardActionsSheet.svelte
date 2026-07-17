@@ -18,10 +18,24 @@
 
 	let confirmOpen = $state(false);
 	let discarding = $state(false);
+	let favoriteCardId = $state<number | null>(null);
+	let settingFavorite = $state(false);
+
+	$effect(() => {
+		if (card) telegramTrpc.telegram.cards.myFavoriteCardId.query().then((id) => (favoriteCardId = id));
+	});
 
 	async function copyId() {
 		if (!card) return;
 		await navigator.clipboard.writeText(String(card.id));
+		onClose();
+	}
+
+	async function setFavorite() {
+		if (!card || card.id === favoriteCardId || settingFavorite) return;
+		settingFavorite = true;
+		await telegramTrpc.telegram.cards.setFavorite.mutate({ cardId: card.id });
+		settingFavorite = false;
 		onClose();
 	}
 
@@ -50,6 +64,9 @@
 			{/if}
 		</ActionsLabel>
 		<ActionsButton onClick={copyId}>Copiar ID do card</ActionsButton>
+		<ActionsButton onClick={setFavorite}>
+			{card && card.id === favoriteCardId ? 'Carta favorita atual' : 'Marcar como favorita'}
+		</ActionsButton>
 		<ActionsButton onClick={() => (confirmOpen = true)}>Deletar card</ActionsButton>
 	</ActionsGroup>
 	<ActionsGroup>

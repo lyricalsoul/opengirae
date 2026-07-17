@@ -1,7 +1,9 @@
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import { telegramProcedure, requireUser } from '$lib/trpc/middleware/telegramAuth';
 import { t } from '$lib/trpc/t';
 import { CardsDB } from '@girae/database/cards';
+import { UsersDB } from '@girae/database/users';
 
 const listInput = z.object({
 	query: z.string().optional(),
@@ -42,6 +44,22 @@ export const telegramCardsRouter = t.router({
 		.mutation(async ({ ctx, input }) => {
 			const user = await requireUser(ctx.tgUser.id.toString());
 			return CardsDB.discardUserCards(user.id, input.cardIds);
+		}),
+
+	myFavoriteCardId: telegramProcedure.query(async ({ ctx }) => {
+		const user = await requireUser(ctx.tgUser.id.toString());
+		return user.favoriteCardId;
+	}),
+
+	setFavorite: telegramProcedure
+		.input(z.object({ cardId: z.number().int().positive() }))
+		.mutation(async ({ ctx, input }) => {
+			const user = await requireUser(ctx.tgUser.id.toString());
+			if (!(await CardsDB.hasUserCard(user.id, input.cardId))) {
+				throw new TRPCError({ code: 'BAD_REQUEST', message: 'not_owned' });
+			}
+			await UsersDB.setFavoriteCard(user.id, input.cardId);
+			return { ok: true };
 		}),
 
 	subcategoryCards: telegramProcedure

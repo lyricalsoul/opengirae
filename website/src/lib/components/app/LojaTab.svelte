@@ -133,7 +133,7 @@
 	</Navbar>
 	<div class="p-4">
 		<Segmented strong>
-			<SegmentedButton strong active={type === 'background'} onClick={() => (type = 'background')}>Papéis de parede</SegmentedButton>
+			<SegmentedButton strong active={type === 'background'} onClick={() => (type = 'background')}>Backgrounds</SegmentedButton>
 			<SegmentedButton strong active={type === 'sticker'} onClick={() => (type = 'sticker')}>Stickers</SegmentedButton>
 		</Segmented>
 	</div>

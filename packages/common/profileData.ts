@@ -6,7 +6,7 @@ import { DEFAULT_AVATAR_URL } from '@girae/database/constants'
 
 export async function buildProfileData(
   telegramId: string,
-  overrides?: Partial<Pick<DittoProfileData, 'backgroundURL' | 'stickerURL'>>
+  overrides?: Partial<Pick<DittoProfileData, 'backgroundURL' | 'stickerURL' | 'bio' | 'favoriteColor'>>
 ): Promise<DittoProfileData | null> {
   const profileRow = await UsersDB.getUserProfileByTelegramId(telegramId)
   const user = profileRow?.users
@@ -31,8 +31,8 @@ export async function buildProfileData(
   return {
     avatarURL: avatarUrl,
     username: user.displayName,
-    bio: profile.bio,
-    favoriteColor: profile.favoriteColor,
+    bio: overrides?.bio ?? profile.bio,
+    favoriteColor: overrides?.favoriteColor ?? profile.favoriteColor,
     reputation: profile.reputation,
     coins: user.coins,
     backgroundURL: overrides?.backgroundURL ?? background?.itemURL ?? DEFAULT_BACKGROUND_URL,

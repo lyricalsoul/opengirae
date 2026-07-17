@@ -1,9 +1,8 @@
 import { Command, CommandArgument, CommandArgumentType } from '@girae/common/commands'
 import { reply } from '@girae/common/dbos/messaging'
 import { UsersDB } from '@girae/database/users'
+import { MAX_BIO_LENGTH } from '@girae/database/constants'
 import type { IncomingCommand } from '@girae/common/commands/types'
-
-const MAX_BIO_LENGTH = 100
 
 export default class BioCommand extends Command {
   static override info = {
