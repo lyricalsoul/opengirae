@@ -1,6 +1,6 @@
 const RARITY_EMOJI: Record<string, string> = { '🥇': 'Lendário', '🥈': 'Raro', '🥉': 'Comum' }
 const CATEGORY_EMOJI_ID: Record<string, number> = {
-  '📕': 3, '🍿': 4, '🪩': 1, '🎭': 6, '📚': 7, '🕹️': 5, '🎎': 4, '⭐️': 6, '💽': 6
+  '📕': 3, '🍿': 4, '🪩': 2, '🎭': 6, '📚': 7, '🕹': 5, '🎎': 4, '⭐️': 2, '💽': 1
 }
 export interface ParsedCardListing {
   name: string
