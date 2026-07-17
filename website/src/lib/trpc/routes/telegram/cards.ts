@@ -1,9 +1,7 @@
 import { z } from 'zod';
-import { TRPCError } from '@trpc/server';
-import { telegramProcedure } from '$lib/trpc/middleware/telegramAuth';
+import { telegramProcedure, requireUser } from '$lib/trpc/middleware/telegramAuth';
 import { t } from '$lib/trpc/t';
 import { CardsDB } from '@girae/database/cards';
-import { UsersDB } from '@girae/database/users';
 
 const listInput = z.object({
 	query: z.string().optional(),
@@ -11,21 +9,25 @@ const listInput = z.object({
 	offset: z.number().int().nonnegative().optional(),
 });
 
-async function requireUser(telegramId: string) {
-	const user = await UsersDB.getUserByTelegramId(telegramId);
-	if (!user) throw new TRPCError({ code: 'NOT_FOUND' });
-	return user;
-}
-
 export const telegramCardsRouter = t.router({
-	list: telegramProcedure.input(listInput).query(async ({ ctx, input }) => {
+	bySubcategory: telegramProcedure.input(listInput).query(async ({ ctx, input }) => {
 		const user = await requireUser(ctx.tgUser.id.toString());
-		return CardsDB.getUserOwnedCardsPaginated(user.id, input);
+		return CardsDB.getUserOwnedCardsBySubcategory(user.id, input);
 	}),
 
-	overview: telegramProcedure.input(listInput).query(async ({ ctx, input }) => {
+	overview: telegramProcedure
+		.input(listInput.extend({
+			sortBy: z.enum(['default', 'closest']).optional(),
+			completionFilter: z.enum(['all', 'incomplete', 'completed']).optional(),
+		}))
+		.query(async ({ ctx, input }) => {
+			const user = await requireUser(ctx.tgUser.id.toString());
+			return CardsDB.getUserCollectionProgress(user.id, input);
+		}),
+
+	collectionStats: telegramProcedure.query(async ({ ctx }) => {
 		const user = await requireUser(ctx.tgUser.id.toString());
-		return CardsDB.getUserCollectionProgress(user.id, input);
+		return CardsDB.getUserCollectionStats(user.id);
 	}),
 
 	discard: telegramProcedure
@@ -43,9 +45,15 @@ export const telegramCardsRouter = t.router({
 		}),
 
 	subcategoryCards: telegramProcedure
-		.input(z.object({ subcategoryId: z.number().int().positive() }))
+		.input(z.object({
+			subcategoryId: z.number().int().positive(),
+			ownedFilter: z.enum(['owned', 'missing']).optional(),
+			limit: z.number().int().positive().max(100).optional(),
+			offset: z.number().int().nonnegative().optional(),
+		}))
 		.query(async ({ ctx, input }) => {
 			const user = await requireUser(ctx.tgUser.id.toString());
-			return CardsDB.getCardsInSubcategoryForUser(input.subcategoryId, user.id);
+			const { subcategoryId, ...opts } = input;
+			return CardsDB.getCardsInSubcategoryForUserPaginated(subcategoryId, user.id, opts);
 		}),
 });

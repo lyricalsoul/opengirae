@@ -36,7 +36,7 @@ const FIELD_PROMPTS: Record<TextField, string> = {
 
 const ACTION_EVENT = 'vanitywizard:action'
 const TEXT_EVENT = 'vanitywizard:text'
-const DELETE_CONFIRM_EVENT = 'vanitywizard:deleteConfirm'
+const DELETE_CONFIRM_EVENT = 'vanitywizard:delConfirm'
 
 const OLD_LISTING_RE = /^.+?\s\d+\.\s*(.+)\n(.+)\n+💰\s*([\d.,]+)\s*moedas/u
 

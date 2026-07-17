@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import { TRPCError } from '@trpc/server';
-import { telegramProcedure } from '$lib/trpc/middleware/telegramAuth';
+import { telegramProcedure, requireUser } from '$lib/trpc/middleware/telegramAuth';
 import { t } from '$lib/trpc/t';
 import { VanitiesDB } from '@girae/database/vanities';
 import { UsersDB } from '@girae/database/users';
@@ -14,12 +13,6 @@ const pageInput = z.object({
 	offset: z.number().int().nonnegative().optional(),
 });
 
-async function requireUser(telegramId: string) {
-	const user = await UsersDB.getUserByTelegramId(telegramId);
-	if (!user) throw new TRPCError({ code: 'NOT_FOUND' });
-	return user;
-}
-
 export const telegramStoreRouter = t.router({
 	popular: telegramProcedure.input(pageInput).query(({ input }) =>
 		VanitiesDB.listStoreItemsByPopularity(input.type, input)
@@ -29,6 +22,10 @@ export const telegramStoreRouter = t.router({
 		VanitiesDB.listStoreItemsByRecency(input.type, input)
 	),
 
+	cheapest: telegramProcedure.input(pageInput).query(({ input }) =>
+		VanitiesDB.listStoreItemsByPrice(input.type, input)
+	),
+
 	search: telegramProcedure.input(pageInput).query(({ input }) =>
 		VanitiesDB.listStoreItemsByRecency(input.type, input)
 	),
@@ -36,6 +33,14 @@ export const telegramStoreRouter = t.router({
 	ownedItemIds: telegramProcedure.query(async ({ ctx }) => {
 		const user = await requireUser(ctx.tgUser.id.toString());
 		return VanitiesDB.getBoughtItemIds(user.id);
+	}),
+
+	equippedItemIds: telegramProcedure.query(async ({ ctx }) => {
+		const profileRow = await UsersDB.getUserProfileByTelegramId(ctx.tgUser.id.toString());
+		return {
+			background: profileRow?.user_profiles?.equipedBackgroundId ?? null,
+			sticker: profileRow?.user_profiles?.equipedStickerId ?? null,
+		};
 	}),
 
 	balance: telegramProcedure.query(async ({ ctx }) => {

@@ -76,4 +76,41 @@ describe("CardsDB.getUserCollectionProgress", () => {
 
     await db.delete(users).where(eq(users.id, otherUser!.id));
   });
+
+  test("sortBy: 'closest' ranks by completion ratio, not absolute cards remaining", async () => {
+    // A 1-card subcategory the user hasn't touched has a tiny absolute gap (1) but 0%
+    // completion; a 10-card subcategory the user is 9/10 through has a bigger absolute gap (1
+    // too, coincidentally) but should still win on ratio. Use sizes where ratio and absolute
+    // gap actively disagree: tiny/untouched (gap 1, ratio 0%) vs big/almost-done (gap 5, ratio
+    // 83%) - absolute-gap sorting would incorrectly rank tiny first.
+    const [tiny] = await db.insert(subcategories).values({
+      categoryId, name: `Test Progress Tiny ${Date.now()}`,
+    }).returning();
+    const [tinyCard] = await db.insert(cards).values({ name: "Tiny Card", rarityId }).returning();
+    await db.insert(cardSubcategories).values({ cardId: tinyCard!.id, subcategoryId: tiny!.id, isMain: true });
+
+    const [big] = await db.insert(subcategories).values({
+      categoryId, name: `Test Progress Big ${Date.now()}`,
+    }).returning();
+    const bigCards = await db.insert(cards).values(
+      Array.from({ length: 6 }, (_, i) => ({ name: `Big Card ${i}`, rarityId })),
+    ).returning();
+    await db.insert(cardSubcategories).values(
+      bigCards.map(c => ({ cardId: c.id, subcategoryId: big!.id, isMain: true })),
+    );
+    await db.insert(userCards).values(
+      bigCards.slice(0, 5).map(c => ({ userId, cardId: c.id, count: 1 })),
+    );
+
+    const result = await CardsDB.getUserCollectionProgress(userId, {
+      query: "Test Progress", sortBy: "closest",
+    });
+    const names = result.rows.map(r => r.subcategoryName);
+    expect(names.indexOf(big!.name)).toBeLessThan(names.indexOf(tiny!.name));
+
+    await db.delete(userCards).where(inArray(userCards.cardId, bigCards.map(c => c.id)));
+    await db.delete(cardSubcategories).where(inArray(cardSubcategories.cardId, [tinyCard!.id, ...bigCards.map(c => c.id)]));
+    await db.delete(cards).where(inArray(cards.id, [tinyCard!.id, ...bigCards.map(c => c.id)]));
+    await db.delete(subcategories).where(inArray(subcategories.id, [tiny!.id, big!.id]));
+  });
 });

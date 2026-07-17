@@ -1,14 +1,14 @@
 <script lang="ts">
-	import './layout.css';
-	import favicon from '$lib/assets/favicon.svg';
+	import favicon from '$lib/assets/favicon.png';
+	import { installDevConsoleForward } from '$lib/devConsoleForward';
 
 	let { children } = $props();
+
+	installDevConsoleForward();
 </script>
 
 <svelte:head>
-	<link rel="icon" href={favicon} />
+	<link rel="icon" type="image/png" href={favicon} />
 </svelte:head>
-
-<div class="grain"></div>
 
 {@render children()}

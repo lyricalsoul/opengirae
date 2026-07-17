@@ -91,6 +91,64 @@ export class VanitiesDB {
     return { rows, total: totalResult };
   })
 
+  static listStoreItemsByPrice = maybeTransaction('listStoreItemsByPrice', async (
+    client, type: StoreItemType, opts: { query?: string; limit?: number; offset?: number } = {},
+  ) => {
+    const { query, limit = 20, offset = 0 } = opts;
+    const where = query
+      ? and(eq(storeItems.type, type), eq(storeItems.isAvailable, true), ilike(storeItems.title, `%${query}%`))
+      : and(eq(storeItems.type, type), eq(storeItems.isAvailable, true));
+
+    const rows = await client
+      .select({
+        id: storeItems.id, title: storeItems.title, description: storeItems.description,
+        price: storeItems.price, itemURL: storeItems.itemURL, type: storeItems.type,
+        createdAt: storeItems.createdAt,
+      })
+      .from(storeItems)
+      .where(where)
+      .orderBy(storeItems.price, storeItems.id)
+      .limit(limit)
+      .offset(offset);
+
+    const total = await client
+      .select({ total: sql<number>`CAST(COUNT(*) AS INTEGER)` })
+      .from(storeItems)
+      .where(where)
+      .then(r => r[0]?.total ?? 0);
+
+    return { rows, total };
+  })
+
+  static listOwnedStoreItems = maybeTransaction('listOwnedStoreItems', async (
+    client, userId: number, type: StoreItemType,
+    opts: { equippedId?: number | null; limit?: number; offset?: number } = {},
+  ) => {
+    const { equippedId, limit = 50, offset = 0 } = opts;
+    const where = and(eq(boughtItems.userId, userId), eq(storeItems.type, type));
+
+    const rows = await client
+      .select({
+        id: storeItems.id, title: storeItems.title, description: storeItems.description,
+        price: storeItems.price, itemURL: storeItems.itemURL, type: storeItems.type,
+      })
+      .from(boughtItems)
+      .innerJoin(storeItems, eq(storeItems.id, boughtItems.itemId))
+      .where(where)
+      .orderBy(sql`CASE WHEN ${storeItems.id} = ${equippedId ?? -1} THEN 0 ELSE 1 END`, storeItems.id)
+      .limit(limit)
+      .offset(offset);
+
+    const total = await client
+      .select({ total: sql<number>`CAST(COUNT(*) AS INTEGER)` })
+      .from(boughtItems)
+      .innerJoin(storeItems, eq(storeItems.id, boughtItems.itemId))
+      .where(where)
+      .then(r => r[0]?.total ?? 0);
+
+    return { rows, total };
+  })
+
   static hasBought = maybeTransaction('hasBought', async (client, userId: number, itemId: number): Promise<boolean> => {
     return !!(await client
       .select()

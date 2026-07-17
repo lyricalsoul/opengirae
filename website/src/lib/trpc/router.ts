@@ -6,6 +6,7 @@ import { categoriesRouter } from '$lib/trpc/routes/categories';
 import { cardsRouter } from '$lib/trpc/routes/cards';
 import { telegramCardsRouter } from '$lib/trpc/routes/telegram/cards';
 import { telegramStoreRouter } from '$lib/trpc/routes/telegram/store';
+import { telegramInventoryRouter } from '$lib/trpc/routes/telegram/inventory';
 
 export const router = t.router({
 	users: usersRouter,
@@ -16,6 +17,7 @@ export const router = t.router({
 	telegram: t.router({
 		cards: telegramCardsRouter,
 		store: telegramStoreRouter,
+		inventory: telegramInventoryRouter,
 	}),
 });
 

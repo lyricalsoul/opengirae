@@ -107,6 +107,24 @@ export async function generateTradeImage(data: DittoTradeData): Promise<{ url: s
     })
 }
 
+export async function renderProfile(
+  telegramId: string,
+  overrides?: { backgroundId?: number; stickerId?: number },
+): Promise<{ url: string } | null> {
+  const [background, sticker] = await Promise.all([
+    overrides?.backgroundId ? VanitiesDB.getStoreItemById(overrides.backgroundId) : null,
+    overrides?.stickerId ? VanitiesDB.getStoreItemById(overrides.stickerId) : null,
+  ])
+
+  const profileData = await buildProfileData(telegramId, {
+    ...(background ? { backgroundURL: background.itemURL } : {}),
+    ...(sticker ? { stickerURL: sticker.itemURL } : {}),
+  })
+  if (!profileData) return null
+
+  return generateProfileImage(profileData)
+}
+
 export async function previewItem(telegramId: string, itemId: number): Promise<{ url: string } | null> {
   const item = await VanitiesDB.getStoreItemById(itemId)
   if (!item || item.type === 'profile') return null

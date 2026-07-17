@@ -143,6 +143,16 @@ export class CardsDB {
       .then(a => a?.[0]);
   })
 
+  static getCardByName = maybeTransaction('getCardByName', async (client, name: string) => {
+    return await client
+      .select({ id: cards.id, name: cards.name })
+      .from(cards)
+      .where(ilike(cards.name, name))
+      .orderBy(cards.id)
+      .limit(1)
+      .then(a => a?.[0]);
+  })
+
   static updateCard = maybeTransaction('updateCard', async (client, id: number, data: Partial<typeof cards.$inferInsert>) => {
     return await client.update(cards).set(data).where(eq(cards.id, id)).returning().then(a => a?.[0]);
   })
@@ -444,6 +454,7 @@ export class CardsDB {
       .select({
         id: cards.id,
         name: cards.name,
+        imageUrl: cards.imageUrl,
         rarityName: rarities.name,
         rarityEmoji: rarities.emoji,
         categoryEmoji: categories.emoji,
@@ -457,6 +468,58 @@ export class CardsDB {
       .leftJoin(userCards, and(eq(userCards.cardId, cards.id), eq(userCards.userId, userId)))
       .where(and(eq(cardSubcategories.subcategoryId, subcategoryId), eq(cardSubcategories.isMain, true)))
       .orderBy(desc(cards.rarityId), cards.id);
+  })
+
+  static getCardsInSubcategoryForUserPaginated = maybeTransaction('getCardsInSubcategoryForUserPaginated', async (
+    client, subcategoryId: number, userId: number,
+    opts: { ownedFilter?: 'owned' | 'missing'; limit?: number; offset?: number } = {},
+  ) => {
+    const { ownedFilter, limit = 20, offset = 0 } = opts;
+    const baseWhere = and(eq(cardSubcategories.subcategoryId, subcategoryId), eq(cardSubcategories.isMain, true));
+    const ownedCondition = sql`COALESCE(${userCards.count}, 0) > 0`;
+    const missingCondition = sql`COALESCE(${userCards.count}, 0) = 0`;
+    const where = ownedFilter === 'owned' ? and(baseWhere, ownedCondition)
+      : ownedFilter === 'missing' ? and(baseWhere, missingCondition)
+      : baseWhere;
+
+    const rows = await client
+      .select({
+        id: cards.id,
+        name: cards.name,
+        imageUrl: cards.imageUrl,
+        rarityName: rarities.name,
+        rarityEmoji: rarities.emoji,
+        ownedCount: sql<number>`CAST(COALESCE(${userCards.count}, 0) AS INTEGER)`,
+      })
+      .from(cardSubcategories)
+      .innerJoin(cards, eq(cards.id, cardSubcategories.cardId))
+      .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+      .leftJoin(userCards, and(eq(userCards.cardId, cards.id), eq(userCards.userId, userId)))
+      .where(where)
+      .orderBy(desc(cards.rarityId), cards.id)
+      .limit(limit)
+      .offset(offset);
+
+    const total = await client
+      .select({ total: sql<number>`CAST(COUNT(*) AS INTEGER)` })
+      .from(cardSubcategories)
+      .innerJoin(cards, eq(cards.id, cardSubcategories.cardId))
+      .leftJoin(userCards, and(eq(userCards.cardId, cards.id), eq(userCards.userId, userId)))
+      .where(where)
+      .then(r => r[0]?.total ?? 0);
+
+    const countWith = async (extra: ReturnType<typeof sql>) => client
+      .select({ total: sql<number>`CAST(COUNT(*) AS INTEGER)` })
+      .from(cardSubcategories)
+      .innerJoin(cards, eq(cards.id, cardSubcategories.cardId))
+      .leftJoin(userCards, and(eq(userCards.cardId, cards.id), eq(userCards.userId, userId)))
+      .where(and(baseWhere, extra))
+      .then(r => r[0]?.total ?? 0);
+
+    const ownedCount = await countWith(ownedCondition);
+    const missingCount = await countWith(missingCondition);
+
+    return { rows, total, ownedCount, missingCount };
   })
 
   static getUserCardsCount = maybeTransaction('getUserCardsCount', async (client, userId: number): Promise<number> => {
@@ -503,6 +566,7 @@ export class CardsDB {
         .select({
           id: cards.id,
           name: cards.name,
+          imageUrl: cards.imageUrl,
           rarityName: rarities.name,
           rarityEmoji: rarities.emoji,
           categoryEmoji: categories.emoji,
@@ -531,26 +595,28 @@ export class CardsDB {
     return { rows, total };
   })
 
-  static getUserCollectionProgress = maybeTransaction('getUserCollectionProgress', async (
+  static getUserOwnedCardsBySubcategory = maybeTransaction('getUserOwnedCardsBySubcategory', async (
     client, userId: number, opts: { query?: string; limit?: number; offset?: number } = {},
   ) => {
-    const { query, limit = 20, offset = 0 } = opts;
-    const where = query ? ilike(subcategories.name, `%${query}%`) : undefined;
+    const PREVIEW_CAP = 10;
+    const { query, limit = 10, offset = 0 } = opts;
+    const cardMatch = query ? ilike(cards.name, `%${query}%`) : undefined;
+    const where = cardMatch ? and(eq(userCards.userId, userId), cardMatch) : eq(userCards.userId, userId);
 
-    const [rows, totalResult] = await Promise.all([
+    const [subcategoryRows, totalSubcategories] = await Promise.all([
       client
         .select({
           subcategoryId: subcategories.id,
           subcategoryName: subcategories.name,
+          categoryEmoji: categories.emoji,
           categoryName: categories.name,
-          imageUrl: subcategories.imageUrl,
-          total: sql<number>`CAST(COUNT(DISTINCT ${cardSubcategories.cardId}) AS INTEGER)`,
-          owned: sql<number>`CAST(COUNT(DISTINCT CASE WHEN ${userCards.count} > 0 THEN ${cardSubcategories.cardId} END) AS INTEGER)`,
+          total: sql<number>`CAST(COUNT(*) AS INTEGER)`,
         })
-        .from(subcategories)
+        .from(userCards)
+        .innerJoin(cards, eq(cards.id, userCards.cardId))
+        .innerJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.isMain, true)))
+        .innerJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
         .innerJoin(categories, eq(categories.id, subcategories.categoryId))
-        .innerJoin(cardSubcategories, and(eq(cardSubcategories.subcategoryId, subcategories.id), eq(cardSubcategories.isMain, true)))
-        .leftJoin(userCards, and(eq(userCards.cardId, cardSubcategories.cardId), eq(userCards.userId, userId)))
         .where(where)
         .groupBy(subcategories.id, categories.id)
         .orderBy(subcategories.id)
@@ -558,13 +624,125 @@ export class CardsDB {
         .offset(offset),
       client
         .select({ total: sql<number>`CAST(COUNT(DISTINCT ${subcategories.id}) AS INTEGER)` })
-        .from(subcategories)
-        .innerJoin(categories, eq(categories.id, subcategories.categoryId))
+        .from(userCards)
+        .innerJoin(cards, eq(cards.id, userCards.cardId))
+        .innerJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.isMain, true)))
+        .innerJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
         .where(where)
         .then(r => r[0]?.total ?? 0),
     ]);
 
-    return { rows, total: totalResult };
+    type CardRow = {
+      subcategoryId: number; id: number; name: string; imageUrl: string | null;
+      rarityName: string; rarityEmoji: string; ownedCount: number;
+    };
+    const subcategoryIds = subcategoryRows.map(r => r.subcategoryId);
+    const cardsBySubcategory = new Map<number, CardRow[]>();
+
+    if (subcategoryIds.length > 0) {
+      const cardWhere = cardMatch
+        ? and(eq(userCards.userId, userId), inArray(subcategories.id, subcategoryIds), cardMatch)
+        : and(eq(userCards.userId, userId), inArray(subcategories.id, subcategoryIds));
+
+      const cardRows = await client
+        .select({
+          subcategoryId: subcategories.id,
+          id: cards.id,
+          name: cards.name,
+          imageUrl: cards.imageUrl,
+          rarityName: rarities.name,
+          rarityEmoji: rarities.emoji,
+          ownedCount: userCards.count,
+        })
+        .from(userCards)
+        .innerJoin(cards, eq(cards.id, userCards.cardId))
+        .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+        .innerJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.isMain, true)))
+        .innerJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
+        .where(cardWhere)
+        .orderBy(desc(cards.rarityId), cards.id);
+
+      for (const row of cardRows) {
+        const list = cardsBySubcategory.get(row.subcategoryId) ?? [];
+        if (list.length < PREVIEW_CAP) list.push(row);
+        cardsBySubcategory.set(row.subcategoryId, list);
+      }
+    }
+
+    const rows = subcategoryRows.map(sub => ({
+      ...sub,
+      cards: cardsBySubcategory.get(sub.subcategoryId) ?? [],
+    }));
+
+    return { rows, total: totalSubcategories };
+  })
+
+  static getUserCollectionProgress = maybeTransaction('getUserCollectionProgress', async (
+    client, userId: number,
+    opts: {
+      query?: string; limit?: number; offset?: number; sortBy?: 'default' | 'closest';
+      completionFilter?: 'all' | 'incomplete' | 'completed';
+    } = {},
+  ) => {
+    const { query, limit = 20, offset = 0, sortBy = 'default', completionFilter = 'all' } = opts;
+    const where = query ? ilike(subcategories.name, `%${query}%`) : undefined;
+    const ownedExpr = sql`COUNT(DISTINCT CASE WHEN ${userCards.count} > 0 THEN ${cardSubcategories.cardId} END)`;
+    const totalExpr = sql`COUNT(DISTINCT ${cardSubcategories.cardId})`;
+    const having = completionFilter === 'incomplete' ? sql`${ownedExpr} < ${totalExpr}`
+      : completionFilter === 'completed' ? sql`${ownedExpr} = ${totalExpr}`
+      : undefined;
+
+    const rows = await client
+      .select({
+        subcategoryId: subcategories.id,
+        subcategoryName: subcategories.name,
+        categoryName: categories.name,
+        imageUrl: subcategories.imageUrl,
+        total: sql<number>`CAST(${totalExpr} AS INTEGER)`,
+        owned: sql<number>`CAST(${ownedExpr} AS INTEGER)`,
+      })
+      .from(subcategories)
+      .innerJoin(categories, eq(categories.id, subcategories.categoryId))
+      .innerJoin(cardSubcategories, and(eq(cardSubcategories.subcategoryId, subcategories.id), eq(cardSubcategories.isMain, true)))
+      .leftJoin(userCards, and(eq(userCards.cardId, cardSubcategories.cardId), eq(userCards.userId, userId)))
+      .where(where)
+      .groupBy(subcategories.id, categories.id)
+      .having(having)
+      .orderBy(sortBy === 'closest'
+        ? sql`(${ownedExpr}::float / NULLIF(${totalExpr}, 0)) DESC, (${totalExpr} - ${ownedExpr}) ASC, ${subcategories.id} ASC`
+        : sql`${subcategories.id} ASC`)
+      .limit(limit)
+      .offset(offset);
+
+    const total = await client
+      .select({ total: sql<number>`CAST(COUNT(*) AS INTEGER)` })
+      .from(subcategories)
+      .innerJoin(categories, eq(categories.id, subcategories.categoryId))
+      .innerJoin(cardSubcategories, and(eq(cardSubcategories.subcategoryId, subcategories.id), eq(cardSubcategories.isMain, true)))
+      .leftJoin(userCards, and(eq(userCards.cardId, cardSubcategories.cardId), eq(userCards.userId, userId)))
+      .where(where)
+      .groupBy(subcategories.id)
+      .having(having)
+      .then(r => r.length);
+
+    return { rows, total };
+  })
+
+  static getUserCollectionStats = maybeTransaction('getUserCollectionStats', async (client, userId: number) => {
+    const perSubcategory = await client
+      .select({
+        total: sql<number>`CAST(COUNT(DISTINCT ${cardSubcategories.cardId}) AS INTEGER)`,
+        owned: sql<number>`CAST(COUNT(DISTINCT CASE WHEN ${userCards.count} > 0 THEN ${cardSubcategories.cardId} END) AS INTEGER)`,
+      })
+      .from(subcategories)
+      .innerJoin(cardSubcategories, and(eq(cardSubcategories.subcategoryId, subcategories.id), eq(cardSubcategories.isMain, true)))
+      .leftJoin(userCards, and(eq(userCards.cardId, cardSubcategories.cardId), eq(userCards.userId, userId)))
+      .groupBy(subcategories.id);
+
+    return {
+      completed: perSubcategory.filter(s => s.total > 0 && s.owned === s.total).length,
+      total: perSubcategory.length,
+    };
   })
 
   static discardUserCard = maybeTransaction('discardUserCard', async (client, userId: number, cardId: number) => {

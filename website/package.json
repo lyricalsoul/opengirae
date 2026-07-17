@@ -30,6 +30,7 @@
 		"bits-ui": "^2.18.1",
 		"chart.js": "^4.5.1",
 		"clsx": "^2.1.1",
+		"framework7-icons": "^5.0.5",
 		"konsta": "^5.2.0",
 		"tailwind-merge": "^3.6.0",
 		"trpc-sveltekit": "^3.6.3",

@@ -67,6 +67,8 @@ const stripBotMention = (content: string): string | null => {
 
 const ADDCARD_CHAT_IDS = [['-1003993142790', '6016'], ['-1004365766145', '2']]
 const ADDBG_CHAT_ID = [['-1003993142790', '10106']]
+const CARDIMG_FROM_CAPTION_CHAT_IDS = [['-1003993142790', '46522']]
+
 const isLocalDevelopment = !!process.env.LOCAL_DEVELOPMENT
 
 tg.on('message', async (msg) => {
@@ -80,6 +82,11 @@ tg.on('message', async (msg) => {
   const matchingBg = ADDBG_CHAT_ID.find(([chatId, threadId]) => String(msg.chat?.id) === chatId && String(msg.chat?.threadId) === threadId)
   if (matchingBg && msg.chat?.inTopic && msg.photo?.length && !isLocalDevelopment) {
     content = `/addbg ${content ?? ''}`.trim()
+  }
+
+  const matchingCardImgCaption = CARDIMG_FROM_CAPTION_CHAT_IDS.find(([chatId, threadId]) => String(msg.chat?.id) === chatId && String(msg.chat?.threadId) === threadId)
+  if (matchingCardImgCaption && msg.chat?.inTopic && msg.photo?.length ) {
+    content = `/cardimgfromcaption ${content ?? ''}`.trim()
   }
 
   if (content) {

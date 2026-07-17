@@ -1,4 +1,5 @@
 <script lang="ts">
+	import './admin.css';
 	import { page, navigating } from '$app/state';
 	import UserMenu from '$lib/components/UserMenu.svelte';
 	import Toaster from '$lib/components/Toaster.svelte';
@@ -15,6 +16,7 @@
 	];
 </script>
 
+<div class="grain"></div>
 <div class="bg-tint flex h-screen overflow-hidden">
 	{#if data.user}
 		<aside class="border-line bg-panel flex w-56 shrink-0 flex-col justify-between overflow-y-auto border-r px-5 py-6">
