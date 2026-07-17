@@ -121,6 +121,30 @@ export class CardsDB {
     return await client.select().from(subcategories).where(eq(subcategories.name, name)).limit(1).then(a => a?.[0]);
   })
 
+  static getSubcategoryByAlias = maybeTransaction('getSubcategoryByAlias', async (client, alias: string) => {
+    const normalized = alias.trim().toLowerCase();
+    return await client
+      .select()
+      .from(subcategories)
+      .where(sql`${normalized} = ANY(${subcategories.aliases})`)
+      .limit(1)
+      .then(a => a?.[0]);
+  })
+
+  static addSubcategoryAlias = maybeTransaction('addSubcategoryAlias', async (client, subcategoryId: number, alias: string) => {
+    const normalized = alias.trim().toLowerCase();
+    return await client
+      .update(subcategories)
+      .set({
+        aliases: sql`CASE WHEN ${normalized} = ANY(coalesce(${subcategories.aliases}, ARRAY[]::text[]))
+          THEN coalesce(${subcategories.aliases}, ARRAY[]::text[])
+          ELSE array_append(coalesce(${subcategories.aliases}, ARRAY[]::text[]), ${normalized}) END`,
+      })
+      .where(eq(subcategories.id, subcategoryId))
+      .returning()
+      .then(a => a?.[0]);
+  })
+
   static getOrCreateCategory = maybeTransaction('getOrCreateCategory', async (client, name: string) => {
     const existing = await client.select().from(categories).where(eq(categories.name, name)).limit(1).then(a => a?.[0]);
     if (existing) return existing;

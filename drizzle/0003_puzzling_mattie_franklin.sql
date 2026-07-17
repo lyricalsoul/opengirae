@@ -1,0 +1,1 @@
+ALTER TABLE "subcategories" ADD COLUMN "aliases" text[];

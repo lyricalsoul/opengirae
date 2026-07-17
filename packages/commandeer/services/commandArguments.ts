@@ -123,6 +123,9 @@ async function parseSubcategory(raw: string): Promise<ParseOutcome> {
     return subcategory ? { ok: true, value: subcategory } : { ok: false, message: 'Não encontrei uma subcategoria com esse ID.' }
   }
 
+  const byAlias = await CardsDB.getSubcategoryByAlias(raw)
+  if (byAlias) return { ok: true, value: byAlias }
+
   const results = await CardsDB.searchSubcategoriesByName(raw, 100)
   if (results.length === 0) return { ok: false, message: 'Não encontrei uma subcategoria com esse nome.' }
   if (results.length > 1) {

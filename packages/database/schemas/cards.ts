@@ -35,6 +35,7 @@ export const subcategories = pgTable("subcategories", {
     .references(() => categories.id),
   name: text().notNull(),
   tags: text().array(),
+  aliases: text().array(),
   isSecondary: boolean().notNull().default(false),
   imageUrl: text(),
 
