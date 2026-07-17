@@ -1,2 +1,4 @@
 @import 'tailwindcss';
 @import 'konsta/svelte/theme.css';
+
+@custom-variant dark (&:where(.dark, .dark *));

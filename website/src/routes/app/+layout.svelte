@@ -1,19 +1,36 @@
 <script lang="ts">
 	import './app.css';
-	import { init, retrieveRawInitData } from '@tma.js/sdk-svelte';
+	import { init, retrieveRawInitData, miniApp, useSignal } from '@tma.js/sdk-svelte';
 	import { App, Page as KonstaPage } from 'konsta/svelte';
 
 	let { children } = $props();
 
 	type GateState = 'loading' | 'ready' | 'no-init-data';
 	let gateState = $state<GateState>('loading');
+	
+	let isDark = $state(typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
 	$effect(() => {
 		try {
 			init();
-		} catch {
+		} catch (e) {
+			console.log('[theme] init() failed', e);
 		}
 		gateState = retrieveRawInitData() ? 'ready' : 'no-init-data';
+
+		try {
+			miniApp.mount();
+			const darkSignal = useSignal(miniApp.isDark);
+			return darkSignal.subscribe((value) => {
+				isDark = value;
+			});
+		} catch (e) {
+			console.log('[theme] miniApp.mount() failed', e);
+		}
+	});
+
+	$effect(() => {
+		document.documentElement.classList.toggle('dark', isDark);
 	});
 </script>
 
