@@ -9,7 +9,7 @@ import { escapeMarkdown } from '@girae/common/utilities/markdown'
 
 type CardDetails = NonNullable<Awaited<ReturnType<typeof CardsDB.getCardWithDetails>>>
 
-const FALLBACK_IMAGE = 'https://placehold.co/900x1260/png'
+export const FALLBACK_IMAGE = 'https://placehold.co/900x1260/png'
 
 async function showCard(ctx: IncomingCommand, card: CardDetails) {
   const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)

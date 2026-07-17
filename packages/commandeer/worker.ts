@@ -92,7 +92,7 @@ export const pageWorker = new Worker(PAGE_QUEUE_NAME, async (job) => {
 
   await Promise.all([
     responseQueue.add('page', {
-      method: result.photoUrl ? 'editMessageCaption' : 'editMessageText',
+      method: result.photoUrl ? 'editMessageMedia' : 'editMessageText',
       chatId,
       messageId,
       content: result.content,

@@ -10,6 +10,7 @@ export const EMOJI = {
   dice: '🎲',
   page: '📃',
   browse: '👀',
+  progress: '📊',
 }
 
 const CATIVEIRO_TIERS: Array<[min: number, emoji: string]> = [
