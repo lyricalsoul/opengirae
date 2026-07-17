@@ -231,8 +231,6 @@ export default class TradeCommand extends Command {
     }
 
     try {
-      // sent from message #1 - never start this message as plain text (see
-      // FALLBACK_TRADE_IMAGE), so it's always a photo message from here on
       const inviteImage = await renderTradeImage(emptyOffersState(ctx.message.author.id, targetTelegramId), proposerAvatarUrl, proposerName, targetAvatarUrl, targetName)
 
       const inviteResult = await awaitMultiPartyChoice<'accept' | 'decline'>(
@@ -258,14 +256,14 @@ export default class TradeCommand extends Command {
         return
       }
 
-      if (!inviteResult.messageId) return // clicks always carry a messageId in practice; satisfies the type checker
+      if (!inviteResult.messageId) return // clicks always carry a messageId 
       const groupMessageId = inviteResult.messageId
       const botUsername = await getBotUsername()
       await reply(ctx, {
         content: `Hora de trocar, ${mention(ctx.message.author.id, proposerName)} e ${mention(targetTelegramId, targetName)}! 🤝\n\nCliquem no botão abaixo para inicar a troca.`,
         photoUrl: inviteImage.url,
         editMessageId: groupMessageId,
-        captionOnly: true, // same photo the invite message already has - caption/buttons only
+        captionOnly: true, // same photo the invite message already has
         buttons: [{ text: '💱 Iniciar troca', url: `https://t.me/${botUsername}?start=trade` }],
       })
 
@@ -381,7 +379,7 @@ export default class TradeCommand extends Command {
             content: finalizeContent(`⌛ Aguardando ${mention(telegramIdOf(pendingSide), nameOf(pendingSide))}.`),
             photoUrl: finalizeImage.url,
             editMessageId: groupMessageId,
-            captionOnly: true, // finalizeImage's URL is fixed across every repeat nudge here
+            captionOnly: true,
             buttonRows: buttons,
           })
         },
