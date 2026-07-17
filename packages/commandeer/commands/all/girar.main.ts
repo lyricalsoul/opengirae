@@ -3,7 +3,7 @@ import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { GachaLogic } from '@girae/database/gacha'
 import { DBOS } from '@dbos-inc/dbos-sdk'
-import { reply, deleteMsg } from '@girae/common/dbos/messaging'
+import { reply } from '@girae/common/dbos/messaging'
 import { rawClient } from '@girae/common/queue'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
@@ -113,10 +113,6 @@ export default class GirarCommand extends Command {
       await CardsDB.addCardDrawHistory(user.id, drawnCard.id, categoryId, subcategoryId);
       const tags = await CardsDB.getSecondarySubcategoryNames(drawnCard.id);
 
-      if (messageId) {
-        await deleteMsg(ctx, messageId);
-      }
-
       const subcategory = allSubcategories.find(s => s.id === subcategoryId);
       const subcategoryName = subcategory?.name ?? 'Desconhecida';
       const count = userCard?.count ?? 1;
@@ -131,7 +127,8 @@ ${category.emoji} _${escapeMarkdown(subcategoryName)}_${tagExtra}
 
       await reply(ctx, {
         content: text,
-        photoUrl: drawnCard.imageUrl ?? 'https://placehold.co/600x400/png'
+        photoUrl: drawnCard.imageUrl ?? 'https://placehold.co/600x400/png',
+        editMessageId: messageId,
       });
     } finally {
       await rawClient.del(lockKey);
