@@ -791,33 +791,16 @@ export class CardsDB {
     };
   })
 
-  static discardUserCard = maybeTransaction('discardUserCard', async (client, userId: number, cardId: number) => {
-    const [owned] = await client
-      .select({ count: userCards.count, rarityName: rarities.name })
-      .from(userCards)
-      .innerJoin(cards, eq(cards.id, userCards.cardId))
-      .innerJoin(rarities, eq(rarities.id, cards.rarityId))
-      .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)))
-      .limit(1);
-
-    if (!owned || owned.count <= 0) return null;
-
-    const reward = CARD_DISCARD_REWARDS[owned.rarityName] ?? 0;
-
-    if (owned.count <= 1) {
-      await client.delete(userCards).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
-    } else {
-      await client.update(userCards).set({ count: sql`${userCards.count} - 1` }).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+  static discardUserCards = async (userId: number, cardIds: number[]) => {
+    try {
+      return await CardsDB.discardUserCardsTx(userId, cardIds);
+    } catch (e) {
+      if (e instanceof InsufficientCardError) return { ok: false as const, reason: 'missing_or_not_owned' as const, cardId: e.cardId };
+      throw e;
     }
+  }
 
-    if (reward > 0) {
-      await client.update(users).set({ coins: sql`${users.coins} + ${reward}` }).where(eq(users.id, userId));
-    }
-
-    return { remainingCount: Math.max(0, owned.count - 1), coinsAwarded: reward };
-  })
-
-  static discardUserCards = maybeTransaction('discardUserCards', async (client, userId: number, cardIds: number[]) => {
+  private static discardUserCardsTx = maybeTransaction('discardUserCards', async (client, userId: number, cardIds: number[]) => {
     const requestedQty = new Map<number, number>();
     for (const id of cardIds) requestedQty.set(id, (requestedQty.get(id) ?? 0) + 1);
     const uniqueIds = [...requestedQty.keys()];
@@ -840,18 +823,24 @@ export class CardsDB {
     const results: { cardId: number; remainingCount: number; coinsAwarded: number }[] = [];
     let totalCoinsAwarded = 0;
 
+    // guard each decrement against the row's live count (not the snapshot read above) so a
+    // concurrent discard/trade on the same card can't be double-spent between the check and here
     for (const [cardId, qty] of requestedQty) {
       const row = ownedById.get(cardId)!;
       const reward = (CARD_DISCARD_REWARDS[row.rarityName] ?? 0) * qty;
-      const remaining = row.count - qty;
 
-      if (remaining <= 0) {
+      const [updated] = await client
+        .update(userCards)
+        .set({ count: sql`${userCards.count} - ${qty}` })
+        .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId), gte(userCards.count, qty)))
+        .returning();
+      if (!updated) throw new InsufficientCardError(userId, cardId);
+
+      if (updated.count === 0) {
         await client.delete(userCards).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
-      } else {
-        await client.update(userCards).set({ count: sql`${userCards.count} - ${qty}` }).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
       }
 
-      results.push({ cardId, remainingCount: Math.max(0, remaining), coinsAwarded: reward });
+      results.push({ cardId, remainingCount: updated.count, coinsAwarded: reward });
       totalCoinsAwarded += reward;
     }
 

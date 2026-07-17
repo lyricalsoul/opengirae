@@ -33,14 +33,18 @@ export const telegramCardsRouter = t.router({
 	}),
 
 	discard: telegramProcedure
-		.input(z.object({ cardId: z.number().int().positive() }))
+		.input(z.object({ cardId: z.number().int().positive(), quantity: z.number().int().positive().max(999).optional() }))
 		.mutation(async ({ ctx, input }) => {
 			const user = await requireUser(ctx.tgUser.id.toString());
-			return CardsDB.discardUserCard(user.id, input.cardId);
+			const quantity = input.quantity ?? 1;
+			const result = await CardsDB.discardUserCards(user.id, Array(quantity).fill(input.cardId));
+			if (!result.ok) return null;
+			const entry = result.results[0]!;
+			return { remainingCount: entry.remainingCount, coinsAwarded: entry.coinsAwarded };
 		}),
 
 	discardMany: telegramProcedure
-		.input(z.object({ cardIds: z.array(z.number().int().positive()).min(1) }))
+		.input(z.object({ cardIds: z.array(z.number().int().positive()).min(1).max(500) }))
 		.mutation(async ({ ctx, input }) => {
 			const user = await requireUser(ctx.tgUser.id.toString());
 			return CardsDB.discardUserCards(user.id, input.cardIds);

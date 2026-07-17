@@ -1,10 +1,9 @@
 <script lang="ts">
 	import { Actions, ActionsGroup, ActionsButton, ActionsLabel } from 'konsta/svelte';
 	import { telegramTrpc } from '$lib/trpc/telegramClient';
-	import { CARD_DISCARD_REWARDS } from '@girae/database/constants';
 	import DiscardConfirmDialog from './DiscardConfirmDialog.svelte';
 
-	type Card = { id: number; name: string; imageUrl: string | null; rarityEmoji: string; rarityName: string };
+	type Card = { id: number; name: string; imageUrl: string | null; rarityEmoji: string; rarityName: string; ownedCount: number };
 
 	let {
 		card,
@@ -13,7 +12,7 @@
 	}: {
 		card: Card | undefined;
 		onClose: () => void;
-		onDiscarded: (cardId: number, coinsAwarded: number) => void;
+		onDiscarded: (cardId: number, coinsAwarded: number, remainingCount: number) => void;
 	} = $props();
 
 	let confirmOpen = $state(false);
@@ -39,15 +38,15 @@
 		onClose();
 	}
 
-	async function discard() {
-		if (!card) return;
-		const cardId = card.id;
+	async function discard(selections: { cardId: number; quantity: number }[]) {
+		const selection = selections[0];
+		if (!selection) return;
 		discarding = true;
-		const result = await telegramTrpc.telegram.cards.discard.mutate({ cardId });
+		const result = await telegramTrpc.telegram.cards.discard.mutate({ cardId: selection.cardId, quantity: selection.quantity });
 		discarding = false;
 		confirmOpen = false;
 		onClose();
-		if (result) onDiscarded(cardId, result.coinsAwarded);
+		if (result) onDiscarded(selection.cardId, result.coinsAwarded, result.remainingCount);
 	}
 </script>
 
@@ -76,7 +75,7 @@
 
 <DiscardConfirmDialog
 	opened={confirmOpen}
-	coinsEstimate={card ? (CARD_DISCARD_REWARDS[card.rarityName] ?? 0) : 0}
+	cards={card ? [card] : []}
 	confirming={discarding}
 	onConfirm={discard}
 	onCancel={() => (confirmOpen = false)}

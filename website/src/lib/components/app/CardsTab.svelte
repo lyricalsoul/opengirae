@@ -20,6 +20,7 @@
 
 	let selectionMode = $state(false);
 	let selectedIds = $state(new Set<number>());
+	let quantities = $state<Record<number, number>>({});
 	let actionsCard = $state<CardRow | undefined>(undefined);
 	let detailSection = $state<{ subcategoryId: number; subcategoryName: string } | undefined>(undefined);
 
@@ -33,19 +34,43 @@
 
 	function toggleSelect(cardId: number) {
 		const next = new Set(selectedIds);
-		if (next.has(cardId)) next.delete(cardId);
-		else next.add(cardId);
+		if (next.has(cardId)) {
+			next.delete(cardId);
+			const { [cardId]: _removed, ...rest } = quantities;
+			quantities = rest;
+		} else {
+			next.add(cardId);
+			quantities = { ...quantities, [cardId]: 1 };
+		}
 		selectedIds = next;
+	}
+
+	function setQuantity(cardId: number, quantity: number) {
+		quantities = { ...quantities, [cardId]: quantity };
+	}
+
+	function toggleSelectionMode() {
+		selectionMode = !selectionMode;
+		if (!selectionMode) {
+			selectedIds = new Set();
+			quantities = {};
+		}
 	}
 
 	function onBulkDone() {
 		selectionMode = false;
 		selectedIds = new Set();
+		quantities = {};
 		sections.reset();
 	}
 
-	function onSingleDiscarded(cardId: number) {
-		sections.items = sections.items.map((s) => ({ ...s, cards: s.cards.filter((c) => c.id !== cardId) }));
+	function onSingleDiscarded(cardId: number, _coinsAwarded: number, remainingCount: number) {
+		sections.items = sections.items.map((s) => ({
+			...s,
+			cards: remainingCount > 0
+				? s.cards.map((c) => (c.id === cardId ? { ...c, ownedCount: remainingCount } : c))
+				: s.cards.filter((c) => c.id !== cardId),
+		}));
 	}
 
 	function onBack() {
@@ -65,7 +90,7 @@
 	<Page class="pb-safe-24">
 		<Navbar title="Cards">
 			{#snippet right()}
-				<Link onClick={() => (selectionMode = !selectionMode)}>{selectionMode ? 'Cancelar' : 'Selecionar'}</Link>
+				<Link onClick={toggleSelectionMode}>{selectionMode ? 'Cancelar' : 'Selecionar'}</Link>
 			{/snippet}
 			{#snippet subnavbar()}
 				<Searchbar value={searchQuery} onInput={(e: Event) => (searchQuery = (e.target as HTMLInputElement).value)} onClear={() => (searchQuery = '')} placeholder="Pesquisar..." />
@@ -86,7 +111,9 @@
 					cards={section.cards}
 					{selectionMode}
 					{selectedIds}
+					{quantities}
 					onToggleSelect={toggleSelect}
+					onQuantityChange={setQuantity}
 					onOpenActions={(c) => (actionsCard = c)}
 				/>
 			{/each}
@@ -98,5 +125,5 @@
 <CardActionsSheet card={actionsCard} onClose={() => (actionsCard = undefined)} onDiscarded={onSingleDiscarded} />
 
 {#if selectionMode && selectedCards.length > 0}
-	<BulkDiscardBar selectedCards={selectedCards} onDone={onBulkDone} />
+	<BulkDiscardBar selectedCards={selectedCards} {quantities} onDone={onBulkDone} />
 {/if}

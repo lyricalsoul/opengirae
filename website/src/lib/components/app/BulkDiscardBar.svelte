@@ -4,11 +4,15 @@
 	import { CARD_DISCARD_REWARDS } from '@girae/database/constants';
 	import DiscardConfirmDialog from './DiscardConfirmDialog.svelte';
 
+	type Card = { id: number; name: string; rarityEmoji: string; rarityName: string; ownedCount: number };
+
 	let {
 		selectedCards,
+		quantities,
 		onDone,
 	}: {
-		selectedCards: { id: number; rarityName: string }[];
+		selectedCards: Card[];
+		quantities: Record<number, number>;
 		onDone: (totalCoinsAwarded: number) => void;
 	} = $props();
 
@@ -16,14 +20,13 @@
 	let discarding = $state(false);
 
 	let estimatedTotal = $derived(
-		selectedCards.reduce((sum, c) => sum + (CARD_DISCARD_REWARDS[c.rarityName] ?? 0), 0),
+		selectedCards.reduce((sum, c) => sum + (CARD_DISCARD_REWARDS[c.rarityName] ?? 0) * (quantities[c.id] ?? 1), 0),
 	);
 
-	async function confirmDiscard() {
+	async function confirmDiscard(selections: { cardId: number; quantity: number }[]) {
 		discarding = true;
-		const result = await telegramTrpc.telegram.cards.discardMany.mutate({
-			cardIds: selectedCards.map((c) => c.id),
-		});
+		const cardIds = selections.flatMap((s) => Array(s.quantity).fill(s.cardId));
+		const result = await telegramTrpc.telegram.cards.discardMany.mutate({ cardIds });
 		discarding = false;
 		confirmOpen = false;
 		if (result.ok) onDone(result.totalCoinsAwarded);
@@ -38,8 +41,8 @@
 
 <DiscardConfirmDialog
 	opened={confirmOpen}
-	coinsEstimate={estimatedTotal}
-	cardCount={selectedCards.length}
+	cards={selectedCards}
+	initialQuantities={quantities}
 	confirming={discarding}
 	onConfirm={confirmDiscard}
 	onCancel={() => (confirmOpen = false)}
