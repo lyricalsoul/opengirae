@@ -68,6 +68,20 @@ export class CardsDB {
       .then(a => a?.[0]);
   })
 
+  static getCardsByIds = maybeTransaction('getCardsByIds', async (client, ids: number[]) => {
+    if (ids.length === 0) return [];
+    return await client
+      .select({
+        id: cards.id,
+        name: cards.name,
+        rarityName: rarities.name,
+        rarityEmoji: rarities.emoji,
+      })
+      .from(cards)
+      .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+      .where(inArray(cards.id, ids));
+  })
+
   static getCardForEdit = maybeTransaction('getCardForEdit', async (client, id: number) => {
     return await client
       .select({
