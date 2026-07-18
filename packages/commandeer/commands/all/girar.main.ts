@@ -21,6 +21,7 @@ export default class GirarCommand extends Command {
 
   static CATEGORY_SELECTED_EVENT = 'categorySelected'
   static SUBCATEGORY_SELECTED_EVENT = 'subcategorySelected'
+  static NUMBER_EMOJIS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟']
 
   @DBOS.workflow()
   static override async execute(ctx: IncomingCommand) {
@@ -88,11 +89,15 @@ export default class GirarCommand extends Command {
         return;
       }
 
+      const subcategoryList = selectedSubcategories
+        .map((c, i) => `${GirarCommand.NUMBER_EMOJIS[i] ?? `${i + 1}.`} — **${escapeMarkdown(c.name)}**`)
+        .join('\n')
+
       await reply(ctx, {
-        content: '🎲 Escolha uma subcategoria para girar:',
+        content: `🎰 Escolha uma coleção de **${escapeMarkdown(category.name)}**:\n\n${subcategoryList}`,
         eventName: GirarCommand.SUBCATEGORY_SELECTED_EVENT,
         restricted: 'author',
-        options: selectedSubcategories.map(c => ({ title: c.name, data: c.id })),
+        options: selectedSubcategories.map((c, i) => ({ title: GirarCommand.NUMBER_EMOJIS[i] ?? `${i + 1}.`, data: c.id })),
         rows: Array(Math.ceil(selectedSubcategories.length / 2)).fill(2),
         editMessageId: messageId,
       })
