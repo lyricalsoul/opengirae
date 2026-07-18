@@ -46,6 +46,7 @@ export const userProfiles = pgTable("user_profiles", {
   bio: text().notNull().default("Eu ainda não defini minha bio usando /bio!"),
   reputation: integer().notNull().default(0),
   favoriteColor: text().notNull().default("#FF94DB"),
+  favoriteCardColor: text(),
 
   isMarried: boolean().notNull().default(false),
   partnerId: integer().references(() => users.id),

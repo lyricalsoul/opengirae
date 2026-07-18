@@ -26,6 +26,7 @@ export const telegramInventoryRouter = t.router({
 		return {
 			bio: profileRow?.user_profiles?.bio ?? '',
 			favoriteColor: profileRow?.user_profiles?.favoriteColor ?? '#000000',
+			favoriteCardColor: profileRow?.user_profiles?.favoriteCardColor ?? null,
 		};
 	}),
 
@@ -35,6 +36,7 @@ export const telegramInventoryRouter = t.router({
 			stickerId: z.number().int().positive().optional(),
 			bio: z.string().max(MAX_BIO_LENGTH).optional(),
 			favoriteColor: hexColorInput.optional(),
+			favoriteCardColor: hexColorInput.nullable().optional(),
 		}))
 		.query(({ ctx, input }) => renderProfile(ctx.tgUser.id.toString(), input)),
 
@@ -48,7 +50,11 @@ export const telegramInventoryRouter = t.router({
 		}),
 
 	saveProfile: telegramProcedure
-		.input(z.object({ bio: z.string().max(MAX_BIO_LENGTH).optional(), favoriteColor: hexColorInput.optional() }))
+		.input(z.object({
+			bio: z.string().max(MAX_BIO_LENGTH).optional(),
+			favoriteColor: hexColorInput.optional(),
+			favoriteCardColor: hexColorInput.nullable().optional(),
+		}))
 		.mutation(async ({ ctx, input }) => {
 			const user = await requireUser(ctx.tgUser.id.toString());
 			await UsersDB.updateUserProfile(user.id, input);

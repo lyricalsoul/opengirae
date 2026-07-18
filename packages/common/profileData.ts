@@ -6,7 +6,7 @@ import { DEFAULT_AVATAR_URL } from '@girae/database/constants'
 
 export async function buildProfileData(
   telegramId: string,
-  overrides?: Partial<Pick<DittoProfileData, 'backgroundURL' | 'stickerURL' | 'bio' | 'favoriteColor'>>
+  overrides?: Partial<Pick<DittoProfileData, 'avatarURL' | 'backgroundURL' | 'stickerURL' | 'bio' | 'favoriteColor'>> & { favoriteCardColor?: string | null }
 ): Promise<DittoProfileData | null> {
   const profileRow = await UsersDB.getUserProfileByTelegramId(telegramId)
   const user = profileRow?.users
@@ -22,13 +22,13 @@ export async function buildProfileData(
     CardsDB.getUserCardsCount(user.id)
   ])
 
-  const avatarUrl = user.avatarUrl || DEFAULT_AVATAR_URL
+  const avatarUrl = overrides?.avatarURL ?? (user.avatarUrl || DEFAULT_AVATAR_URL)
 
   const background = vanities.find(v => v.id === profile.equipedBackgroundId)
   const sticker = vanities.find(v => v.id === profile.equipedStickerId)
   const profileFrame = vanities.find(v => v.id === profile.equipedProfileId)
 
-  return {
+  const data = {
     avatarURL: avatarUrl,
     username: user.displayName,
     bio: overrides?.bio ?? profile.bio,
@@ -41,7 +41,10 @@ export async function buildProfileData(
     favoriteCardName: favoriteCard?.name,
     favoriteCardImageURL: favoriteCard?.imageUrl ?? undefined,
     favoriteCardRarity: favoriteCard?.rarityName,
+    favoriteCardColor: (overrides?.favoriteCardColor !== undefined ? overrides.favoriteCardColor : profile.favoriteCardColor) ?? undefined,
     totalCards: cardsCount,
-    hideBadges: profile.hideProfileEmojis
+    hideEmojis: profile.hideProfileEmojis,
   }
+
+  return data
 }

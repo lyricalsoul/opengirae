@@ -18,8 +18,9 @@ export interface DittoProfileData {
   favoriteCardName?: string
   favoriteCardImageURL?: string
   favoriteCardRarity?: string
+  favoriteCardColor?: string
   totalCards: number
-  hideBadges: boolean
+  hideEmojis?: boolean
 }
 
 export async function generateProfileImage(data: DittoProfileData, overlays?: string[]): Promise<{ url: string } | null> {
@@ -109,7 +110,7 @@ export async function generateTradeImage(data: DittoTradeData): Promise<{ url: s
 
 export async function renderProfile(
   telegramId: string,
-  overrides?: { backgroundId?: number; stickerId?: number; bio?: string; favoriteColor?: string },
+  overrides?: { backgroundId?: number; stickerId?: number; bio?: string; favoriteColor?: string; favoriteCardColor?: string | null },
 ): Promise<{ url: string } | null> {
   const [background, sticker] = await Promise.all([
     overrides?.backgroundId ? VanitiesDB.getStoreItemById(overrides.backgroundId) : null,
@@ -121,6 +122,7 @@ export async function renderProfile(
     ...(sticker ? { stickerURL: sticker.itemURL } : {}),
     ...(overrides?.bio !== undefined ? { bio: overrides.bio } : {}),
     ...(overrides?.favoriteColor !== undefined ? { favoriteColor: overrides.favoriteColor } : {}),
+    ...(overrides?.favoriteCardColor !== undefined ? { favoriteCardColor: overrides.favoriteCardColor } : {}),
   })
   if (!profileData) return null
 

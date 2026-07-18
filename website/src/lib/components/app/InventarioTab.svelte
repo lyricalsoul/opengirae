@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Page, Navbar, Block, Segmented, SegmentedButton, Preloader, Toolbar, Button, ListInput } from 'konsta/svelte';
+	import { Page, Navbar, Block, BlockFooter, Segmented, SegmentedButton, Preloader, Toolbar, Button, ListInput } from 'konsta/svelte';
 	import { telegramTrpc } from '$lib/trpc/telegramClient';
 	import { MAX_BIO_LENGTH } from '@girae/database/constants';
 
@@ -17,9 +17,12 @@
 
 	let savedBio = $state('');
 	let savedFavoriteColor = $state('#000000');
+	let savedFavoriteCardColor = $state<string | null>(null);
 	let bio = $state('');
 	let favoriteColor = $state('#000000');
+	let favoriteCardColor = $state<string | null>(null);
 	let hexDraft = $state('#000000');
+	let cardHexDraft = $state('#000000');
 
 	let previewUrl = $state<string | null>(null);
 	let previewLoading = $state(false);
@@ -30,7 +33,8 @@
 		selectedBackgroundId !== equippedBackgroundId
 		|| selectedStickerId !== equippedStickerId
 		|| bio !== savedBio
-		|| favoriteColor !== savedFavoriteColor,
+		|| favoriteColor !== savedFavoriteColor
+		|| favoriteCardColor !== savedFavoriteCardColor,
 	);
 
 	async function init() {
@@ -44,9 +48,12 @@
 		selectedStickerId = equipped.sticker;
 		savedBio = profile.bio;
 		savedFavoriteColor = profile.favoriteColor;
+		savedFavoriteCardColor = profile.favoriteCardColor;
 		bio = profile.bio;
 		favoriteColor = profile.favoriteColor;
+		favoriteCardColor = profile.favoriteCardColor;
 		hexDraft = profile.favoriteColor;
+		cardHexDraft = profile.favoriteCardColor ?? '#000000';
 		ready = true;
 		renderPreview();
 	}
@@ -66,6 +73,7 @@
 			stickerId: selectedStickerId ?? undefined,
 			bio,
 			favoriteColor,
+			favoriteCardColor,
 		});
 		previewUrl = result?.url ?? null;
 		previewLoading = false;
@@ -83,6 +91,7 @@
 		selectedStickerId;
 		bio;
 		favoriteColor;
+		favoriteCardColor;
 		if (!ready) return;
 		clearTimeout(previewDebounce);
 		previewDebounce = setTimeout(renderPreview, 400);
@@ -110,6 +119,22 @@
 		hexDraft = favoriteColor;
 	}
 
+	function onCardHexInput(e: Event) {
+		const value = (e.target as HTMLInputElement).value;
+		cardHexDraft = value;
+		if (/^#[0-9a-fA-F]{6}$/.test(value)) favoriteCardColor = value;
+	}
+
+	function onCardColorPicked(e: Event) {
+		favoriteCardColor = (e.target as HTMLInputElement).value;
+		cardHexDraft = favoriteCardColor;
+	}
+
+	function clearCardColor() {
+		favoriteCardColor = null;
+		cardHexDraft = '#000000';
+	}
+
 	async function save() {
 		saving = true;
 		await Promise.all([
@@ -119,14 +144,15 @@
 					stickerId: selectedStickerId ?? undefined,
 				})
 				: null,
-			bio !== savedBio || favoriteColor !== savedFavoriteColor
-				? telegramTrpc.telegram.inventory.saveProfile.mutate({ bio, favoriteColor })
+			bio !== savedBio || favoriteColor !== savedFavoriteColor || favoriteCardColor !== savedFavoriteCardColor
+				? telegramTrpc.telegram.inventory.saveProfile.mutate({ bio, favoriteColor, favoriteCardColor })
 				: null,
 		]);
 		equippedBackgroundId = selectedBackgroundId;
 		equippedStickerId = selectedStickerId;
 		savedBio = bio;
 		savedFavoriteColor = favoriteColor;
+		savedFavoriteCardColor = favoriteCardColor;
 		saving = false;
 	}
 </script>
@@ -156,23 +182,46 @@
 		</Segmented>
 	</div>
 
+	{#snippet cardColorLabel()}
+		<span class="flex items-center gap-1.5">
+			Cor da carta favorita
+			{#if favoriteCardColor}
+				<button
+					type="button"
+					onclick={clearCardColor}
+					aria-label="Limpar cor da carta favorita"
+					class="flex h-4 w-4 items-center justify-center rounded-full bg-black/10 text-[10px] leading-none text-black/60 dark:bg-white/15 dark:text-white/60"
+				>✕</button>
+			{/if}
+		</span>
+	{/snippet}
+
 	{#if section === 'profile'}
 		<Block strong outline>
 			<ListInput
+				component="div"
 				type="textarea"
 				label="Biografia"
 				placeholder="Fale um pouco sobre você..."
 				maxlength={MAX_BIO_LENGTH}
 				bind:value={bio}
-				info={`${bio.length}/${MAX_BIO_LENGTH}`}
+				inputClass="min-h-24 resize-none !bg-black/5 dark:!bg-white/10 rounded-lg px-2"
 			/>
-			<div class="mt-4 flex items-center gap-3">
-				<input type="color" value={favoriteColor} oninput={onColorPicked} class="h-10 w-10 shrink-0 rounded-lg border border-black/10 dark:border-white/15" />
+			<p class="mt-1 text-right text-xs text-black/45 dark:text-white/45">{bio.length}/{MAX_BIO_LENGTH}</p>
+			<div class="mt-4 flex items-center gap-1.5">
+				<input type="color" value={favoriteColor} oninput={onColorPicked} class="h-10 w-10 shrink-0 appearance-none rounded-lg border border-black/10 [&::-webkit-color-swatch]:rounded-lg [&::-webkit-color-swatch]:border-none [&::-webkit-color-swatch-wrapper]:p-0 dark:border-white/15" />
 				<div class="flex-1">
-					<ListInput label="Cor favorita" placeholder="#rrggbb" value={hexDraft} oninput={onHexInput} />
+					<ListInput component="div" label="Cor favorita" placeholder="#rrggbb" value={hexDraft} oninput={onHexInput} />
+				</div>
+			</div>
+			<div class="mt-4 flex items-center gap-1.5">
+				<input type="color" value={cardHexDraft} oninput={onCardColorPicked} class="h-10 w-10 shrink-0 appearance-none rounded-lg border border-black/10 [&::-webkit-color-swatch]:rounded-lg [&::-webkit-color-swatch]:border-none [&::-webkit-color-swatch-wrapper]:p-0 dark:border-white/15" />
+				<div class="flex-1">
+					<ListInput component="div" label={cardColorLabel} placeholder="#rrggbb" value={favoriteCardColor ? cardHexDraft : ''} oninput={onCardHexInput} />
 				</div>
 			</div>
 		</Block>
+		<BlockFooter>Dica: toque no quadrado colorido pra mais opções de cor</BlockFooter>
 	{:else if itemsLoading}
 		<div class="flex justify-center p-8"><Preloader /></div>
 	{:else}
