@@ -87,21 +87,71 @@ export default class WishCommand extends Command {
       return
     }
 
-    const outcome = await resolveCardByIdOrName(rawArgs)
-    if (!outcome.ok) {
-      await reply(ctx, outcome.message ?? 'Uso: `/wish id ou nome`')
+    const tokens = rawArgs.split(/\s+/).filter(Boolean)
+
+    if (tokens.length === 1) {
+      const outcome = await resolveCardByIdOrName(rawArgs)
+      if (!outcome.ok) {
+        await reply(ctx, outcome.message ?? 'Uso: `/wish id ou nome`')
+        return
+      }
+      const card = outcome.value as { id: number; name: string }
+
+      const alreadyOnList = await CardsDB.isOnWishlist(viewer.id, card.id)
+      if (alreadyOnList) {
+        await CardsDB.removeFromWishlist(viewer.id, card.id)
+        await reply(ctx, `💔 **${escapeMarkdown(card.name)}** removido da sua lista de desejos.`)
+      } else {
+        await CardsDB.addToWishlist(viewer.id, card.id)
+        await reply(ctx, `💝 **${escapeMarkdown(card.name)}** adicionado à sua lista de desejos.`)
+      }
       return
     }
-    const card = outcome.value as { id: number; name: string }
 
-    const alreadyOnList = await CardsDB.isOnWishlist(viewer.id, card.id)
-    if (alreadyOnList) {
-      await CardsDB.removeFromWishlist(viewer.id, card.id)
-      await reply(ctx, `💔 **${escapeMarkdown(card.name)}** removido da sua lista de desejos.`)
-    } else {
-      await CardsDB.addToWishlist(viewer.id, card.id)
-      await reply(ctx, `💝 **${escapeMarkdown(card.name)}** adicionado à sua lista de desejos.`)
+    const MAX_CARDS = 50
+    if (tokens.length > MAX_CARDS) {
+      await reply(ctx, `Você só pode adicionar/remover até ${MAX_CARDS} cards de uma vez.`)
+      return
     }
+
+    const cardIds: number[] = []
+    for (const token of tokens) {
+      if (!/^\d+$/.test(token)) {
+        await reply(ctx, `\`${escapeMarkdown(token)}\` não é um ID de card válido. Use IDs numéricos quando desejar vários cards.`)
+        return
+      }
+      cardIds.push(parseInt(token, 10))
+    }
+
+    const uniqueIds = [...new Set(cardIds)]
+    const cards = await CardsDB.getCardsByIds(uniqueIds)
+    const cardsById = new Map(cards.map(c => [c.id, c]))
+
+    const notFound = uniqueIds.filter(id => !cardsById.has(id))
+    if (notFound.length > 0) {
+      await reply(ctx, `Não encontrei cards com os IDs: ${notFound.map(id => `\`${id}\``).join(', ')}`)
+      return
+    }
+
+    const added: string[] = []
+    const removed: string[] = []
+
+    for (const id of uniqueIds) {
+      const card = cardsById.get(id)!
+      const alreadyOnList = await CardsDB.isOnWishlist(viewer.id, id)
+      if (alreadyOnList) {
+        await CardsDB.removeFromWishlist(viewer.id, id)
+        removed.push(`${card.rarityEmoji} \`${card.id}\`. **${escapeMarkdown(card.name)}**`)
+      } else {
+        await CardsDB.addToWishlist(viewer.id, id)
+        added.push(`${card.rarityEmoji} \`${card.id}\`. **${escapeMarkdown(card.name)}**`)
+      }
+    }
+
+    const parts: string[] = []
+    if (added.length > 0) parts.push(`💝 **Adicionados:**\n${added.join('\n')}`)
+    if (removed.length > 0) parts.push(`💔 **Removidos:**\n${removed.join('\n')}`)
+    await reply(ctx, parts.join('\n\n'))
   }
 
   @Page({ name: 'wish' })
