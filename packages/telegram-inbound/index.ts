@@ -79,7 +79,8 @@ tg.on('message', async (msg) => {
     title: msg.chat!.title || 'DM'
   }
 
-  const replyTo: Message | undefined = msg.originalMessage ? {
+  const isTopicAnchorReply = !!msg.threadId && String(msg.originalMessage?.id) === msg.threadId
+  const replyTo: Message | undefined = (msg.originalMessage && !isTopicAnchorReply) ? {
     content: msg.originalMessage.content ?? msg.originalMessage.caption ?? '',
     id: String(msg.originalMessage.id),
     author: {
