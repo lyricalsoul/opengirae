@@ -110,7 +110,7 @@ export async function generateTradeImage(data: DittoTradeData): Promise<{ url: s
 
 export async function renderProfile(
   telegramId: string,
-  overrides?: { backgroundId?: number; stickerId?: number; bio?: string; favoriteColor?: string; favoriteCardColor?: string | null },
+  overrides?: { backgroundId?: number; stickerId?: number; bio?: string; favoriteColor?: string; favoriteCardColor?: string | null; hideEmojis?: boolean },
 ): Promise<{ url: string } | null> {
   const [background, sticker] = await Promise.all([
     overrides?.backgroundId ? VanitiesDB.getStoreItemById(overrides.backgroundId) : null,
@@ -123,6 +123,7 @@ export async function renderProfile(
     ...(overrides?.bio !== undefined ? { bio: overrides.bio } : {}),
     ...(overrides?.favoriteColor !== undefined ? { favoriteColor: overrides.favoriteColor } : {}),
     ...(overrides?.favoriteCardColor !== undefined ? { favoriteCardColor: overrides.favoriteCardColor } : {}),
+    ...(overrides?.hideEmojis !== undefined ? { hideEmojis: overrides.hideEmojis } : {}),
   })
   if (!profileData) return null
 

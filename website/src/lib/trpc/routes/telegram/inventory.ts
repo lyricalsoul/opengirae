@@ -27,6 +27,7 @@ export const telegramInventoryRouter = t.router({
 			bio: profileRow?.user_profiles?.bio ?? '',
 			favoriteColor: profileRow?.user_profiles?.favoriteColor ?? '#000000',
 			favoriteCardColor: profileRow?.user_profiles?.favoriteCardColor ?? null,
+			hideEmojis: profileRow?.user_profiles?.hideProfileEmojis ?? false,
 		};
 	}),
 
@@ -37,6 +38,7 @@ export const telegramInventoryRouter = t.router({
 			bio: z.string().max(MAX_BIO_LENGTH).optional(),
 			favoriteColor: hexColorInput.optional(),
 			favoriteCardColor: hexColorInput.nullable().optional(),
+			hideEmojis: z.boolean().optional(),
 		}))
 		.query(({ ctx, input }) => renderProfile(ctx.tgUser.id.toString(), input)),
 
@@ -54,10 +56,15 @@ export const telegramInventoryRouter = t.router({
 			bio: z.string().max(MAX_BIO_LENGTH).optional(),
 			favoriteColor: hexColorInput.optional(),
 			favoriteCardColor: hexColorInput.nullable().optional(),
+			hideEmojis: z.boolean().optional(),
 		}))
 		.mutation(async ({ ctx, input }) => {
 			const user = await requireUser(ctx.tgUser.id.toString());
-			await UsersDB.updateUserProfile(user.id, input);
+			const { hideEmojis, ...rest } = input;
+			await UsersDB.updateUserProfile(user.id, {
+				...rest,
+				...(hideEmojis !== undefined ? { hideProfileEmojis: hideEmojis } : {}),
+			});
 			return { ok: true };
 		}),
 });

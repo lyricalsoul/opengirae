@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Page, Navbar, Block, BlockFooter, Segmented, SegmentedButton, Preloader, Toolbar, Button, ListInput } from 'konsta/svelte';
+	import { Page, Navbar, Block, BlockFooter, Segmented, SegmentedButton, Preloader, Toolbar, Button, ListInput, Toggle } from 'konsta/svelte';
 	import { telegramTrpc } from '$lib/trpc/telegramClient';
 	import { MAX_BIO_LENGTH } from '@girae/database/constants';
 
@@ -18,9 +18,11 @@
 	let savedBio = $state('');
 	let savedFavoriteColor = $state('#000000');
 	let savedFavoriteCardColor = $state<string | null>(null);
+	let savedShowEmojis = $state(true);
 	let bio = $state('');
 	let favoriteColor = $state('#000000');
 	let favoriteCardColor = $state<string | null>(null);
+	let showEmojis = $state(true);
 	let hexDraft = $state('#000000');
 	let cardHexDraft = $state('#000000');
 
@@ -34,7 +36,8 @@
 		|| selectedStickerId !== equippedStickerId
 		|| bio !== savedBio
 		|| favoriteColor !== savedFavoriteColor
-		|| favoriteCardColor !== savedFavoriteCardColor,
+		|| favoriteCardColor !== savedFavoriteCardColor
+		|| showEmojis !== savedShowEmojis,
 	);
 
 	async function init() {
@@ -49,9 +52,11 @@
 		savedBio = profile.bio;
 		savedFavoriteColor = profile.favoriteColor;
 		savedFavoriteCardColor = profile.favoriteCardColor;
+		savedShowEmojis = !profile.hideEmojis;
 		bio = profile.bio;
 		favoriteColor = profile.favoriteColor;
 		favoriteCardColor = profile.favoriteCardColor;
+		showEmojis = !profile.hideEmojis;
 		hexDraft = profile.favoriteColor;
 		cardHexDraft = profile.favoriteCardColor ?? '#000000';
 		ready = true;
@@ -74,6 +79,7 @@
 			bio,
 			favoriteColor,
 			favoriteCardColor,
+			hideEmojis: !showEmojis,
 		});
 		previewUrl = result?.url ?? null;
 		previewLoading = false;
@@ -92,6 +98,7 @@
 		bio;
 		favoriteColor;
 		favoriteCardColor;
+		showEmojis;
 		if (!ready) return;
 		clearTimeout(previewDebounce);
 		previewDebounce = setTimeout(renderPreview, 400);
@@ -144,8 +151,8 @@
 					stickerId: selectedStickerId ?? undefined,
 				})
 				: null,
-			bio !== savedBio || favoriteColor !== savedFavoriteColor || favoriteCardColor !== savedFavoriteCardColor
-				? telegramTrpc.telegram.inventory.saveProfile.mutate({ bio, favoriteColor, favoriteCardColor })
+			bio !== savedBio || favoriteColor !== savedFavoriteColor || favoriteCardColor !== savedFavoriteCardColor || showEmojis !== savedShowEmojis
+				? telegramTrpc.telegram.inventory.saveProfile.mutate({ bio, favoriteColor, favoriteCardColor, hideEmojis: !showEmojis })
 				: null,
 		]);
 		equippedBackgroundId = selectedBackgroundId;
@@ -153,6 +160,7 @@
 		savedBio = bio;
 		savedFavoriteColor = favoriteColor;
 		savedFavoriteCardColor = favoriteCardColor;
+		savedShowEmojis = showEmojis;
 		saving = false;
 	}
 </script>
@@ -219,6 +227,10 @@
 				<div class="flex-1">
 					<ListInput component="div" label={cardColorLabel} placeholder="#rrggbb" value={favoriteCardColor ? cardHexDraft : ''} oninput={onCardHexInput} />
 				</div>
+			</div>
+			<div class="mt-4 flex items-center justify-between">
+				<span class="text-sm text-black dark:text-white">Mostrar emojis no perfil</span>
+				<Toggle bind:checked={showEmojis} />
 			</div>
 		</Block>
 		<BlockFooter>Dica: toque no quadrado colorido pra mais opções de cor</BlockFooter>
