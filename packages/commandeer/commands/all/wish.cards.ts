@@ -6,8 +6,9 @@ import type { IncomingCommand } from '@girae/common/commands/types'
 import { EMOJI } from '../../constants'
 import { resolveCardByIdOrName } from '../../services/commandArguments'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
+import { generateWishlistImage } from '@girae/common/ditto'
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 10
 
 async function renderPage(targetUserIdArg: string, page: number) {
   const targetUserId = parseInt(targetUserIdArg, 10)
@@ -29,7 +30,13 @@ ${cardLines}
 
 ${pageInfo}${EMOJI.browse} Para adicionar um card, use \`/wish id ou nome\`.`
 
-  return { content, hasNext: page < totalPages - 1, totalPages }
+  const dittoCards = rows
+    .filter(c => c.imageUrl)
+    .slice(0, 10)
+    .map(c => ({ id: c.id, name: c.name, imageUrl: c.imageUrl! }))
+  const image = dittoCards.length > 0 ? await generateWishlistImage(dittoCards) : null
+
+  return { content, photoUrl: image?.url, hasNext: page < totalPages - 1, totalPages }
 }
 
 async function isViewable(viewerTelegramId: string, target: NonNullable<Awaited<ReturnType<typeof UsersDB.getUserByTelegramId>>>) {
@@ -63,7 +70,7 @@ export default class WishCommand extends Command {
       if (!page) return
 
       const navRow = pageNavRow('wish', String(target.id), 0, page.hasNext, page.totalPages)
-      await reply(ctx, { content: page.content, buttonRows: navRow.length ? [navRow] : undefined })
+      await reply(ctx, { content: page.content, photoUrl: page.photoUrl, buttonRows: navRow.length ? [navRow] : undefined })
       return
     }
 
@@ -76,7 +83,7 @@ export default class WishCommand extends Command {
       if (!page) return
 
       const navRow = pageNavRow('wish', String(viewer.id), 0, page.hasNext, page.totalPages)
-      await reply(ctx, { content: page.content, buttonRows: navRow.length ? [navRow] : undefined })
+      await reply(ctx, { content: page.content, photoUrl: page.photoUrl, buttonRows: navRow.length ? [navRow] : undefined })
       return
     }
 

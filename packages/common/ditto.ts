@@ -108,6 +108,47 @@ export async function generateTradeImage(data: DittoTradeData): Promise<{ url: s
     })
 }
 
+export interface DittoWishlistCard {
+  id: number
+  name: string
+  imageUrl: string
+}
+
+export async function generateWishlistImage(cards: DittoWishlistCard[]): Promise<{ url: string } | null> {
+  if (!process.env.DITTO_URL) return null
+
+  return fetch(`${process.env.DITTO_URL}/generate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Api-Key": process.env.DITTO_API_KEY!,
+    },
+    body: JSON.stringify({
+      theme: "wishlist_cards",
+      data: cards,
+      image_pack: "girae",
+    }),
+  })
+    .then(async (r) => {
+      if (!r.ok) {
+        const body = await r.text().catch(() => '<unreadable>')
+        error("ditto", `generateWishlistImage HTTP ${r.status}: ${body}`)
+        return null
+      }
+      const text = await r.text()
+      try {
+        return JSON.parse(text) as { url: string } | null
+      } catch (e) {
+        error("ditto", `generateWishlistImage invalid JSON: ${text}`)
+        return null
+      }
+    })
+    .catch((e) => {
+      error("ditto", `generateWishlistImage failed: ${e}`)
+      return null
+    })
+}
+
 export async function renderProfile(
   telegramId: string,
   overrides?: { backgroundId?: number; stickerId?: number; bio?: string; favoriteColor?: string; favoriteCardColor?: string | null; hideEmojis?: boolean },
