@@ -27,5 +27,6 @@
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false,
     "experimentalDecorators": true
-  }
+  },
+  "exclude": ["node_modules", "website"]
 }
