@@ -489,8 +489,8 @@ export class CardsDB {
         cardCount: sql<number>`CAST(COUNT(${cardSubcategories.cardId}) AS INTEGER)`,
       })
       .from(subcategories)
-      .leftJoin(cardSubcategories, and(eq(cardSubcategories.subcategoryId, subcategories.id), eq(cardSubcategories.isMain, true)))
-      .where(eq(subcategories.categoryId, categoryId))
+      .leftJoin(cardSubcategories, eq(cardSubcategories.subcategoryId, subcategories.id))
+      .where(and(eq(subcategories.categoryId, categoryId), eq(subcategories.isSecondary, false)))
       .groupBy(subcategories.id, subcategories.name)
       .orderBy(subcategories.id);
   })
@@ -512,7 +512,7 @@ export class CardsDB {
       .innerJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
       .innerJoin(categories, eq(categories.id, subcategories.categoryId))
       .leftJoin(userCards, and(eq(userCards.cardId, cards.id), eq(userCards.userId, userId)))
-      .where(and(eq(cardSubcategories.subcategoryId, subcategoryId), eq(cardSubcategories.isMain, true)))
+      .where(eq(cardSubcategories.subcategoryId, subcategoryId))
       .orderBy(desc(cards.rarityId), cards.id);
   })
 
@@ -521,7 +521,7 @@ export class CardsDB {
     opts: { ownedFilter?: 'owned' | 'missing'; limit?: number; offset?: number } = {},
   ) => {
     const { ownedFilter, limit = 20, offset = 0 } = opts;
-    const baseWhere = and(eq(cardSubcategories.subcategoryId, subcategoryId), eq(cardSubcategories.isMain, true));
+    const baseWhere = eq(cardSubcategories.subcategoryId, subcategoryId);
     const ownedCondition = sql`COALESCE(${userCards.count}, 0) > 0`;
     const missingCondition = sql`COALESCE(${userCards.count}, 0) = 0`;
     const where = ownedFilter === 'owned' ? and(baseWhere, ownedCondition)
@@ -749,7 +749,7 @@ export class CardsDB {
       })
       .from(subcategories)
       .innerJoin(categories, eq(categories.id, subcategories.categoryId))
-      .innerJoin(cardSubcategories, and(eq(cardSubcategories.subcategoryId, subcategories.id), eq(cardSubcategories.isMain, true)))
+      .innerJoin(cardSubcategories, eq(cardSubcategories.subcategoryId, subcategories.id))
       .leftJoin(userCards, and(eq(userCards.cardId, cardSubcategories.cardId), eq(userCards.userId, userId)))
       .where(where)
       .groupBy(subcategories.id, categories.id)
@@ -764,7 +764,7 @@ export class CardsDB {
       .select({ total: sql<number>`CAST(COUNT(*) AS INTEGER)` })
       .from(subcategories)
       .innerJoin(categories, eq(categories.id, subcategories.categoryId))
-      .innerJoin(cardSubcategories, and(eq(cardSubcategories.subcategoryId, subcategories.id), eq(cardSubcategories.isMain, true)))
+      .innerJoin(cardSubcategories, eq(cardSubcategories.subcategoryId, subcategories.id))
       .leftJoin(userCards, and(eq(userCards.cardId, cardSubcategories.cardId), eq(userCards.userId, userId)))
       .where(where)
       .groupBy(subcategories.id)
@@ -781,7 +781,7 @@ export class CardsDB {
         owned: sql<number>`CAST(COUNT(DISTINCT CASE WHEN ${userCards.count} > 0 THEN ${cardSubcategories.cardId} END) AS INTEGER)`,
       })
       .from(subcategories)
-      .innerJoin(cardSubcategories, and(eq(cardSubcategories.subcategoryId, subcategories.id), eq(cardSubcategories.isMain, true)))
+      .innerJoin(cardSubcategories, eq(cardSubcategories.subcategoryId, subcategories.id))
       .leftJoin(userCards, and(eq(userCards.cardId, cardSubcategories.cardId), eq(userCards.userId, userId)))
       .groupBy(subcategories.id);
 
