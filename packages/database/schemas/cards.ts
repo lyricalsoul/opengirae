@@ -81,9 +81,28 @@ export const userCards = pgTable(
       .notNull()
       .references(() => cards.id),
     count: integer().notNull().default(1),
+    tradable: boolean().notNull().default(false),
     updatedAt: timestamp().notNull().defaultNow(),
   },
   (table) => [primaryKey({ columns: [table.userId, table.cardId] })],
+);
+
+export const wishlist = pgTable(
+  "wishlist",
+  {
+    userId: integer()
+      .notNull()
+      .references(() => users.id),
+    cardId: integer()
+      .notNull()
+      .references(() => cards.id),
+    position: integer().notNull().default(0),
+    createdAt: timestamp().notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.cardId] }),
+    index("wishlist_card_idx").on(table.cardId),
+  ],
 );
 
 export const cardDrawHistory = pgTable("card_draw_history", {

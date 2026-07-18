@@ -1,33 +1,77 @@
 <script lang="ts">
-	import { Page, Navbar, Searchbar, Link, Preloader, BlockTitle } from 'konsta/svelte';
+	import { Page, Navbar, Searchbar, Link, Preloader, BlockTitle, Segmented, SegmentedButton } from 'konsta/svelte';
 	import { telegramTrpc } from '$lib/trpc/telegramClient';
 	import { createPaginatedList } from '$lib/paginatedList.svelte';
 	import CardRows from './CardRows.svelte';
 	import CardActionsSheet from './CardActionsSheet.svelte';
+	import WishlistGrid from './WishlistGrid.svelte';
+	import WishlistActionsSheet from './WishlistActionsSheet.svelte';
 	import BulkDiscardBar from './BulkDiscardBar.svelte';
 	import SubcategoryDetailView from './SubcategoryDetailView.svelte';
 	import InfiniteScrollSentinel from './InfiniteScrollSentinel.svelte';
 
 	type CardRow = { id: number; name: string; imageUrl: string | null; rarityName: string; rarityEmoji: string; ownedCount: number };
 	type Section = { subcategoryId: number; subcategoryName: string; categoryEmoji: string; categoryName: string; total: number; cards: CardRow[] };
+	type WishlistCard = { id: number; name: string; imageUrl: string | null; rarityName: string; rarityEmoji: string };
 
-	const PAGE_SIZE = 10; 
+	const PAGE_SIZE = 10;
+	const WISHLIST_PAGE_SIZE = 25;
+
+	type ViewMode = 'cards' | 'wishlist';
+	let viewMode = $state<ViewMode>('cards');
 
 	let searchQuery = $state('');
 	const sections = createPaginatedList<Section, { rows: Section[]; total: number }>((offset) =>
 		telegramTrpc.telegram.cards.bySubcategory.query({ query: searchQuery || undefined, limit: PAGE_SIZE, offset }),
 	);
+	const wishlist = createPaginatedList<WishlistCard, { rows: WishlistCard[]; total: number }>((offset) =>
+		telegramTrpc.telegram.cards.wishlist.query({ limit: WISHLIST_PAGE_SIZE, offset }),
+	);
+
+	let wishlistQuery = $state('');
+	const catalogSearch = createPaginatedList<WishlistCard, { rows: WishlistCard[]; total: number }>((offset) =>
+		telegramTrpc.telegram.cards.cardSearch.query({ query: wishlistQuery, limit: WISHLIST_PAGE_SIZE, offset }),
+	);
+	let browsingWishlist = $derived(!wishlistQuery.trim());
 
 	let selectionMode = $state(false);
 	let selectedIds = $state(new Set<number>());
 	let quantities = $state<Record<number, number>>({});
 	let actionsCard = $state<CardRow | undefined>(undefined);
+	let wishlistActionsCard = $state<WishlistCard | undefined>(undefined);
 	let detailSection = $state<{ subcategoryId: number; subcategoryName: string } | undefined>(undefined);
 
 	$effect(() => {
 		searchQuery;
 		sections.reset();
 	});
+
+	$effect(() => {
+		if (viewMode === 'wishlist' && wishlist.items.length === 0) wishlist.reset();
+	});
+
+	$effect(() => {
+		wishlistQuery;
+		if (!browsingWishlist) catalogSearch.reset();
+	});
+
+	function onWishlistReorder(cardIds: number[]) {
+		telegramTrpc.telegram.cards.wishlistReorder.mutate({ cardIds });
+	}
+
+	function onWishlistCardChanged(card: WishlistCard, onWishlist: boolean) {
+		if (onWishlist) {
+			if (!wishlist.items.some((c) => c.id === card.id)) {
+				wishlist.items = [...wishlist.items, card];
+				wishlist.total += 1;
+			}
+		} else {
+			if (wishlist.items.some((c) => c.id === card.id)) {
+				wishlist.items = wishlist.items.filter((c) => c.id !== card.id);
+				wishlist.total -= 1;
+			}
+		}
+	}
 
 	let visibleCards = $derived(sections.items.flatMap((s) => s.cards));
 	let selectedCards = $derived(visibleCards.filter((c) => selectedIds.has(c.id)));
@@ -90,39 +134,67 @@
 	<Page class="pb-safe-24">
 		<Navbar title="Cards">
 			{#snippet right()}
-				<Link onClick={toggleSelectionMode}>{selectionMode ? 'Cancelar' : 'Selecionar'}</Link>
+				{#if viewMode === 'cards'}
+					<Link onClick={toggleSelectionMode}>{selectionMode ? 'Cancelar' : 'Selecionar'}</Link>
+				{/if}
 			{/snippet}
 			{#snippet subnavbar()}
-				<Searchbar value={searchQuery} onInput={(e: Event) => (searchQuery = (e.target as HTMLInputElement).value)} onClear={() => (searchQuery = '')} placeholder="Pesquisar..." />
+				{#if viewMode === 'cards'}
+					<Searchbar value={searchQuery} onInput={(e: Event) => (searchQuery = (e.target as HTMLInputElement).value)} onClear={() => (searchQuery = '')} placeholder="Pesquisar..." />
+				{:else}
+					<Searchbar value={wishlistQuery} onInput={(e: Event) => (wishlistQuery = (e.target as HTMLInputElement).value)} onClear={() => (wishlistQuery = '')} placeholder="Pesquisar qualquer card..." />
+				{/if}
 			{/snippet}
 		</Navbar>
 
-		{#if sections.resetLoading}
+		<div class="p-4 pb-0">
+			<Segmented strong>
+				<SegmentedButton strong active={viewMode === 'cards'} onClick={() => (viewMode = 'cards')}>Cards</SegmentedButton>
+				<SegmentedButton strong active={viewMode === 'wishlist'} onClick={() => (viewMode = 'wishlist')}>Lista de desejos</SegmentedButton>
+			</Segmented>
+		</div>
+
+		{#if viewMode === 'cards'}
+			{#if sections.resetLoading}
+				<div class="flex justify-center p-8"><Preloader /></div>
+			{:else}
+				{#each sections.items as section (section.subcategoryId)}
+					<BlockTitle>
+						<span>{section.categoryEmoji} {section.subcategoryName}</span>
+						{#if section.total > section.cards.length}
+							<Link onClick={() => (detailSection = section)}>Ver mais</Link>
+						{/if}
+					</BlockTitle>
+					<CardRows
+						cards={section.cards}
+						{selectionMode}
+						{selectedIds}
+						{quantities}
+						onToggleSelect={toggleSelect}
+						onQuantityChange={setQuantity}
+						onOpenActions={(c) => (actionsCard = c)}
+					/>
+				{/each}
+				<InfiniteScrollSentinel disabled={sections.items.length >= sections.total} loading={sections.loading} onIntersect={sections.loadMore} />
+			{/if}
+		{:else if browsingWishlist}
+			{#if wishlist.resetLoading}
+				<div class="flex justify-center p-8"><Preloader /></div>
+			{:else}
+				<WishlistGrid bind:items={wishlist.items} reorderable onOpen={(c) => (wishlistActionsCard = c)} onReorder={onWishlistReorder} />
+				<InfiniteScrollSentinel disabled={wishlist.items.length >= wishlist.total} loading={wishlist.loading} onIntersect={wishlist.loadMore} />
+			{/if}
+		{:else if catalogSearch.resetLoading}
 			<div class="flex justify-center p-8"><Preloader /></div>
 		{:else}
-			{#each sections.items as section (section.subcategoryId)}
-				<BlockTitle>
-					<span>{section.categoryEmoji} {section.subcategoryName}</span>
-					{#if section.total > section.cards.length}
-						<Link onClick={() => (detailSection = section)}>Ver mais</Link>
-					{/if}
-				</BlockTitle>
-				<CardRows
-					cards={section.cards}
-					{selectionMode}
-					{selectedIds}
-					{quantities}
-					onToggleSelect={toggleSelect}
-					onQuantityChange={setQuantity}
-					onOpenActions={(c) => (actionsCard = c)}
-				/>
-			{/each}
-			<InfiniteScrollSentinel disabled={sections.items.length >= sections.total} loading={sections.loading} onIntersect={sections.loadMore} />
+			<WishlistGrid bind:items={catalogSearch.items} reorderable={false} onOpen={(c) => (wishlistActionsCard = c)} onReorder={() => {}} />
+			<InfiniteScrollSentinel disabled={catalogSearch.items.length >= catalogSearch.total} loading={catalogSearch.loading} onIntersect={catalogSearch.loadMore} />
 		{/if}
 	</Page>
 {/if}
 
 <CardActionsSheet card={actionsCard} onClose={() => (actionsCard = undefined)} onDiscarded={onSingleDiscarded} />
+<WishlistActionsSheet card={wishlistActionsCard} onClose={() => (wishlistActionsCard = undefined)} onChanged={onWishlistCardChanged} />
 
 {#if selectionMode && selectedCards.length > 0}
 	<BulkDiscardBar selectedCards={selectedCards} {quantities} onDone={onBulkDone} />

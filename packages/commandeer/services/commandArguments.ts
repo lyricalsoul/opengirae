@@ -29,13 +29,17 @@ export function splitPositionalTokens(args: string[], specs: CommandArgumentSpec
   })
 }
 
-type ParseOutcome =
+export type ParseOutcome =
   | { ok: true; value: unknown }
   | { ok: false; message?: string }
 
 function parseNumber(raw: string): ParseOutcome {
   const n = parseInt(raw, 10)
   return isNaN(n) ? { ok: false } : { ok: true, value: n }
+}
+
+export async function resolveCardByIdOrName(raw: string): Promise<ParseOutcome> {
+  return parseCard(raw)
 }
 
 async function parseCard(raw: string): Promise<ParseOutcome> {

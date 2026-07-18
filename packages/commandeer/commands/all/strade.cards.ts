@@ -9,12 +9,11 @@ import { DEFAULT_AVATAR_URL } from '@girae/database/constants'
 import { tg } from '../../services/botInfo'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
+import { mention } from '@girae/common/utilities/mention'
 
 const CONFIRM_EVENT = 'strade:confirm'
 const INACTIVITY_TIMEOUT_SECONDS = 30 * 60
 const FALLBACK_TRADE_IMAGE = 'https://placehold.co/1200x630/png'
-
-const mention = (telegramId: string, name: string) => `[${escapeMarkdown(name)}](tg://user?id=${telegramId})`
 
 type CardWithDetails = NonNullable<Awaited<ReturnType<typeof CardsDB.getCardWithDetails>>>
 
@@ -37,6 +36,7 @@ export default class SimpleTradeCommand extends Command {
   ])
   static override async execute(ctx: IncomingCommand, args: { target: string; myCard: CardWithDetails; theirCard: CardWithDetails }) {
     const targetTelegramId = args.target
+    const m = (id: string, name: string) => mention(ctx.message.platform, id, name)
 
     if (targetTelegramId === ctx.message.author.id) {
       await reply(ctx, 'Você não pode trocar cartas com você mesmo! 😅')
@@ -70,7 +70,7 @@ export default class SimpleTradeCommand extends Command {
     }
     const theirOwned = await CardsDB.getUserCard(targetUser.id, args.theirCard.id)
     if (!theirOwned || theirOwned.count === 0) {
-      await reply(ctx, `${mention(targetTelegramId, targetName)} não tem nenhum card de **${escapeMarkdown(args.theirCard.name)}** para trocar!`)
+      await reply(ctx, `${m(targetTelegramId, targetName)} não tem nenhum card de **${escapeMarkdown(args.theirCard.name)}** para trocar!`)
       return
     }
 
@@ -86,7 +86,7 @@ export default class SimpleTradeCommand extends Command {
       user2: { avatarURL: targetAvatarUrl, name: targetName, cards: args.theirCard.imageUrl ? [args.theirCard.imageUrl] : [] },
     }).catch(() => null) ?? { url: FALLBACK_TRADE_IMAGE }
 
-    const content = `💱 Troca entre ${mention(ctx.message.author.id, proposerName)} e ${mention(targetTelegramId, targetName)}\n\n🃏 **${escapeMarkdown(proposerName)}** está oferecendo:\n\n${cardLine(args.myCard)}\n\n🃏 **${escapeMarkdown(targetName)}** está oferecendo:\n\n${cardLine(args.theirCard)}\n\nCliquem em **✅ Confirmar** para finalizar a troca, ou **❌ Cancelar** para cancelar a troca.\nAtenção: a troca será desfeita caso um dos usuários clique em cancelar. Preste atenção!`
+    const content = `💱 Troca entre ${m(ctx.message.author.id, proposerName)} e ${m(targetTelegramId, targetName)}\n\n🃏 **${escapeMarkdown(proposerName)}** está oferecendo:\n\n${cardLine(args.myCard)}\n\n🃏 **${escapeMarkdown(targetName)}** está oferecendo:\n\n${cardLine(args.theirCard)}\n\nCliquem em **✅ Confirmar** para finalizar a troca, ou **❌ Cancelar** para cancelar a troca.\nAtenção: a troca será desfeita caso um dos usuários clique em cancelar. Preste atenção!`
 
     const result = await awaitMultiPartyChoice<'confirm' | 'cancel'>(
       ctx,
@@ -104,7 +104,7 @@ export default class SimpleTradeCommand extends Command {
     }
     if (result.data === 'cancel') {
       if (result.messageId) await deleteMsg(ctx, result.messageId)
-      await reply(ctx, `Vish... a troca entre ${mention(ctx.message.author.id, proposerName)} e ${mention(targetTelegramId, targetName)} foi cancelada. Será que se arrependeram? 😅`)
+      await reply(ctx, `Vish... a troca entre ${m(ctx.message.author.id, proposerName)} e ${m(targetTelegramId, targetName)} foi cancelada. Será que se arrependeram? 😅`)
       return
     }
 

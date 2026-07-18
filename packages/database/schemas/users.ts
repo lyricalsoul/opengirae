@@ -22,6 +22,7 @@ export const users = pgTable("users", {
   luckModifier: integer().notNull().default(100),
   coins: integer().notNull().default(0),
   privacyMode: boolean().notNull().default(false),
+  makeCardsTradeableByDefault: boolean().notNull().default(false),
 
   displayName: text().notNull(),
   avatarUrl: text().notNull(),

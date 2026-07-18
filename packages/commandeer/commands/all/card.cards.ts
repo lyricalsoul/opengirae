@@ -6,6 +6,7 @@ import { getActiveTradeSide } from './trade.cards'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { EMOJI, cativeiroEmoji } from '../../constants'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
+import { mention } from '@girae/common/utilities/mention'
 
 type CardDetails = NonNullable<Awaited<ReturnType<typeof CardsDB.getCardWithDetails>>>
 
@@ -26,7 +27,7 @@ async function showCard(ctx: IncomingCommand, card: CardDetails) {
   const text = `${card.rarityEmoji} \`${card.id}\`. **${escapeMarkdown(card.name)}**${badge ? ` ${badge}` : ''}
 ${card.categoryEmoji ?? EMOJI.category} _${escapeMarkdown(card.subcategoryName ?? '?')}_${tagLine}
 
-${EMOJI.owner} \`${user?.id ?? '?'}\`. [${escapeMarkdown(ctx.message.author.name)}](tg://user?id=${ctx.message.author.id})${countSuffix}`
+${EMOJI.owner} \`${user?.id ?? '?'}\`. ${mention(ctx.message.platform, ctx.message.author.id, ctx.message.author.name)}${countSuffix}`
 
   const buttonRows = [[{ text: EMOJI.quickView, quickView: { handler: 'cardinfo', arg: String(card.id) } }]]
 

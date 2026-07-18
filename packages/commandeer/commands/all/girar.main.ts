@@ -7,6 +7,7 @@ import { reply } from '@girae/common/dbos/messaging'
 import { rawClient } from '@girae/common/queue'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
+import { mention } from '@girae/common/utilities/mention'
 import { addHours, formatDistanceToNow, startOfHour } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -62,7 +63,7 @@ export default class GirarCommand extends Command {
       const categories = await CardsDB.getCategories()
       const remainingDraws = user.maxDraws - user.usedDraws
       await reply(ctx, {
-        content: `🎲 Olá, **[${escapeMarkdown(ctx.message.author.name)}](tg://user?id=${ctx.message.author.id})**! Bem-vindo de volta. Pronto para girar?\n🎨 Você tem **${remainingDraws}** de **${user.maxDraws}** giros restantes.\n\n🕹 Escolha uma categoria:`,
+        content: `🎲 Olá, **${mention(ctx.message.platform, ctx.message.author.id, ctx.message.author.name)}**! Bem-vindo de volta. Pronto para girar?\n🎨 Você tem **${remainingDraws}** de **${user.maxDraws}** giros restantes.\n\n🕹 Escolha uma categoria:`,
         eventName: GirarCommand.CATEGORY_SELECTED_EVENT,
         restricted: 'author',
         options: categories.map(c => ({ title: `${c.emoji} ${c.name}`, data: c.id })),
@@ -132,7 +133,7 @@ export default class GirarCommand extends Command {
 ${drawnCard.rarityEmoji} \`${drawnCard.id}\`. **${escapeMarkdown(drawnCard.name)}**
 ${category.emoji} _${escapeMarkdown(subcategoryName)}_${tagExtra}
 
-👾 \`${user.id}\`. [${escapeMarkdown(ctx.message.author.name)}](tg://user?id=${ctx.message.author.id}) (\`${count}x\`)`;
+👾 \`${user.id}\`. ${mention(ctx.message.platform, ctx.message.author.id, ctx.message.author.name)} (\`${count}x\`)`;
 
       await reply(ctx, {
         content: text,

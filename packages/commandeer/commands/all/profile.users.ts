@@ -72,6 +72,11 @@ export default class ProfileCommand extends Command {
 /profile emoji off - esconde os emojis do seu perfil
 /profile emoji on - reativa os emojis do seu perfil
 /fav - define sua carta favorita (exemplo: \`/fav Karol Conká\`)
+/wish - mostra ou edita sua lista de desejos (exemplo: \`/wish Karol Conká\`)
+/compare @usuário - compara sua lista de desejos com a de outra pessoa
+/troco - marca um card como trocável (exemplo: \`/troco Karol Conká\`)
+/naotroco - marca um card como não trocável (exemplo: \`/naotroco Karol Conká\`)
+/autotroca - alterna se cards novos são trocáveis por padrão
 `)
   }
 

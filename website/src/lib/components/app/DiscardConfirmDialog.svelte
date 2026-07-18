@@ -64,7 +64,7 @@
 	{#snippet buttons()}
 		<DialogButton disabled={confirming} onClick={onCancel}>Cancelar</DialogButton>
 		<DialogButton strong disabled={confirming} onClick={confirm}>
-			{#if confirming}<Preloader />{:else}Deletar{/if}
+			{#if confirming}<Preloader class="h-4 w-4" />{:else}Deletar{/if}
 		</DialogButton>
 	{/snippet}
 </Dialog>

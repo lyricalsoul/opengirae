@@ -58,7 +58,7 @@
 	{#if cards.resetLoading}
 		<div class="flex justify-center p-8"><Preloader /></div>
 	{:else}
-		<CardRows cards={cards.items} onOpenActions={tab === 'owned' ? onOpenActions : undefined} />
+		<CardRows cards={cards.items} {onOpenActions} />
 		<InfiniteScrollSentinel disabled={cards.items.length >= cards.total} loading={cards.loading} onIntersect={cards.loadMore} />
 	{/if}
 </Page>

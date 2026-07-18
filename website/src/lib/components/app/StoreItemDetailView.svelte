@@ -47,11 +47,11 @@
 		onChanged();
 	}
 
-	async function equip() {
-		await telegramTrpc.telegram.store.equip.mutate({ itemId: item.id, type: item.type });
+	function equip() {
 		showEquipPrompt = false;
 		onChanged();
 		onBack();
+		telegramTrpc.telegram.store.equip.mutate({ itemId: item.id, type: item.type });
 	}
 </script>
 
@@ -75,7 +75,7 @@
 		{#if !owned}
 			<Button rounded disabled={!canAfford || purchasing} onClick={buy}>
 				{#if purchasing}
-					<Preloader colors={{ iconIos: 'text-white', iconMaterial: 'text-white' }} />
+					<Preloader colors={{ iconIos: 'text-white', iconMaterial: 'text-white' }} class="h-4 w-4" />
 				{:else}
 					Comprar por {item.price} moedas
 				{/if}

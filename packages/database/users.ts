@@ -214,4 +214,13 @@ export class UsersDB {
       .update(users)
       .set({ usedDraws: sql`GREATEST(${users.usedDraws} - ${amount}, 0)` });
   })
+
+  static setMakeCardsTradeableByDefault = maybeTransaction('setMakeCardsTradeableByDefault', async (client, userId: number, value: boolean) => {
+    return await client
+      .update(users)
+      .set({ makeCardsTradeableByDefault: value })
+      .where(eq(users.id, userId))
+      .returning()
+      .then(rows => rows[0]);
+  })
 }

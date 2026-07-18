@@ -263,7 +263,7 @@
 		<div class="right">
 			<Button rounded disabled={saving} onClick={save}>
 				{#if saving}
-					<Preloader colors={{ iconIos: 'text-white', iconMaterial: 'text-white' }} />
+					<Preloader colors={{ iconIos: 'text-white', iconMaterial: 'text-white' }} class="h-4 w-4" />
 				{:else}
 					Salvar
 				{/if}

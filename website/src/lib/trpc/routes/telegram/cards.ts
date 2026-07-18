@@ -78,4 +78,62 @@ export const telegramCardsRouter = t.router({
 			const { subcategoryId, ...opts } = input;
 			return CardsDB.getCardsInSubcategoryForUserPaginated(subcategoryId, user.id, opts);
 		}),
+
+	wishlist: telegramProcedure.input(listInput).query(async ({ ctx, input }) => {
+		const user = await requireUser(ctx.tgUser.id.toString());
+		return CardsDB.getWishlist(user.id, input);
+	}),
+
+	cardSearch: telegramProcedure.input(listInput).query(async ({ input }) => {
+		return CardsDB.searchAllCardsPaginated(input);
+	}),
+
+	wishlistStatus: telegramProcedure
+		.input(z.object({ cardId: z.number().int().positive() }))
+		.query(async ({ ctx, input }) => {
+			const user = await requireUser(ctx.tgUser.id.toString());
+			return CardsDB.isOnWishlist(user.id, input.cardId);
+		}),
+
+	wishlistAdd: telegramProcedure
+		.input(z.object({ cardId: z.number().int().positive() }))
+		.mutation(async ({ ctx, input }) => {
+			const user = await requireUser(ctx.tgUser.id.toString());
+			await CardsDB.addToWishlist(user.id, input.cardId);
+			return { ok: true };
+		}),
+
+	wishlistRemove: telegramProcedure
+		.input(z.object({ cardId: z.number().int().positive() }))
+		.mutation(async ({ ctx, input }) => {
+			const user = await requireUser(ctx.tgUser.id.toString());
+			await CardsDB.removeFromWishlist(user.id, input.cardId);
+			return { ok: true };
+		}),
+
+	wishlistReorder: telegramProcedure
+		.input(z.object({ cardIds: z.array(z.number().int().positive()).min(1).max(200) }))
+		.mutation(async ({ ctx, input }) => {
+			const user = await requireUser(ctx.tgUser.id.toString());
+			await CardsDB.reorderWishlist(user.id, input.cardIds);
+			return { ok: true };
+		}),
+
+	tradableStatus: telegramProcedure
+		.input(z.object({ cardId: z.number().int().positive() }))
+		.query(async ({ ctx, input }) => {
+			const user = await requireUser(ctx.tgUser.id.toString());
+			return CardsDB.isCardTradable(user.id, input.cardId);
+		}),
+
+	setTradable: telegramProcedure
+		.input(z.object({ cardId: z.number().int().positive(), tradable: z.boolean() }))
+		.mutation(async ({ ctx, input }) => {
+			const user = await requireUser(ctx.tgUser.id.toString());
+			if (!(await CardsDB.hasUserCard(user.id, input.cardId))) {
+				throw new TRPCError({ code: 'BAD_REQUEST', message: 'not_owned' });
+			}
+			await CardsDB.setCardTradable(user.id, input.cardId, input.tradable);
+			return { ok: true };
+		}),
 });

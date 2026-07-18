@@ -10,6 +10,7 @@ import { getBotUsername, tg } from '../../services/botInfo'
 import { rawClient } from '@girae/common/queue'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
+import { mention } from '@girae/common/utilities/mention'
 import { error } from '@girae/common/logger'
 
 const LOCK_TTL_SECONDS = 60 * 60
@@ -45,8 +46,6 @@ async function tryAcquireLock(telegramId: string, value: { workflowID: string; p
   const result = await rawClient.set(lockKey(telegramId), JSON.stringify(value), { EX: LOCK_TTL_SECONDS, NX: true })
   return result === 'OK'
 }
-const mention = (telegramId: string, name: string) => `[${escapeMarkdown(name)}](tg://user?id=${telegramId})`
-
 async function loadState(workflowID: string): Promise<TradeState | null> {
   const raw = await rawClient.get(stateKey(workflowID))
   return raw ? JSON.parse(raw) : null
@@ -183,6 +182,7 @@ export default class TradeCommand extends Command {
   @CommandArgument([{ name: 'target', type: CommandArgumentType.USER_MENTION }])
   static override async execute(ctx: IncomingCommand, args: { target: string }) {
     const targetTelegramId = args.target
+    const m = (id: string, name: string) => mention(ctx.message.platform, id, name)
 
     if (targetTelegramId === ctx.message.author.id) {
       await reply(ctx, 'Você não pode trocar cartas com você mesmo! 😅')
@@ -237,7 +237,7 @@ export default class TradeCommand extends Command {
         ctx,
         INVITE_EVENT,
         {
-          content: `${mention(targetTelegramId, targetName)}, você quer trocar cartas com ${mention(ctx.message.author.id, proposerName)}?\n\n${mention(ctx.message.author.id, proposerName)}, você ainda pode cancelar clicando em recusar!`,
+          content: `${m(targetTelegramId, targetName)}, você quer trocar cartas com ${m(ctx.message.author.id, proposerName)}?\n\n${m(ctx.message.author.id, proposerName)}, você ainda pode cancelar clicando em recusar!`,
           photoUrl: inviteImage.url,
         },
         [{ title: '✅ Aceitar', data: 'accept' }, { title: '❌ Recusar', data: 'decline' }],
@@ -260,7 +260,7 @@ export default class TradeCommand extends Command {
       const groupMessageId = inviteResult.messageId
       const botUsername = await getBotUsername()
       await reply(ctx, {
-        content: `Hora de trocar, ${mention(ctx.message.author.id, proposerName)} e ${mention(targetTelegramId, targetName)}! 🤝\n\nCliquem no botão abaixo para inicar a troca.`,
+        content: `Hora de trocar, ${m(ctx.message.author.id, proposerName)} e ${m(targetTelegramId, targetName)}! 🤝\n\nCliquem no botão abaixo para inicar a troca.`,
         photoUrl: inviteImage.url,
         editMessageId: groupMessageId,
         captionOnly: true, // same photo the invite message already has
@@ -270,7 +270,7 @@ export default class TradeCommand extends Command {
       await saveState(ctx.workflowIDToBeAssigned, emptyOffersState(ctx.message.author.id, targetTelegramId))
 
       const negotiationContent = (proposerOffer: string, targetOffer: string, extra: string) =>
-        `💱 Troca entre ${mention(ctx.message.author.id, proposerName)} e ${mention(targetTelegramId, targetName)}\n\n🃏 **${escapeMarkdown(proposerName)}** está oferecendo:\n\n${proposerOffer}\n\n🃏 **${escapeMarkdown(targetName)}** está oferecendo:\n\n${targetOffer}\n\n${extra}`
+        `💱 Troca entre ${m(ctx.message.author.id, proposerName)} e ${m(targetTelegramId, targetName)}\n\n🃏 **${escapeMarkdown(proposerName)}** está oferecendo:\n\n${proposerOffer}\n\n🃏 **${escapeMarkdown(targetName)}** está oferecendo:\n\n${targetOffer}\n\n${extra}`
 
       const renderDM = async (side: Side, s: TradeState, proposerOffer: string, targetOffer: string, photoUrl: string) => {
         const chatId = s.dmChat[side]
@@ -355,7 +355,7 @@ export default class TradeCommand extends Command {
 
       const doneFlags: Record<Side, boolean> = { proposer: false, target: false }
       const finalizeContent = (waitingLine: string) =>
-        `💱 Troca entre ${mention(ctx.message.author.id, proposerName)} e ${mention(targetTelegramId, targetName)}\n\n🃏 **${escapeMarkdown(proposerName)}** está oferecendo:\n\n${proposerOfferText}\n\n🃏 **${escapeMarkdown(targetName)}** está oferecendo:\n\n${targetOfferText}\n\nCliquem em ✅ Finalizar troca para finalizar a troca, ou ❌ Cancelar para cancelar a troca.\nAtenção: a troca será desfeita caso um dos usuários clique em cancelar. Preste atenção!\n\n${waitingLine}`
+        `💱 Troca entre ${m(ctx.message.author.id, proposerName)} e ${m(targetTelegramId, targetName)}\n\n🃏 **${escapeMarkdown(proposerName)}** está oferecendo:\n\n${proposerOfferText}\n\n🃏 **${escapeMarkdown(targetName)}** está oferecendo:\n\n${targetOfferText}\n\nCliquem em ✅ Finalizar troca para finalizar a troca, ou ❌ Cancelar para cancelar a troca.\nAtenção: a troca será desfeita caso um dos usuários clique em cancelar. Preste atenção!\n\n${waitingLine}`
 
       const finalizeResult = await awaitMultiPartyChoice<'finalize' | 'cancel'>(
         ctx,
@@ -376,7 +376,7 @@ export default class TradeCommand extends Command {
         async (_choice, buttons) => {
           const pendingSide: Side = doneFlags.proposer ? 'target' : 'proposer'
           await reply(ctx, {
-            content: finalizeContent(`⌛ Aguardando ${mention(telegramIdOf(pendingSide), nameOf(pendingSide))}.`),
+            content: finalizeContent(`⌛ Aguardando ${m(telegramIdOf(pendingSide), nameOf(pendingSide))}.`),
             photoUrl: finalizeImage.url,
             editMessageId: groupMessageId,
             captionOnly: true,
@@ -388,7 +388,7 @@ export default class TradeCommand extends Command {
       if (!finalizeResult || finalizeResult.data === 'cancel') {
         await deleteMsg(ctx, groupMessageId)
         await reply(ctx, finalizeResult
-          ? `😬 Vish... ${mention(ctx.message.author.id, proposerName)} e ${mention(targetTelegramId, targetName)} cancelaram a troca de última hora. Brigaram?`
+          ? `😬 Vish... ${m(ctx.message.author.id, proposerName)} e ${m(targetTelegramId, targetName)} cancelaram a troca de última hora. Brigaram?`
           : 'A troca expirou por inatividade. 😴')
         return
       }
@@ -414,7 +414,7 @@ export default class TradeCommand extends Command {
       const image = await renderTradeImage(finalState, proposerAvatarUrl, proposerName, targetAvatarUrl, targetName)
 
       await reply(ctx, {
-        content: `💱 Troca entre ${mention(ctx.message.author.id, proposerName)} e ${mention(targetTelegramId, targetName)} FINALIZADA! ✅\n\n🃏 **${escapeMarkdown(proposerName)}** ofereceu:\n\n${proposerOfferText}\n\n🃏 **${escapeMarkdown(targetName)}** ofereceu:\n\n${targetOfferText}`,
+        content: `💱 Troca entre ${m(ctx.message.author.id, proposerName)} e ${m(targetTelegramId, targetName)} FINALIZADA! ✅\n\n🃏 **${escapeMarkdown(proposerName)}** ofereceu:\n\n${proposerOfferText}\n\n🃏 **${escapeMarkdown(targetName)}** ofereceu:\n\n${targetOfferText}`,
         photoUrl: image.url,
       })
     } finally {

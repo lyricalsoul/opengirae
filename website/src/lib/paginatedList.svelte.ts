@@ -31,6 +31,7 @@ export function createPaginatedList<T, R extends { rows: T[]; total: number }>(
 		get items() { return items; },
 		set items(value: T[]) { items = value; },
 		get total() { return total; },
+		set total(value: number) { total = value; },
 		get loading() { return loading; },
 		get resetLoading() { return resetLoading; },
 		reset: () => load(true),

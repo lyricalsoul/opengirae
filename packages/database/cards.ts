@@ -9,6 +9,7 @@ import {
   cardSubcategories,
   chocolateFactoryCorrections,
   trades,
+  wishlist,
 } from "./schemas/cards";
 import { users } from "./schemas/users";
 import { eq, and, sql, ilike, desc, gte, inArray } from "drizzle-orm";
@@ -330,7 +331,17 @@ export class CardsDB {
         .then(a => a?.[0]);
     }
 
-    return await client.insert(userCards).values({ userId, cardId }).returning().then(a => a?.[0]);
+    const user = await client
+      .select({ makeCardsTradeableByDefault: users.makeCardsTradeableByDefault })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+      .then(a => a?.[0]);
+
+    return await client.insert(userCards)
+      .values({ userId, cardId, tradable: user?.makeCardsTradeableByDefault ?? false })
+      .returning()
+      .then(a => a?.[0]);
   })
 
   static executeTrade = maybeTransaction('executeTrade', async (
@@ -639,6 +650,161 @@ export class CardsDB {
     ]);
 
     return { rows, total };
+  })
+
+  static addToWishlist = maybeTransaction('addToWishlist', async (client, userId: number, cardId: number) => {
+    const nextPosition = await client
+      .select({ max: sql<number>`COALESCE(MAX(${wishlist.position}), -1) + 1` })
+      .from(wishlist)
+      .where(eq(wishlist.userId, userId))
+      .then(a => a?.[0]?.max ?? 0);
+
+    await client.insert(wishlist).values({ userId, cardId, position: nextPosition }).onConflictDoNothing();
+  })
+
+  static reorderWishlist = maybeTransaction('reorderWishlist', async (client, userId: number, orderedCardIds: number[]) => {
+    for (let index = 0; index < orderedCardIds.length; index++) {
+      await client.update(wishlist).set({ position: index }).where(and(eq(wishlist.userId, userId), eq(wishlist.cardId, orderedCardIds[index]!)))
+    }
+  })
+
+  static removeFromWishlist = maybeTransaction('removeFromWishlist', async (client, userId: number, cardId: number) => {
+    await client.delete(wishlist).where(and(eq(wishlist.userId, userId), eq(wishlist.cardId, cardId)));
+  })
+
+  static isOnWishlist = maybeTransaction('isOnWishlist', async (client, userId: number, cardId: number) => {
+    return !!(await client
+      .select()
+      .from(wishlist)
+      .where(and(eq(wishlist.userId, userId), eq(wishlist.cardId, cardId)))
+      .limit(1)
+      .then(a => a?.[0]));
+  })
+
+  static getWishlist = maybeTransaction('getWishlist', async (
+    client, userId: number, opts: { query?: string; limit?: number; offset?: number } = {},
+  ) => {
+    const { query, limit = 20, offset = 0 } = opts;
+    const where = query
+      ? and(eq(wishlist.userId, userId), ilike(cards.name, `%${query}%`))
+      : eq(wishlist.userId, userId);
+
+    const [rows, total] = await Promise.all([
+      client
+        .select({
+          id: cards.id,
+          name: cards.name,
+          imageUrl: cards.imageUrl,
+          rarityName: rarities.name,
+          rarityEmoji: rarities.emoji,
+          categoryEmoji: categories.emoji,
+          categoryName: categories.name,
+          subcategoryName: subcategories.name,
+        })
+        .from(wishlist)
+        .innerJoin(cards, eq(cards.id, wishlist.cardId))
+        .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+        .leftJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.isMain, true)))
+        .leftJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
+        .leftJoin(categories, eq(categories.id, subcategories.categoryId))
+        .where(where)
+        .orderBy(wishlist.position, cards.id)
+        .limit(limit)
+        .offset(offset),
+      client
+        .select({ total: sql<number>`CAST(COUNT(*) AS INTEGER)` })
+        .from(wishlist)
+        .innerJoin(cards, eq(cards.id, wishlist.cardId))
+        .where(where)
+        .then(r => r[0]?.total ?? 0),
+    ]);
+
+    return { rows, total };
+  })
+
+  static searchAllCardsPaginated = maybeTransaction('searchAllCardsPaginated', async (
+    client, opts: { query?: string; limit?: number; offset?: number } = {},
+  ) => {
+    const { query, limit = 20, offset = 0 } = opts;
+    const where = query ? ilike(cards.name, `%${query}%`) : undefined;
+
+    const [rows, total] = await Promise.all([
+      client
+        .select({
+          id: cards.id,
+          name: cards.name,
+          imageUrl: cards.imageUrl,
+          rarityName: rarities.name,
+          rarityEmoji: rarities.emoji,
+          subcategoryName: subcategories.name,
+        })
+        .from(cards)
+        .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+        .leftJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.isMain, true)))
+        .leftJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
+        .where(where)
+        .orderBy(cards.name, cards.id)
+        .limit(limit)
+        .offset(offset),
+      client
+        .select({ total: sql<number>`CAST(COUNT(*) AS INTEGER)` })
+        .from(cards)
+        .where(where)
+        .then(r => r[0]?.total ?? 0),
+    ]);
+
+    return { rows, total };
+  })
+
+  static setCardTradable = maybeTransaction('setCardTradable', async (client, userId: number, cardId: number, tradable: boolean) => {
+    return await client
+      .update(userCards)
+      .set({ tradable })
+      .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)))
+      .returning()
+      .then(a => a?.[0]);
+  })
+
+  static isCardTradable = maybeTransaction('isCardTradable', async (client, userId: number, cardId: number) => {
+    return await client
+      .select({ tradable: userCards.tradable })
+      .from(userCards)
+      .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)))
+      .limit(1)
+      .then(a => a?.[0]?.tradable ?? false);
+  })
+
+  static setAllUserCardsTradable = maybeTransaction('setAllUserCardsTradable', async (client, userId: number, tradable: boolean) => {
+    const result = await client
+      .update(userCards)
+      .set({ tradable })
+      .where(eq(userCards.userId, userId))
+      .returning({ cardId: userCards.cardId })
+    return result.length
+  })
+
+  static compareWishlists = maybeTransaction('compareWishlists', async (client, userId: number, otherUserId: number) => {
+    const matchRow = (ownerId: number, wantsId: number) => client
+      .select({
+        id: cards.id,
+        name: cards.name,
+        imageUrl: cards.imageUrl,
+        rarityName: rarities.name,
+        rarityEmoji: rarities.emoji,
+      })
+      .from(userCards)
+      .innerJoin(cards, eq(cards.id, userCards.cardId))
+      .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+      .innerJoin(wishlist, and(eq(wishlist.cardId, userCards.cardId), eq(wishlist.userId, wantsId)))
+      .where(and(eq(userCards.userId, ownerId), eq(userCards.tradable, true)))
+      .orderBy(desc(cards.rarityId), cards.id);
+
+    const [iHaveTheyWant, theyHaveIWant] = await Promise.all([
+      matchRow(userId, otherUserId),
+      matchRow(otherUserId, userId),
+    ]);
+
+    return { iHaveTheyWant, theyHaveIWant };
   })
 
   static getUserOwnedCardsBySubcategory = maybeTransaction('getUserOwnedCardsBySubcategory', async (
