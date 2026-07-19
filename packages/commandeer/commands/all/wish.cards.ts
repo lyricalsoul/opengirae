@@ -90,7 +90,7 @@ export default class WishCommand extends Command {
 
     const tokens = rawArgs.split(/\s+/).filter(Boolean)
 
-    if (tokens.length === 1) {
+    if (tokens.length === 1 || !tokens.every(t => /^\d+$/.test(t))) {
       const outcome = await resolveCardByIdOrName(rawArgs)
       if (!outcome.ok) {
         await reply(ctx, outcome.message ?? 'Uso: `/wish id ou nome`')
