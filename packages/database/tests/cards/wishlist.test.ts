@@ -14,7 +14,7 @@ describe("CardsDB wishlist methods", () => {
     rarityId = await db.select().from(rarities).limit(1).then(r => r[0]!.id);
 
     const [user] = await db.insert(users).values({
-      telegramId: `test-wishlist-${Date.now()}`, displayName: "Test Wishlist", avatarUrl: "",
+      displayName: "Test Wishlist", avatarUrl: "",
     }).returning();
     userId = user!.id;
 

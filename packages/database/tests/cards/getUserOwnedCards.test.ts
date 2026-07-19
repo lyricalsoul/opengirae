@@ -14,7 +14,7 @@ describe("CardsDB.getUserOwnedCards", () => {
     rarityId = await db.select().from(rarities).limit(1).then(r => r[0]!.id);
 
     const [user] = await db.insert(users).values({
-      telegramId: `test-owned-cards-${Date.now()}`, displayName: "Test Owned", avatarUrl: "",
+      displayName: "Test Owned", avatarUrl: "",
     }).returning();
     userId = user!.id;
 

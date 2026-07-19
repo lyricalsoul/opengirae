@@ -15,7 +15,7 @@ describe("tradable flag: default preference + explicit override", () => {
     rarityId = await db.select().from(rarities).limit(1).then(r => r[0]!.id);
 
     const [user] = await db.insert(users).values({
-      telegramId: `test-tradable-${Date.now()}`, displayName: "Test Tradable", avatarUrl: "",
+      displayName: "Test Tradable", avatarUrl: "",
     }).returning();
     userId = user!.id;
 

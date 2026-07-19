@@ -17,8 +17,8 @@ describe("CardsDB.executeTrade", () => {
     rarityId = await db.select().from(rarities).limit(1).then(r => r[0]!.id);
 
     const [a, b] = await db.insert(users).values([
-      { telegramId: `test-trade-a-${Date.now()}`, displayName: "Test A", avatarUrl: "" },
-      { telegramId: `test-trade-b-${Date.now()}`, displayName: "Test B", avatarUrl: "" },
+      { displayName: "Test A", avatarUrl: "" },
+      { displayName: "Test B", avatarUrl: "" },
     ]).returning();
     userAId = a!.id;
     userBId = b!.id;

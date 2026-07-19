@@ -14,8 +14,8 @@ describe("CardsDB.compareWishlists", () => {
     rarityId = await db.select().from(rarities).limit(1).then(r => r[0]!.id);
 
     const [a, b] = await db.insert(users).values([
-      { telegramId: `test-compare-a-${Date.now()}`, displayName: "Test Compare A", avatarUrl: "" },
-      { telegramId: `test-compare-b-${Date.now()}`, displayName: "Test Compare B", avatarUrl: "" },
+      { displayName: "Test Compare A", avatarUrl: "" },
+      { displayName: "Test Compare B", avatarUrl: "" },
     ]).returning();
     userAId = a!.id;
     userBId = b!.id;

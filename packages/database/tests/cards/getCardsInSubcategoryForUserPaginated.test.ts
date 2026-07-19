@@ -17,7 +17,7 @@ describe("CardsDB.getCardsInSubcategoryForUserPaginated", () => {
     rarityId = await db.select().from(rarities).limit(1).then(r => r[0]!.id);
 
     const [user] = await db.insert(users).values({
-      telegramId: `test-subcat-paginated-${Date.now()}`, displayName: "Test Subcat Paginated", avatarUrl: "",
+      displayName: "Test Subcat Paginated", avatarUrl: "",
     }).returning();
     userId = user!.id;
 

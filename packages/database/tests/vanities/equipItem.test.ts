@@ -11,7 +11,7 @@ describe("VanitiesDB.equipItem", () => {
 
   beforeAll(async () => {
     const [user] = await db.insert(users).values({
-      telegramId: `test-equipitem-${Date.now()}`, displayName: "Test Equip", avatarUrl: "",
+      displayName: "Test Equip", avatarUrl: "",
     }).returning();
     userId = user!.id;
     await db.insert(userProfiles).values({ userId });

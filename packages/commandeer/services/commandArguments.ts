@@ -151,7 +151,6 @@ async function parseUserMention(raw: string | undefined, ctx: IncomingCommand): 
     const user = await UsersDB.getUserByUsername(username)
     if (!user) return { ok: false, message: `Não encontrei o usuário @${escapeMarkdown(username)}.` }
 
-    // user.telegramId is stale for post-migration users - resolve on the asker's platform instead.
     const platformId = await UsersDB.getPlatformIdForUser(user.id, ctx.message.platform as 'telegram' | 'discord')
     return platformId
       ? { ok: true, value: platformId }

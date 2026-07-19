@@ -1,7 +1,6 @@
 import { DBOS } from '@girae/common/dbos';
 import { info } from '@girae/common/logger';
 import './services'
-import './worker'
 import { CronJobs } from './cron'
 
 DBOS.setConfig({
@@ -11,6 +10,8 @@ DBOS.setConfig({
 })
 
 await DBOS.launch()
+
+await import('./worker')
 
 await DBOS.applySchedules([
     {

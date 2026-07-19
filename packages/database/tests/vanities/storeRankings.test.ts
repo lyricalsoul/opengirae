@@ -18,7 +18,7 @@ describe("VanitiesDB store ranking queries", () => {
     unpopularItemId = unpopular!.id;
 
     const [buyer] = await db.insert(users).values({
-      telegramId: `test-ranking-buyer-${Date.now()}`, displayName: "Buyer", avatarUrl: "",
+      displayName: "Buyer", avatarUrl: "",
     }).returning();
     buyerId = buyer!.id;
 

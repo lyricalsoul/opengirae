@@ -16,7 +16,7 @@ describe("CardsDB.getUserCollectionProgress", () => {
     rarityId = await db.select().from(rarities).limit(1).then(r => r[0]!.id);
 
     const [user] = await db.insert(users).values({
-      telegramId: `test-collection-progress-${Date.now()}`, displayName: "Test Progress", avatarUrl: "",
+      displayName: "Test Progress", avatarUrl: "",
     }).returning();
     userId = user!.id;
 
@@ -67,7 +67,7 @@ describe("CardsDB.getUserCollectionProgress", () => {
 
   test("a different user with zero owned cards sees owned: 0", async () => {
     const [otherUser] = await db.insert(users).values({
-      telegramId: `test-collection-progress-other-${Date.now()}`, displayName: "Other", avatarUrl: "",
+      displayName: "Other", avatarUrl: "",
     }).returning();
 
     const result = await CardsDB.getUserCollectionProgress(otherUser!.id, { query: "Test Progress Subcategory" });

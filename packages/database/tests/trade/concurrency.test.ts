@@ -21,9 +21,9 @@ describe("CardsDB.executeTrade - concurrency", () => {
     rarityId = await db.select().from(rarities).limit(1).then(r => r[0]!.id);
 
     const [a, b, c] = await db.insert(users).values([
-      { telegramId: `test-race-a-${Date.now()}`, displayName: "Race A", avatarUrl: "" },
-      { telegramId: `test-race-b-${Date.now()}`, displayName: "Race B", avatarUrl: "" },
-      { telegramId: `test-race-c-${Date.now()}`, displayName: "Race C", avatarUrl: "" },
+      { displayName: "Race A", avatarUrl: "" },
+      { displayName: "Race B", avatarUrl: "" },
+      { displayName: "Race C", avatarUrl: "" },
     ]).returning();
     userAId = a!.id;
     userBId = b!.id;
@@ -101,7 +101,7 @@ describe("CardsDB.executeTrade - concurrency", () => {
     const N = 5;
     const setup = await Promise.all(
       Array.from({ length: N }, (_, i) => Promise.all([
-        db.insert(users).values({ telegramId: `test-race-oversell-${Date.now()}-${i}`, displayName: `Oversell ${i}`, avatarUrl: "" }).returning().then(r => r[0]!),
+        db.insert(users).values({ displayName: `Oversell ${i}`, avatarUrl: "" }).returning().then(r => r[0]!),
         db.insert(cards).values({ name: `dummy-oversell-${Date.now()}-${i}`, rarityId }).returning().then(r => r[0]!),
       ]))
     );

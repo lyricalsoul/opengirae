@@ -20,7 +20,7 @@ describe("CardsDB.deleteSubcategory", () => {
   beforeAll(async () => {
     rarityId = await db.select().from(rarities).limit(1).then(r => r[0]!.id);
     categoryId = await db.insert(categories).values({ name: `Test Category ${Date.now()}`, emoji: "🏷️" }).returning().then(r => r[0]!.id);
-    userId = await db.insert(users).values({ telegramId: `test-delsub-${Date.now()}`, displayName: "Test", avatarUrl: "" }).returning().then(r => r[0]!.id);
+    userId = await db.insert(users).values({ displayName: "Test", avatarUrl: "" }).returning().then(r => r[0]!.id);
     cardId = await db.insert(cards).values({ name: "Test Delsub Card", rarityId }).returning().then(r => r[0]!.id);
   });
 

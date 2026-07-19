@@ -57,6 +57,13 @@
       "when": 1784421894497,
       "tag": "0007_gorgeous_pepper_potts",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784440583740,
+      "tag": "0008_foamy_catseye",
+      "breakpoints": true
     }
   ]
 }

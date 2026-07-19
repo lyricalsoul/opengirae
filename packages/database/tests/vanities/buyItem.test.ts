@@ -11,7 +11,7 @@ describe("VanitiesDB.buyItem", () => {
 
   beforeAll(async () => {
     const [user] = await db.insert(users).values({
-      telegramId: `test-buyitem-${Date.now()}`, displayName: "Test Buy", avatarUrl: "", coins: 1000,
+      displayName: "Test Buy", avatarUrl: "", coins: 1000,
     }).returning();
     userId = user!.id;
 

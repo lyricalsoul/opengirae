@@ -18,7 +18,7 @@ describe("CardsDB.discardUserCards", () => {
     raroRarityId = raro!.id;
 
     const [user] = await db.insert(users).values({
-      telegramId: `test-bulk-discard-${Date.now()}`, displayName: "Test Bulk Discard", avatarUrl: "", coins: 0,
+      displayName: "Test Bulk Discard", avatarUrl: "", coins: 0,
     }).returning();
     userId = user!.id;
 
