@@ -14,7 +14,7 @@ export default class ProfileCommand extends Command {
     name: 'profile',
     description: 'Mostra seu perfil de usuário',
     usage: '/profile [@usuário]',
-    aliases: ['perfil', 'me', 'pf', 'pfp', 'ppc']
+    aliases: ['perfil', 'pf', 'pfp', 'ppc']
   }
 
   @CommandArgument([{ name: 'target', type: CommandArgumentType.USER_MENTION, nullable: true }])
