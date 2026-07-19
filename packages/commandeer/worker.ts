@@ -1,4 +1,4 @@
-import { Worker } from 'bullmq'
+import { Worker, MetricsTime } from 'bullmq'
 import { connection, responseQueue } from '@girae/common/queue'
 import { COMMAND_QUEUE_NAME, RESUME_QUEUE_NAME, QUICKVIEW_QUEUE_NAME, PAGE_QUEUE_NAME } from '@girae/common/queue/constants'
 import { executeCommand } from './services/commands'
@@ -14,7 +14,7 @@ export const commandWorker = new Worker(COMMAND_QUEUE_NAME, async (job) => {
   const waitMs = Date.now() - job.timestamp
   if (waitMs > QUEUE_WAIT_WARN_MS) info('commandeer', `Job ${job.id} (${job.data.name}) started after waiting ${waitMs}ms in queue`)
   await executeCommand(job.data)
-}, { connection })
+}, { connection, metrics: { maxDataPoints: MetricsTime.ONE_WEEK * 2 } })
 
 commandWorker.on('completed', (job) => {
   info('commandeer', `Job ${job.id} (${job.data.name}) completed`)
@@ -27,7 +27,7 @@ commandWorker.on('failed', (job, err) => {
 export const resumeWorker = new Worker(RESUME_QUEUE_NAME, async (job) => {
   const { workflowID, eventName, value, messageId, clickerUserId } = job.data
   await DBOS.send(workflowID, { value, messageId, clickerUserId }, eventName)
-}, { connection })
+}, { connection, metrics: { maxDataPoints: MetricsTime.ONE_WEEK * 2 } })
 
 resumeWorker.on('failed', (job, err) => {
   error('commandeer', `Resume job ${job?.id} (workflow: ${job?.data?.workflowID}) failed: ${err.message}`)
@@ -51,7 +51,7 @@ export const quickViewWorker = new Worker(QUICKVIEW_QUEUE_NAME, async (job) => {
     chatId: '',
     platform,
   } satisfies PendingResponse)
-}, { connection })
+}, { connection, metrics: { maxDataPoints: MetricsTime.ONE_WEEK * 2 } })
 
 quickViewWorker.on('completed', (job) => {
   info('commandeer', `Quick view job ${job.id} (${job.data.handler}) completed`)
@@ -116,7 +116,7 @@ export const pageWorker = new Worker(PAGE_QUEUE_NAME, async (job) => {
     } satisfies PendingResponse),
     ackPageCallback(platform, callbackQueryId, ''),
   ])
-}, { connection })
+}, { connection, metrics: { maxDataPoints: MetricsTime.ONE_WEEK * 2 } })
 
 pageWorker.on('completed', (job) => {
   info('commandeer', `Page job ${job.id} (${job.data.handler}) completed`)

@@ -157,7 +157,16 @@ async function parseUserMention(raw: string | undefined, ctx: IncomingCommand): 
       : { ok: false, message: `@${escapeMarkdown(username)} não tem uma conta vinculada nesta plataforma.` }
   }
 
-  if (/^\d+$/.test(raw)) return { ok: true, value: raw }
+  if (/^\d+$/.test(raw)) {
+    const user = await UsersDB.getUserById(parseInt(raw, 10))
+    if (!user) return { ok: false, message: `Não encontrei o usuário com ID ${raw}.` }
+
+    const platformId = await UsersDB.getPlatformIdForUser(user.id, ctx.message.platform as 'telegram' | 'discord')
+    return platformId
+      ? { ok: true, value: platformId }
+      : { ok: false, message: `O usuário ${raw} não tem uma conta vinculada nesta plataforma.` }
+  }
+
   return { ok: false }
 }
 

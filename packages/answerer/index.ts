@@ -1,4 +1,4 @@
-import { Worker } from 'bullmq'
+import { Worker, MetricsTime } from 'bullmq'
 import { connection } from '@girae/common/queue'
 import { RESPONSE_QUEUE_NAME } from '@girae/common/queue/constants'
 import { sendAnswer } from './handler'
@@ -14,6 +14,7 @@ const worker = new Worker(RESPONSE_QUEUE_NAME, async (job) => {
 }, {
   connection,
   concurrency: 5,
+  metrics: { maxDataPoints: MetricsTime.ONE_WEEK * 2 },
 })
 
 worker.on('completed', (job) => {
