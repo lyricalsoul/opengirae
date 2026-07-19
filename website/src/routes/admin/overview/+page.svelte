@@ -17,6 +17,7 @@
 		{ label: 'Cartas no catálogo', value: stats.cardCount },
 		{ label: 'Giros realizados', value: stats.drawCount },
 		{ label: 'Itens comprados', value: stats.purchaseCount },
+		{ label: 'Trocas realizadas', value: stats.tradeCount },
 		{ label: 'Fundos', value: backgroundsCount },
 		{ label: 'Figurinhas', value: stickersCount }
 	];
@@ -111,6 +112,45 @@
 		<div style="height: 220px;">
 			<Chart config={rarityConfig} />
 		</div>
+	</div>
+</div>
+
+{#snippet leaderboardRow(id: number, displayName: string, avatarUrl: string, valueLabel: string)}
+	<li class="flex items-center gap-3 text-sm">
+		<img src={avatarUrl} alt="" class="border-line h-8 w-8 shrink-0 rounded-full border object-cover" />
+		<span class="text-ink min-w-0 flex-1 truncate">
+			<span class="text-ink-dim">{id}.</span>
+			{displayName}
+		</span>
+		<span class="text-ink-dim shrink-0 text-xs">{valueLabel}</span>
+	</li>
+{/snippet}
+
+<div class="mb-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
+	<div class="border-line bg-panel rounded-xl border p-4">
+		<p class="text-ink mb-4 text-sm font-semibold">Usuários mais ricos</p>
+		{#if stats.richestUsers.length === 0}
+			<p class="text-ink-dim text-sm">Nenhum usuário registrado.</p>
+		{:else}
+			<ul class="flex flex-col gap-3">
+				{#each stats.richestUsers as u (u.id)}
+					{@render leaderboardRow(u.id, u.displayName, u.avatarUrl, `${u.coins.toLocaleString('pt-BR')} moedas`)}
+				{/each}
+			</ul>
+		{/if}
+	</div>
+
+	<div class="border-line bg-panel rounded-xl border p-4">
+		<p class="text-ink mb-4 text-sm font-semibold">Mais cartas</p>
+		{#if stats.mostCardsUsers.length === 0}
+			<p class="text-ink-dim text-sm">Nenhum usuário registrado.</p>
+		{:else}
+			<ul class="flex flex-col gap-3">
+				{#each stats.mostCardsUsers as u (u.id)}
+					{@render leaderboardRow(u.id, u.displayName, u.avatarUrl, `${u.total.toLocaleString('pt-BR')} cartas`)}
+				{/each}
+			</ul>
+		{/if}
 	</div>
 </div>
 

@@ -1,6 +1,6 @@
 import { maybeTransaction } from "./decorators";
 import { users } from "./schemas/users";
-import { cards, rarities, cardDrawHistory } from "./schemas/cards";
+import { cards, rarities, cardDrawHistory, userCards, trades } from "./schemas/cards";
 import { storeItems, boughtItems } from "./schemas/vanities";
 import { auditLogs } from "./schemas/audit";
 import { sql, eq, desc, gte } from "drizzle-orm";
@@ -13,10 +13,13 @@ export class StatsDB {
       cardCount,
       drawCount,
       purchaseCount,
+      tradeCount,
       itemsByType,
       cardsByRarity,
       drawsByDay,
       recentActivity,
+      richestUsers,
+      mostCardsUsers,
     ] = await Promise.all([
       client
         .select({
@@ -35,6 +38,7 @@ export class StatsDB {
       client.select({ total: sql<string>`count(*)` }).from(cards).then((r) => r?.[0]?.total),
       client.select({ total: sql<string>`count(*)` }).from(cardDrawHistory).then((r) => r?.[0]?.total),
       client.select({ total: sql<string>`count(*)` }).from(boughtItems).then((r) => r?.[0]?.total),
+      client.select({ total: sql<string>`count(*)` }).from(trades).then((r) => r?.[0]?.total),
 
       client
         .select({ type: storeItems.type, total: sql<string>`count(*)` })
@@ -69,6 +73,25 @@ export class StatsDB {
         .leftJoin(users, eq(users.id, auditLogs.actorUserId))
         .orderBy(desc(auditLogs.createdAt))
         .limit(8),
+
+      client
+        .select({ id: users.id, displayName: users.displayName, avatarUrl: users.avatarUrl, coins: users.coins })
+        .from(users)
+        .orderBy(desc(users.coins))
+        .limit(5),
+
+      client
+        .select({
+          id: users.id,
+          displayName: users.displayName,
+          avatarUrl: users.avatarUrl,
+          total: sql<string>`sum(${userCards.count})`,
+        })
+        .from(userCards)
+        .innerJoin(users, eq(users.id, userCards.userId))
+        .groupBy(users.id, users.displayName, users.avatarUrl)
+        .orderBy(desc(sql`sum(${userCards.count})`))
+        .limit(5),
     ]);
 
     return {
@@ -81,10 +104,13 @@ export class StatsDB {
       cardCount: Number(cardCount),
       drawCount: Number(drawCount),
       purchaseCount: Number(purchaseCount),
+      tradeCount: Number(tradeCount),
       itemsByType: itemsByType.map((r) => ({ type: r.type, total: Number(r.total) })),
       cardsByRarity: cardsByRarity.map((r) => ({ rarity: r.rarity, total: Number(r.total) })),
       drawsByDay: drawsByDay.map((r) => ({ day: r.day, total: Number(r.total) })),
       recentActivity,
+      richestUsers,
+      mostCardsUsers: mostCardsUsers.map((r) => ({ id: r.id, displayName: r.displayName, avatarUrl: r.avatarUrl, total: Number(r.total) })),
     };
   })
 }
