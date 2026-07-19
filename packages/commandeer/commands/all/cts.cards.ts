@@ -17,10 +17,10 @@ const FILTERS: FilterDef<OwnedCardRow>[] = [
   { id: '3', emoji: '🥇', description: 'com raridade lendária', match: c => c.rarityName === 'Lendário' },
 ]
 
-async function renderPage(rawArg: string, page: number, viewerTelegramId: string) {
+async function renderPage(rawArg: string, page: number, viewerTelegramId: string, platform: 'telegram' | 'discord') {
   const { active } = parseFilterArg(rawArg)
 
-  const viewer = await UsersDB.getUserByTelegramId(viewerTelegramId)
+  const viewer = await UsersDB.getUserByPlatformAccount(platform, viewerTelegramId)
   if (!viewer) return null
 
   const allCards = await CardsDB.getUserOwnedCards(viewer.id)
@@ -61,7 +61,7 @@ export default class CardsListCommand extends Command {
   }
 
   static override async execute(ctx: IncomingCommand) {
-    const viewer = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+    const viewer = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!viewer) return
 
     const cardCount = await CardsDB.getUserCardsCount(viewer.id)
@@ -70,7 +70,7 @@ export default class CardsListCommand extends Command {
       return
     }
 
-    const page = await renderPage('', 0, ctx.message.author.id)
+    const page = await renderPage('', 0, ctx.message.author.id, ctx.message.platform as 'telegram' | 'discord')
     if (!page) return
 
     const navRow = pageNavRow('cts', '', 0, page.hasNext, page.totalPages)
@@ -84,7 +84,7 @@ export default class CardsListCommand extends Command {
   }
 
   @Page({ name: 'cts', restricted: true })
-  static async ctsPage(arg: string, page: number, authorId: string) {
-    return renderPage(arg, page, authorId)
+  static async ctsPage(arg: string, page: number, authorId: string, platform: 'telegram' | 'discord') {
+    return renderPage(arg, page, authorId, platform)
   }
 }

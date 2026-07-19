@@ -13,7 +13,7 @@ type CardDetails = NonNullable<Awaited<ReturnType<typeof CardsDB.getCardWithDeta
 export const FALLBACK_IMAGE = 'https://placehold.co/900x1260/png'
 
 async function showCard(ctx: IncomingCommand, card: CardDetails) {
-  const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+  const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
   const [owned, tags] = await Promise.all([
     user ? CardsDB.getUserCard(user.id, card.id) : null,
     CardsDB.getSecondarySubcategoryNames(card.id),

@@ -150,6 +150,7 @@ export async function generateWishlistImage(cards: DittoWishlistCard[]): Promise
 }
 
 export async function renderProfile(
+  platform: 'telegram' | 'discord',
   telegramId: string,
   overrides?: { backgroundId?: number; stickerId?: number; bio?: string; favoriteColor?: string; favoriteCardColor?: string | null; hideEmojis?: boolean },
 ): Promise<{ url: string } | null> {
@@ -158,7 +159,7 @@ export async function renderProfile(
     overrides?.stickerId ? VanitiesDB.getStoreItemById(overrides.stickerId) : null,
   ])
 
-  const profileData = await buildProfileData(telegramId, {
+  const profileData = await buildProfileData(platform, telegramId, {
     ...(background ? { backgroundURL: background.itemURL } : {}),
     ...(sticker ? { stickerURL: sticker.itemURL } : {}),
     ...(overrides?.bio !== undefined ? { bio: overrides.bio } : {}),
@@ -171,12 +172,12 @@ export async function renderProfile(
   return generateProfileImage(profileData)
 }
 
-export async function previewItem(telegramId: string, itemId: number): Promise<{ url: string } | null> {
+export async function previewItem(platform: 'telegram' | 'discord', telegramId: string, itemId: number): Promise<{ url: string } | null> {
   const item = await VanitiesDB.getStoreItemById(itemId)
   if (!item || item.type === 'profile') return null
 
   const overrides = item.type === 'background' ? { backgroundURL: item.itemURL } : { stickerURL: item.itemURL }
-  const profileData = await buildProfileData(telegramId, overrides)
+  const profileData = await buildProfileData(platform, telegramId, overrides)
   if (!profileData) return null
 
   return generateProfileImage(profileData, ['preview'])

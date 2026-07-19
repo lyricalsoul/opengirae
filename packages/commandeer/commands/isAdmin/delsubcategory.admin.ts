@@ -34,7 +34,7 @@ export default class DeleteSubcategoryCommand extends Command {
     if (confirmSelection?.messageId) await deleteMsg(ctx, confirmSelection.messageId)
     if (!confirmSelection?.value) return
 
-    const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+    const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!user) return
 
     const result = await CardsDB.deleteSubcategory(subcategory.id)

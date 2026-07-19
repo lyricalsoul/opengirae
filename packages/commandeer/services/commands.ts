@@ -40,7 +40,8 @@ export async function executeCommand(cmd: IncomingCommand) {
   }
 
   await UsersDB.ensureUser({
-    telegramId: cmd.message.author.id,
+    platform: cmd.message.platform as 'telegram' | 'discord',
+    platformId: cmd.message.author.id,
     displayName: cmd.message.author.name,
     avatarUrl: cmd.message.author.avatarUrl,
   });

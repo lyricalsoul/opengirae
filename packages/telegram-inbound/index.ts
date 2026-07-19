@@ -109,7 +109,7 @@ tg.on('message', async (msg) => {
     ...await resolveMedia(msg)
   }
 
-  UsersDB.touchUsername(m.author.id, msg.author!.username, m.author.name).catch(() => undefined)
+  UsersDB.touchUsername('telegram', m.author.id, msg.author!.username, m.author.name).catch(() => undefined)
   await refreshAvatarIfStale(m.author.id, m.author.name)
 
   await processCommand(m)
@@ -118,10 +118,12 @@ tg.on('message', async (msg) => {
 tg.on('callbackQuery', async (data) => {
   if (!data.data) return
   await refreshAvatarIfStale(data.author.id.toString(), data.author.firstName)
+ 
   await processCallback(
     data.data,
     data.author.id.toString(),
     data.id,
+    'telegram',
     data.message?.chat?.id?.toString(),
     data.message?.id?.toString(),
     data.author.firstName

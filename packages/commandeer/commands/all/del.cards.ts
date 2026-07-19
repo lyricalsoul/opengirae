@@ -42,7 +42,7 @@ export default class DelCommand extends Command {
     const requestedQty = new Map<number, number>()
     for (const id of cardIds) requestedQty.set(id, (requestedQty.get(id) ?? 0) + 1)
 
-    const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+    const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!user) return
 
     const owned = await CardsDB.getOwnedCardQuantities(user.id, [...requestedQty.keys()])

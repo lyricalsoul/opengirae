@@ -21,7 +21,7 @@ export default class SetCardSubcategoryCommand extends Command {
   static override async execute(ctx: IncomingCommand, args: { card: NonNullable<Awaited<ReturnType<typeof CardsDB.getCardWithDetails>>>; subcategory: NonNullable<Awaited<ReturnType<typeof CardsDB.getSubcategory>>> }) {
     const { card, subcategory } = args
 
-    const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+    const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!user) return
 
     await CardsDB.setCardMainSubcategory(card.id, subcategory.id)

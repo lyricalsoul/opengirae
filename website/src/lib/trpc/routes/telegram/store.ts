@@ -36,11 +36,8 @@ export const telegramStoreRouter = t.router({
 	}),
 
 	equippedItemIds: telegramProcedure.query(async ({ ctx }) => {
-		const profileRow = await UsersDB.getUserProfileByTelegramId(ctx.tgUser.id.toString());
-		return {
-			background: profileRow?.user_profiles?.equipedBackgroundId ?? null,
-			sticker: profileRow?.user_profiles?.equipedStickerId ?? null,
-		};
+		const profileRow = await UsersDB.getUserProfileByPlatformAccount('telegram', ctx.tgUser.id.toString());
+		return UsersDB.getEquippedItemIds(profileRow?.user_profiles);
 	}),
 
 	balance: telegramProcedure.query(async ({ ctx }) => {
@@ -50,7 +47,7 @@ export const telegramStoreRouter = t.router({
 
 	preview: telegramProcedure
 		.input(z.object({ itemId: z.number().int().positive() }))
-		.query(({ ctx, input }) => previewItem(ctx.tgUser.id.toString(), input.itemId)),
+		.query(({ ctx, input }) => previewItem('telegram', ctx.tgUser.id.toString(), input.itemId)),
 
 	buy: telegramProcedure
 		.input(z.object({ itemId: z.number().int().positive() }))

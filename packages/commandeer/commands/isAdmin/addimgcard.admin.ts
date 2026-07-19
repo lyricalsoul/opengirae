@@ -27,7 +27,7 @@ export default class AddImageCardCommand extends Command {
       return
     }
 
-    const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+    const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!user) return
 
     const cdnUrl = isAnimated ? await uploadFromUrl(photoUrl, 'cards') : await uploadCardImage(photoUrl)

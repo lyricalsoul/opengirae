@@ -39,8 +39,8 @@ ${pageInfo}${EMOJI.browse} Para adicionar um card, use \`/wish id ou nome\`.`
   return { content, photoUrl: image?.url, hasNext: page < totalPages - 1, totalPages }
 }
 
-async function isViewable(viewerTelegramId: string, target: NonNullable<Awaited<ReturnType<typeof UsersDB.getUserByTelegramId>>>) {
-  if (target.telegramId === viewerTelegramId) return true
+function isViewable(viewerId: number, target: NonNullable<Awaited<ReturnType<typeof UsersDB.getUserByPlatformAccount>>>) {
+  if (target.id === viewerId) return true
   return !target.privacyMode
 }
 
@@ -53,15 +53,18 @@ export default class WishCommand extends Command {
   }
 
   static override async execute(ctx: IncomingCommand) {
+    const viewer = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
+    if (!viewer) return
+
     const replyToId = ctx.message.replyTo?.author.id
 
     if (replyToId) {
-      const target = await UsersDB.getUserByTelegramId(replyToId)
+      const target = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', replyToId)
       if (!target) {
         await reply(ctx, 'Esse usuário nunca usou a bot!')
         return
       }
-      if (!(await isViewable(ctx.message.author.id, target))) {
+      if (!isViewable(viewer.id, target)) {
         await reply(ctx, 'Esse usuário ativou o modo privado e não é possível ver a lista de desejos dele. 🔒')
         return
       }
@@ -75,8 +78,6 @@ export default class WishCommand extends Command {
     }
 
     const rawArgs = ctx.args.join(' ').trim()
-    const viewer = await UsersDB.getUserByTelegramId(ctx.message.author.id)
-    if (!viewer) return
 
     if (!rawArgs) {
       const page = await renderPage(String(viewer.id), 0)
@@ -155,11 +156,14 @@ export default class WishCommand extends Command {
   }
 
   @Page({ name: 'wish' })
-  static async wishPage(arg: string, page: number, authorId: string) {
+  static async wishPage(arg: string, page: number, authorId: string, platform: 'telegram' | 'discord') {
     const targetUserId = parseInt(arg, 10)
     const target = await UsersDB.getUserById(targetUserId)
     if (!target) return null
-    if (!(await isViewable(authorId, target))) return null
+
+    const viewer = await UsersDB.getUserByPlatformAccount(platform, authorId)
+    if (!viewer) return null
+    if (!isViewable(viewer.id, target)) return null
 
     return renderPage(arg, page)
   }

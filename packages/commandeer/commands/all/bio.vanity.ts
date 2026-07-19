@@ -17,7 +17,7 @@ export default class BioCommand extends Command {
     guard: (v: string) => v.length <= MAX_BIO_LENGTH || `Desculpe, mas a sua biografia não pode ter mais de ${MAX_BIO_LENGTH} caracteres. 😅`,
   }])
   static override async execute(ctx: IncomingCommand, args: { bio: string }) {
-    const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+    const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!user) return
 
     await UsersDB.updateUserProfile(user.id, { bio: args.bio })

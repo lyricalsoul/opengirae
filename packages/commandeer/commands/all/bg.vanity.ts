@@ -9,8 +9,8 @@ import { escapeMarkdown } from '@girae/common/utilities/markdown'
 
 type VanityItem = NonNullable<Awaited<ReturnType<typeof VanitiesDB.getStoreItemById>>>
 
-async function renderItem(item: VanityItem, viewerTelegramId: string) {
-  const user = await UsersDB.getUserByTelegramId(viewerTelegramId)
+async function renderItem(item: VanityItem, viewerTelegramId: string, platform: 'telegram' | 'discord') {
+  const user = await UsersDB.getUserByPlatformAccount(platform, viewerTelegramId)
   const owned = user ? await VanitiesDB.hasBought(user.id, item.id) : false
 
   const content = `**${escapeMarkdown(item.title)}**
@@ -36,7 +36,7 @@ export default class BackgroundCommand extends Command {
   static override async execute(ctx: IncomingCommand, args: { item?: VanityItem }) {
     if (!args.item) {
       const arg = buildFilterArg([], 'background')
-      const page = await renderVanityBrowsePage(arg, 0, ctx.message.author.id)
+      const page = await renderVanityBrowsePage(arg, 0, ctx.message.author.id, ctx.message.platform as 'telegram' | 'discord')
       const navRow = pageNavRow('vanities', arg, 0, page.hasNext, page.totalPages)
       await reply(ctx, {
         content: page.content,
@@ -48,12 +48,12 @@ export default class BackgroundCommand extends Command {
       return
     }
 
-    const view = await renderItem(args.item, ctx.message.author.id)
+    const view = await renderItem(args.item, ctx.message.author.id, ctx.message.platform as 'telegram' | 'discord')
     await reply(ctx, { content: view.content, photoUrl: view.photoUrl, buttons: [view.button] })
   }
 
   @Page({ name: 'vanities', restricted: true })
-  static async vanitiesPage(arg: string, page: number, authorId: string) {
-    return renderVanityBrowsePage(arg, page, authorId)
+  static async vanitiesPage(arg: string, page: number, authorId: string, platform: 'telegram' | 'discord') {
+    return renderVanityBrowsePage(arg, page, authorId, platform)
   }
 }

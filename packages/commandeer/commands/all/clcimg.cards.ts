@@ -8,8 +8,8 @@ import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { FILTERS, loadSubcategoryCollection } from '../../services/subcategoryCollection'
 import { FALLBACK_IMAGE } from './card.cards'
 
-async function renderPage(rawArg: string, page: number, viewerTelegramId: string) {
-  const loaded = await loadSubcategoryCollection(rawArg, viewerTelegramId)
+async function renderPage(rawArg: string, page: number, viewerTelegramId: string, platform: 'telegram' | 'discord') {
+  const loaded = await loadSubcategoryCollection(rawArg, viewerTelegramId, platform)
   if (!loaded) return null
   const { subcategory, category, allCards, cards, userOwnedCards, pct, active, rest } = loaded
 
@@ -54,7 +54,7 @@ export default class CollectionImageCommand extends Command {
   @CommandArgument([{ name: 'subcategory', type: CommandArgumentType.SUBCATEGORY }])
   static override async execute(ctx: IncomingCommand, args: { subcategory: NonNullable<Awaited<ReturnType<typeof CardsDB.getSubcategory>>> }) {
     const arg = buildFilterArg([], String(args.subcategory.id))
-    const page = await renderPage(arg, 0, ctx.message.author.id)
+    const page = await renderPage(arg, 0, ctx.message.author.id, ctx.message.platform as 'telegram' | 'discord')
     if (!page) return
 
     const navRow = pageNavRow('clcimg', arg, 0, page.hasNext, page.totalPages)
@@ -69,7 +69,7 @@ export default class CollectionImageCommand extends Command {
   }
 
   @Page({ name: 'clcimg', restricted: true })
-  static async clcimgPage(arg: string, page: number, authorId: string) {
-    return renderPage(arg, page, authorId)
+  static async clcimgPage(arg: string, page: number, authorId: string, platform: 'telegram' | 'discord') {
+    return renderPage(arg, page, authorId, platform)
   }
 }

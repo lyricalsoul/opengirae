@@ -29,7 +29,7 @@ export default class ComprarCommand extends Command {
       return
     }
 
-    const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+    const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!user) return
 
     if (await VanitiesDB.hasBought(user.id, item.id)) {
@@ -38,7 +38,7 @@ export default class ComprarCommand extends Command {
     }
 
     const overrides = item.type === 'background' ? { backgroundURL: item.itemURL } : { stickerURL: item.itemURL }
-    const profileData = await buildProfileData(ctx.message.author.id, overrides)
+    const profileData = await buildProfileData(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id, overrides)
     const preview = profileData ? await generateProfileImage(profileData, ['preview']) : null
 
     await reply(ctx, {
@@ -73,12 +73,12 @@ export default class ComprarCommand extends Command {
   }
 
   @QuickView({ name: 'equip' })
-  static async equip(arg: string, clickerUserId: string): Promise<string> {
+  static async equip(arg: string, clickerUserId: string, platform: 'telegram' | 'discord'): Promise<string> {
     const [type, itemIdStr] = arg.split(':') as ['background' | 'sticker', string]
     const itemId = parseInt(itemIdStr ?? '', 10)
     if ((type !== 'background' && type !== 'sticker') || isNaN(itemId)) return 'Erro ao equipar.'
 
-    const user = await UsersDB.getUserByTelegramId(clickerUserId)
+    const user = await UsersDB.getUserByPlatformAccount(platform, clickerUserId)
     if (!user) return 'Erro ao equipar.'
 
     const result = await VanitiesDB.equipItem(user.id, type, itemId)

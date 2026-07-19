@@ -27,10 +27,10 @@ export default class CompareCommand extends Command {
       return
     }
 
-    const viewer = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+    const viewer = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!viewer) return
 
-    const target = await UsersDB.getUserByTelegramId(targetTelegramId)
+    const target = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', targetTelegramId)
     if (!target) {
       await reply(ctx, 'O usuário mencionado nunca usou a bot! Talvez você marcou a pessoa errada?')
       return

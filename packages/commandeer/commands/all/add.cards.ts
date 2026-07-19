@@ -16,7 +16,7 @@ export default class AddCommand extends Command {
 
   @CommandArgument([{ name: 'card', type: CommandArgumentType.CARD }])
   static override async execute(ctx: IncomingCommand, args: { card: CardDetails }) {
-    const message = await modifyTradeOffer(ctx.message.author.id, args.card.id, 'add')
+    const message = await modifyTradeOffer(ctx.message.author.id, ctx.message.platform as 'telegram' | 'discord', args.card.id, 'add')
     await reply(ctx, { content: message, photoUrl: args.card.imageUrl ?? undefined })
   }
 }

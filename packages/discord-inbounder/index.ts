@@ -1,59 +1,130 @@
-import type { MessageAuthor, MessageChat, Message } from '@girae/common/commands/types'
-import { avatarUrl, createBot, GatewayIntents } from 'discordeno'
-import { processCommand } from '@girae/common/inbound/handler'
-import { info } from '@girae/common/logger'
+import type { MessageAuthor, MessageChat, Message, IncomingCommand } from '@girae/common/commands/types'
+import { avatarUrl, createBot, GatewayIntents, InteractionTypes, InteractionResponseTypes, ActivityTypes, MessageFlags } from 'discordeno'
+import { processCallback } from '@girae/common/inbound/callback'
+import { commandQueue } from '@girae/common/queue'
+import { info, error } from '@girae/common/logger'
+import { buildApplicationCommands } from './registerCommands'
+import { UsersDB } from '@girae/database/users'
+import { findCommand } from '@girae/commandeer/loader'
+
+// TODO: make me do
+const DEV_GUILD_ID = 1528155050453635175n
 
 const bot = createBot({
   token: process.env.DISCORD_TOKEN!,
-  intents: GatewayIntents.Guilds | GatewayIntents.MessageContent | GatewayIntents.GuildMessages,
+  intents: GatewayIntents.Guilds,
+  gateway: {
+    makePresence: async () => ({
+      since: null,
+      status: 'online',
+      activities: [{ name: 'underscores', type: ActivityTypes.Listening }],
+    }),
+  },
   desiredProperties: {
     user: {
       id: true,
       globalName: true,
       avatar: true,
       accentColor: true,
-      discriminator: true
+      discriminator: true,
+    },
+    member: {
+      user: true,
     },
     message: {
-      content: true,
       id: true,
-      channelId: true,
-      author: true,
     },
     channel: {
       id: true,
-      name: true
+      name: true,
+    },
+    interaction: {
+      id: true,
+      type: true,
+      token: true,
+      channelId: true,
+      guildId: true,
+      data: true,
+      member: true,
+      user: true,
+      message: true,
     },
   },
   events: {
-    ready: ({ shardId, user }) => info('discord-inbounder', `Shard ${shardId} ready, user id: ${user.id}`),
-    messageCreate: async (msg) => {
-      if (!msg.author) return
+    ready: async ({ shardId, user }) => {
+      info('discord-inbounder', `Shard ${shardId} ready, user id: ${user.id}`)
+
+      try {
+        const commands = buildApplicationCommands()
+        await bot.helpers.upsertGuildApplicationCommands(DEV_GUILD_ID, commands)
+        info('discord-inbounder', `Registered ${commands.length} application commands on guild ${DEV_GUILD_ID}`)
+      } catch (e) {
+        error('discord-inbounder', `Failed to register application commands: ${e}`)
+      }
+    },
+
+    interactionCreate: async (interaction) => {
+      const invokingUser = interaction.member?.user ?? interaction.user
+      if (!invokingUser || !interaction.channelId) return
 
       const author: MessageAuthor = {
-        id: msg.author.id.toString(),
-        name: msg.author.globalName!,
-        avatarUrl: avatarUrl(msg.author.id, msg.author.discriminator)
+        id: invokingUser.id.toString(),
+        name: invokingUser.globalName ?? 'unknown',
+        avatarUrl: avatarUrl(invokingUser.id, invokingUser.discriminator, { avatar: invokingUser.avatar }),
+      }
+      const chat: MessageChat = { id: interaction.channelId.toString(), title: '' }
+
+      UsersDB.touchUsername('discord', author.id, undefined, author.name, author.avatarUrl).catch(() => undefined)
+
+      if (interaction.type === InteractionTypes.ApplicationCommand) {
+        if (!interaction.data?.name) return
+        const commandName = interaction.data.name
+
+        // Ack within Discord's 3s window - ephemeral-ness can only be set here, not on later edits.
+        const ephemeral = findCommand(commandName)?.module.info.ephemeral
+        await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
+          type: InteractionResponseTypes.DeferredChannelMessageWithSource,
+          data: ephemeral ? { flags: MessageFlags.Ephemeral } : undefined,
+        })
+        const placeholder = await bot.helpers.getOriginalInteractionResponse(interaction.token)
+
+        // options arrive typed - stringify in the order registerCommands.ts declared them.
+        const args = (interaction.data.options ?? []).map(o => String(o.value ?? ''))
+
+        const message: Message = {
+          id: String(placeholder.id),
+          author,
+          chat,
+          content: `/${commandName}`,
+          timestamp: new Date(),
+          platform: 'discord',
+          interactionToken: interaction.token,
+        }
+
+        await commandQueue.add('executeCommand', {
+          name: commandName,
+          args,
+          message,
+          workflowIDToBeAssigned: Bun.randomUUIDv7(),
+        } satisfies IncomingCommand)
+        return
       }
 
-      const chan = await bot.rest.getChannel(msg.channelId)
+      if (interaction.type === InteractionTypes.MessageComponent) {
+        const customId = interaction.data?.customId
+        if (!customId || !interaction.message?.id) return
 
-      const chat: MessageChat = {
-        id: msg.channelId.toString(),
-        title: chan.name!
+        await processCallback(
+          customId,
+          author.id,
+          `${interaction.id}:${interaction.token}`,
+          'discord',
+          chat.id,
+          String(interaction.message.id),
+          author.name,
+        )
       }
-
-      const m: Message = {
-        content: msg.content.replace('!', '/'),
-        id: String(msg.id),
-        author,
-        chat,
-        timestamp: new Date(msg.timestamp),
-        platform: 'discord'
-      }
-
-      await processCommand(m)
-    }
+    },
   },
 })
 

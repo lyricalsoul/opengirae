@@ -28,7 +28,7 @@ export default class AddSubcategoryCommand extends Command {
       return
     }
 
-    const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+    const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!user) return
 
     const subcategory = await CardsDB.createSubcategory(name, categoryId)

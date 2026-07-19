@@ -5,10 +5,11 @@ import { DEFAULT_BACKGROUND_URL, type DittoProfileData } from './ditto'
 import { DEFAULT_AVATAR_URL } from '@girae/database/constants'
 
 export async function buildProfileData(
+  platform: 'telegram' | 'discord',
   telegramId: string,
   overrides?: Partial<Pick<DittoProfileData, 'avatarURL' | 'backgroundURL' | 'stickerURL' | 'bio' | 'favoriteColor' | 'hideEmojis'>> & { favoriteCardColor?: string | null }
 ): Promise<DittoProfileData | null> {
-  const profileRow = await UsersDB.getUserProfileByTelegramId(telegramId)
+  const profileRow = await UsersDB.getUserProfileByPlatformAccount(platform, telegramId)
   const user = profileRow?.users
   const profile = profileRow?.user_profiles
   if (!user || !profile) return null

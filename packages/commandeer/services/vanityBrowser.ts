@@ -18,13 +18,13 @@ function filtersFor(ownedIds: Set<number>): FilterDef<StoreItemRow>[] {
   ]
 }
 
-export async function renderVanityBrowsePage(rawArg: string, page: number, viewerTelegramId: string) {
+export async function renderVanityBrowsePage(rawArg: string, page: number, viewerTelegramId: string, platform: 'telegram' | 'discord') {
   const { active, rest } = parseFilterArg(rawArg)
   const type = rest as VanityType
 
   const [items, user] = await Promise.all([
     VanitiesDB.listStoreItemsByType(type),
-    UsersDB.getUserByTelegramId(viewerTelegramId),
+    UsersDB.getUserByPlatformAccount(platform, viewerTelegramId),
   ])
   const ownedIds = new Set(user ? await VanitiesDB.getBoughtItemIds(user.id) : [])
   const filters = filtersFor(ownedIds)

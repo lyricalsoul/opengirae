@@ -1,19 +1,20 @@
-import type { StoredStep, Message, IncomingCommand, PendingResponse } from '../commands/types'
+import type { StoredStep, Message, IncomingCommand, PendingResponse, Platform } from '../commands/types'
 import { rawClient, resumeQueue, quickViewQueue, pageQueue, commandQueue, responseQueue } from '../queue'
 
-const ackCallback = (callbackQueryId: string, content: string) =>
+const ackCallback = (platform: Platform, callbackQueryId: string, content: string) =>
   responseQueue.add('answerCallbackQuery', {
     method: 'answerCallbackQuery',
     callbackQueryId,
     content,
     chatId: '',
-    platform: 'telegram',
+    platform,
   } satisfies PendingResponse)
 
 export async function processCallback(
   callbackData: string,
   clickerUserId: string,
   callbackQueryId: string,
+  platform: Platform,
   chatId?: string,
   messageId?: string,
   clickerName?: string,
@@ -32,7 +33,7 @@ export async function processCallback(
       chat: { id: chatId, title: '' },
       content: `/${name} ${args.join(' ')}`.trim(),
       timestamp: new Date(),
-      platform: 'telegram',
+      platform,
     }
 
     await commandQueue.add('executeCommand', {
@@ -53,7 +54,7 @@ export async function processCallback(
     const arg = rest.slice(sep + 1)
     if (!handler) return
 
-    await quickViewQueue.add('quickview', { handler, arg, callbackQueryId, clickerUserId })
+    await quickViewQueue.add('quickview', { handler, arg, callbackQueryId, clickerUserId, platform })
     return
   }
 
@@ -65,7 +66,7 @@ export async function processCallback(
     const arg = argParts.join(':')
     if (!handler || isNaN(page) || !authorId || !chatId || !messageId) return
 
-    await pageQueue.add('page', { handler, page, authorId, arg, clickerUserId, chatId, messageId, callbackQueryId })
+    await pageQueue.add('page', { handler, page, authorId, arg, clickerUserId, chatId, messageId, callbackQueryId, platform })
     return
   }
 
@@ -83,14 +84,14 @@ export async function processCallback(
   const raw = await rawClient.hGet(redisKey, eventName)
 
   if (!raw) {
-    await ackCallback(callbackQueryId, 'Essa ação expirou...')
+    await ackCallback(platform, callbackQueryId, 'Essa ação expirou...')
     return
   }
 
   const step: StoredStep = JSON.parse(raw)
 
   if (step.restricted === 'author' && !step.authorIds.includes(clickerUserId)) {
-    await ackCallback(callbackQueryId, 'Esse comando não é pra você...')
+    await ackCallback(platform, callbackQueryId, 'Esse comando não é pra você...')
     return
   }
 
@@ -107,7 +108,7 @@ export async function processCallback(
       messageId,
       clickerUserId,
     }),
-    
-    ackCallback(callbackQueryId, ''),
+
+    ackCallback(platform, callbackQueryId, ''),
   ])
 }

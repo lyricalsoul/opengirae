@@ -6,7 +6,6 @@ import { DEFAULT_AVATAR_URL } from '@girae/database/constants'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { generateProfileImage } from '@girae/common/ditto'
 import { buildProfileData } from '@girae/common/profileData'
-import { refreshAvatar } from '@girae/common/avatarRefresh'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { tg } from '../../services/botInfo'
 
@@ -22,7 +21,7 @@ export default class ProfileCommand extends Command {
   static override async execute(ctx: IncomingCommand, args: { target?: string }) {
     const targetTelegramId = args.target ?? ctx.message.author.id
 
-    const profileRow = await UsersDB.getUserProfileByTelegramId(targetTelegramId)
+    const profileRow = await UsersDB.getUserProfileByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', targetTelegramId)
     const user = profileRow?.users
     const profile = profileRow?.user_profiles
     if (!user || !profile) {
@@ -30,14 +29,11 @@ export default class ProfileCommand extends Command {
       return
     }
 
-    const [favoriteCard, refreshedUser] = await Promise.all([
-      user.favoriteCardId ? CardsDB.getCardWithDetails(user.favoriteCardId) : null,
-      refreshAvatar(tg, targetTelegramId, user.displayName, { force: true })
-    ])
+    const favoriteCard = user.favoriteCardId ? await CardsDB.getCardWithDetails(user.favoriteCardId) : null
 
-    const avatarUrl = refreshedUser?.avatarUrl || DEFAULT_AVATAR_URL
+    const avatarUrl = user.avatarUrl || DEFAULT_AVATAR_URL
 
-    const profileData = await buildProfileData(targetTelegramId, { avatarURL: avatarUrl })
+    const profileData = await buildProfileData(ctx.message.platform as 'telegram' | 'discord', targetTelegramId, { avatarURL: avatarUrl })
     const image = profileData ? await generateProfileImage(profileData) : null
 
     const favCardText = favoriteCard
@@ -83,7 +79,7 @@ export default class ProfileCommand extends Command {
   @Subcommand({ name: 'emo', description: 'Ativa ou desativa os emojis do seu perfil', aliases: ['emoji', 'emojis'] })
   @CommandArgument([{ name: 'enabled', type: CommandArgumentType.BOOLEAN }])
   static async toggleEmojis(ctx: IncomingCommand, args: { enabled: boolean }) {
-    const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+    const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!user) return
 
     const hide = !args.enabled

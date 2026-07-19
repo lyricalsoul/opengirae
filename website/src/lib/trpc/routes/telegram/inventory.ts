@@ -14,15 +14,14 @@ export const telegramInventoryRouter = t.router({
 		.input(z.object({ type: typeInput, limit: z.number().int().positive().max(100).optional(), offset: z.number().int().nonnegative().optional() }))
 		.query(async ({ ctx, input }) => {
 			const user = await requireUser(ctx.tgUser.id.toString());
-			const profileRow = await UsersDB.getUserProfileByTelegramId(ctx.tgUser.id.toString());
-			const equippedId = input.type === 'background'
-				? profileRow?.user_profiles?.equipedBackgroundId
-				: profileRow?.user_profiles?.equipedStickerId;
+			const profileRow = await UsersDB.getUserProfileByPlatformAccount('telegram', ctx.tgUser.id.toString());
+			const equipped = UsersDB.getEquippedItemIds(profileRow?.user_profiles);
+			const equippedId = input.type === 'background' ? equipped.background : equipped.sticker;
 			return VanitiesDB.listOwnedStoreItems(user.id, input.type, { ...input, equippedId });
 		}),
 
 	myProfile: telegramProcedure.query(async ({ ctx }) => {
-		const profileRow = await UsersDB.getUserProfileByTelegramId(ctx.tgUser.id.toString());
+		const profileRow = await UsersDB.getUserProfileByPlatformAccount('telegram', ctx.tgUser.id.toString());
 		return {
 			bio: profileRow?.user_profiles?.bio ?? '',
 			favoriteColor: profileRow?.user_profiles?.favoriteColor ?? '#000000',
@@ -40,7 +39,7 @@ export const telegramInventoryRouter = t.router({
 			favoriteCardColor: hexColorInput.nullable().optional(),
 			hideEmojis: z.boolean().optional(),
 		}))
-		.query(({ ctx, input }) => renderProfile(ctx.tgUser.id.toString(), input)),
+		.query(({ ctx, input }) => renderProfile('telegram', ctx.tgUser.id.toString(), input)),
 
 	save: telegramProcedure
 		.input(z.object({ backgroundId: z.number().int().positive().optional(), stickerId: z.number().int().positive().optional() }))

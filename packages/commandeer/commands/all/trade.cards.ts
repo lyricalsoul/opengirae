@@ -4,7 +4,6 @@ import { CardsDB, InsufficientCardError } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { reply, deleteMsg, awaitMultiPartyChoice } from '@girae/common/dbos/messaging'
 import { generateTradeImage } from '@girae/common/ditto'
-import { refreshAvatar } from '@girae/common/avatarRefresh'
 import { DEFAULT_AVATAR_URL } from '@girae/database/constants'
 import { getBotUsername, tg } from '../../services/botInfo'
 import { rawClient } from '@girae/common/queue'
@@ -86,12 +85,12 @@ export async function getActiveTradeSide(telegramId: string): Promise<{ workflow
   return { workflowID, state, side }
 }
 
-export async function modifyTradeOffer(telegramId: string, cardId: number, action: 'add' | 'remove'): Promise<string> {
+export async function modifyTradeOffer(telegramId: string, platform: 'telegram' | 'discord', cardId: number, action: 'add' | 'remove'): Promise<string> {
   const active = await getActiveTradeSide(telegramId)
   if (!active) return 'Você não está em uma troca de cartas...'
   const { workflowID, state, side } = active
 
-  const clickerUser = await UsersDB.getUserByTelegramId(telegramId)
+  const clickerUser = await UsersDB.getUserByPlatformAccount(platform, telegramId)
   if (!clickerUser) return 'Erro ao processar.'
 
   if (action === 'add') {
@@ -189,14 +188,14 @@ export default class TradeCommand extends Command {
       return
     }
 
-    const proposerUser = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+    const proposerUser = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!proposerUser) return
     if (proposerUser.isBanned) {
       await reply(ctx, 'Esse usuário está banido de usar a Giraê e não pode realizar trocas de cartas.')
       return
     }
 
-    const targetUser = await UsersDB.getUserByTelegramId(targetTelegramId)
+    const targetUser = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', targetTelegramId)
     if (!targetUser) {
       await reply(ctx, 'O usuário mencionado nunca usou a bot! Talvez você marcou a pessoa errada?')
       return
@@ -208,12 +207,8 @@ export default class TradeCommand extends Command {
 
     const proposerName = proposerUser.displayName
     const targetName = targetUser.displayName
-    const [refreshedProposer, refreshedTarget] = await Promise.all([
-      refreshAvatar(tg, ctx.message.author.id, proposerName, { force: true }),
-      refreshAvatar(tg, targetTelegramId, targetName, { force: true }),
-    ])
-    const proposerAvatarUrl = refreshedProposer?.avatarUrl || DEFAULT_AVATAR_URL
-    const targetAvatarUrl = refreshedTarget?.avatarUrl || DEFAULT_AVATAR_URL
+    const proposerAvatarUrl = proposerUser.avatarUrl || DEFAULT_AVATAR_URL
+    const targetAvatarUrl = targetUser.avatarUrl || DEFAULT_AVATAR_URL
     const sideOf = (telegramId: string): Side => telegramId === targetTelegramId ? 'target' : 'proposer'
     const telegramIdOf = (side: Side) => side === 'proposer' ? ctx.message.author.id : targetTelegramId
     const nameOf = (side: Side) => side === 'proposer' ? proposerName : targetName
@@ -425,12 +420,12 @@ export default class TradeCommand extends Command {
   }
 
   @QuickView({ name: 'tradeCard' })
-  static async tradeCard(arg: string, clickerUserId: string): Promise<string> {
+  static async tradeCard(arg: string, clickerUserId: string, platform: 'telegram' | 'discord'): Promise<string> {
     const sep = arg.indexOf(':')
     const action = arg.slice(0, sep)
     const cardId = parseInt(arg.slice(sep + 1), 10)
     if ((action !== 'add' && action !== 'remove') || isNaN(cardId)) return 'Erro ao processar.'
-    return modifyTradeOffer(clickerUserId, cardId, action)
+    return modifyTradeOffer(clickerUserId, platform, cardId, action)
   }
 
   @QuickView({ name: 'tradeReady' })

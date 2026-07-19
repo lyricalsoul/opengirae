@@ -100,7 +100,7 @@ export async function finalizeVanityItem(
   existingItemId?: number,
   messageId?: string,
 ) {
-  const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+  const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
   if (!user) return
 
   const cdnUrl = await uploadFromUrl(photoUrl, TYPE_FOLDER[type])
@@ -202,7 +202,7 @@ export async function deleteVanityItem(ctx: IncomingCommand, type: VanityType, i
   if (confirmSelection?.messageId) await deleteMsg(ctx, confirmSelection.messageId)
   if (!confirmSelection?.value) return
 
-  const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+  const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
   if (!user) return
 
   await VanitiesDB.deleteStoreItem(item.id)
@@ -218,7 +218,7 @@ export async function runVanityWizard(
   const itemData: VanityItemData = { ...initial.itemData }
 
   // the ditto preview only depends on the photo, not the editable text fields
-  const profileData = await buildProfileData(ctx.message.author.id, {
+  const profileData = await buildProfileData(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id, {
     backgroundURL: type === 'background' ? photoUrl : undefined,
     stickerURL: type === 'sticker' ? photoUrl : undefined,
   })

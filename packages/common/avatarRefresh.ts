@@ -2,7 +2,7 @@ import { UsersDB } from "@girae/database/users"
 import { uploadFromUrl } from "./utilities/storage"
 import { error } from "./logger"
 
-const AVATAR_TTL_MS = 6 * 60 * 60 * 1000
+const AVATAR_TTL_MS = 60 * 60 * 1000
 
 export interface AvatarFetchClient {
   getUserProfilePhotos(opts: { userId: string; limit: number }): Promise<{ photos?: { fetch(): Promise<{ url?: string | null }> }[][] } | undefined>
@@ -14,7 +14,7 @@ export async function refreshAvatar(
   displayName: string,
   opts: { force?: boolean } = {},
 ) {
-  const user = await UsersDB.ensureUser({ telegramId, displayName, avatarUrl: '' })
+  const user = await UsersDB.ensureUser({ platform: 'telegram', platformId: telegramId, displayName, avatarUrl: '' })
   if (!user) return null
 
   const isStale = opts.force

@@ -8,7 +8,11 @@ import { findQuickView, findPage } from './loader'
 import type { PendingResponse } from '@girae/common/commands/types'
 import { pageNavSteps } from '@girae/common/dbos/messaging'
 
+const QUEUE_WAIT_WARN_MS = 5000
+
 export const commandWorker = new Worker(COMMAND_QUEUE_NAME, async (job) => {
+  const waitMs = Date.now() - job.timestamp
+  if (waitMs > QUEUE_WAIT_WARN_MS) info('commandeer', `Job ${job.id} (${job.data.name}) started after waiting ${waitMs}ms in queue`)
   await executeCommand(job.data)
 }, { connection })
 
@@ -30,11 +34,14 @@ resumeWorker.on('failed', (job, err) => {
 })
 
 export const quickViewWorker = new Worker(QUICKVIEW_QUEUE_NAME, async (job) => {
-  const { handler, arg, callbackQueryId, clickerUserId } = job.data
+  const waitMs = Date.now() - job.timestamp
+  if (waitMs > QUEUE_WAIT_WARN_MS) info('commandeer', `Quick view job ${job.id} (${job.data.handler}) started after waiting ${waitMs}ms in queue`)
+
+  const { handler, arg, callbackQueryId, clickerUserId, platform } = job.data
   const entry = findQuickView(handler)
   if (!entry) return
 
-  const text: string | undefined = await (entry.module as any)[entry.methodName](arg, clickerUserId)
+  const text: string | undefined = await (entry.module as any)[entry.methodName](arg, clickerUserId, platform)
   if (!text) return
 
   await responseQueue.add('answerCallbackQuery', {
@@ -42,31 +49,38 @@ export const quickViewWorker = new Worker(QUICKVIEW_QUEUE_NAME, async (job) => {
     callbackQueryId,
     content: text,
     chatId: '',
-    platform: 'telegram',
+    platform,
   } satisfies PendingResponse)
 }, { connection })
+
+quickViewWorker.on('completed', (job) => {
+  info('commandeer', `Quick view job ${job.id} (${job.data.handler}) completed`)
+})
 
 quickViewWorker.on('failed', (job, err) => {
   error('commandeer', `Quick view job ${job?.id} (handler: ${job?.data?.handler}) failed: ${err.message}`)
 })
 
-const ackPageCallback = (callbackQueryId: string | undefined, content: string) =>
+const ackPageCallback = (platform: PendingResponse['platform'], callbackQueryId: string | undefined, content: string) =>
   callbackQueryId
     ? responseQueue.add('answerCallbackQuery', {
       method: 'answerCallbackQuery',
       callbackQueryId,
       content,
       chatId: '',
-      platform: 'telegram',
+      platform,
     } satisfies PendingResponse)
     : undefined
 
 export const pageWorker = new Worker(PAGE_QUEUE_NAME, async (job) => {
-  const { handler, page, authorId, arg, clickerUserId, chatId, messageId, callbackQueryId } = job.data
+  const waitMs = Date.now() - job.timestamp
+  if (waitMs > QUEUE_WAIT_WARN_MS) info('commandeer', `Page job ${job.id} (${job.data.handler}) started after waiting ${waitMs}ms in queue`)
+
+  const { handler, page, authorId, arg, clickerUserId, chatId, messageId, callbackQueryId, platform } = job.data
   const entry = findPage(handler)
   if (!entry) return
   if (entry.restricted && clickerUserId !== authorId) {
-    await ackPageCallback(callbackQueryId, 'Essa ação não é sua! 😅')
+    await ackPageCallback(platform, callbackQueryId, 'Essa ação não é sua! 😅')
     return
   }
 
@@ -76,9 +90,9 @@ export const pageWorker = new Worker(PAGE_QUEUE_NAME, async (job) => {
     hasNext: boolean
     totalPages?: number
     extraRows?: Array<Array<{ text: string; arg: string; page: number }>>
-  } | null = await (entry.module as any)[entry.methodName](arg, page, authorId)
+  } | null = await (entry.module as any)[entry.methodName](arg, page, authorId, platform)
   if (!result) {
-    await ackPageCallback(callbackQueryId, '')
+    await ackPageCallback(platform, callbackQueryId, '')
     return
   }
 
@@ -97,12 +111,16 @@ export const pageWorker = new Worker(PAGE_QUEUE_NAME, async (job) => {
       messageId,
       content: result.content,
       photoUrl: result.photoUrl,
-      platform: 'telegram',
+      platform,
       buttons: buttons.length ? buttons : undefined,
     } satisfies PendingResponse),
-    ackPageCallback(callbackQueryId, ''),
+    ackPageCallback(platform, callbackQueryId, ''),
   ])
 }, { connection })
+
+pageWorker.on('completed', (job) => {
+  info('commandeer', `Page job ${job.id} (${job.data.handler}) completed`)
+})
 
 pageWorker.on('failed', (job, err) => {
   error('commandeer', `Page job ${job?.id} (handler: ${job?.data?.handler}) failed: ${err.message}`)

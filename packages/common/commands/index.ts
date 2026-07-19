@@ -7,6 +7,8 @@ interface CommandInfo {
   usage?: string;
   aliases?: string[];
   useWorkflow?: boolean;
+  // Discord only: acks the interaction as ephemeral (visible only to the invoking user).
+  ephemeral?: boolean;
 }
 
 export class Command {

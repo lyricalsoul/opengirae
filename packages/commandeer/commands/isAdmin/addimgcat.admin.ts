@@ -25,7 +25,7 @@ export default class AddImageCategoryCommand extends Command {
       return
     }
 
-    const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+    const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!user) return
 
     const cdnUrl = await uploadFromUrl(photoUrl, 'categories')

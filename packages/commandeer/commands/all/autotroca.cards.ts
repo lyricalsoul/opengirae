@@ -13,7 +13,7 @@ export default class AutotrocaCommand extends Command {
   }
 
   static override async execute(ctx: IncomingCommand) {
-    const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+    const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!user) return
 
     const enabled = !user.makeCardsTradeableByDefault
@@ -25,9 +25,9 @@ export default class AutotrocaCommand extends Command {
   }
 
   @QuickView({ name: AUTOTROCA_BULK_QUICKVIEW })
-  static async applyToExistingCards(arg: string, clickerUserId: string): Promise<string> {
+  static async applyToExistingCards(arg: string, clickerUserId: string, platform: 'telegram' | 'discord'): Promise<string> {
     const tradable = arg === 'true'
-    const user = await UsersDB.getUserByTelegramId(clickerUserId)
+    const user = await UsersDB.getUserByPlatformAccount(platform, clickerUserId)
     if (!user) return 'Erro ao atualizar seus cards.'
 
     const count = await CardsDB.setAllUserCardsTradable(user.id, tradable)

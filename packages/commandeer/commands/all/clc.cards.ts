@@ -9,8 +9,8 @@ import { CardsDB } from '@girae/database/cards'
 
 const PAGE_SIZE = 20
 
-async function renderPage(rawArg: string, page: number, viewerTelegramId: string) {
-  const loaded = await loadSubcategoryCollection(rawArg, viewerTelegramId)
+async function renderPage(rawArg: string, page: number, viewerTelegramId: string, platform: 'telegram' | 'discord') {
+  const loaded = await loadSubcategoryCollection(rawArg, viewerTelegramId, platform)
   if (!loaded) return null
   const { subcategory, category, allCards, cards, userOwnedCards, pct, active, rest } = loaded
 
@@ -55,7 +55,7 @@ export default class CollectionCommand extends Command {
   @CommandArgument([{ name: 'subcategory', type: CommandArgumentType.SUBCATEGORY }])
   static override async execute(ctx: IncomingCommand, args: { subcategory: NonNullable<Awaited<ReturnType<typeof CardsDB.getSubcategory>>> }) {
     const arg = buildFilterArg([], String(args.subcategory.id))
-    const page = await renderPage(arg, 0, ctx.message.author.id)
+    const page = await renderPage(arg, 0, ctx.message.author.id, ctx.message.platform as 'telegram' | 'discord')
     if (!page) return
 
     const navRow = pageNavRow('clc', arg, 0, page.hasNext, page.totalPages)
@@ -70,7 +70,7 @@ export default class CollectionCommand extends Command {
   }
 
   @Page({ name: 'clc', restricted: true })
-  static async clcPage(arg: string, page: number, authorId: string) {
-    return renderPage(arg, page, authorId)
+  static async clcPage(arg: string, page: number, authorId: string, platform: 'telegram' | 'discord') {
+    return renderPage(arg, page, authorId, platform)
   }
 }

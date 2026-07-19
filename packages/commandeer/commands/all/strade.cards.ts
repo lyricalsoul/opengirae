@@ -4,7 +4,6 @@ import { CardsDB, InsufficientCardError } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { reply, deleteMsg, awaitMultiPartyChoice } from '@girae/common/dbos/messaging'
 import { generateTradeImage } from '@girae/common/ditto'
-import { refreshAvatar } from '@girae/common/avatarRefresh'
 import { DEFAULT_AVATAR_URL } from '@girae/database/constants'
 import { tg } from '../../services/botInfo'
 import type { IncomingCommand } from '@girae/common/commands/types'
@@ -43,14 +42,14 @@ export default class SimpleTradeCommand extends Command {
       return
     }
 
-    const proposerUser = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+    const proposerUser = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!proposerUser) return
     if (proposerUser.isBanned) {
       await reply(ctx, 'Esse usuário está banido de usar a Giraê e não pode realizar trocas de cartas.')
       return
     }
 
-    const targetUser = await UsersDB.getUserByTelegramId(targetTelegramId)
+    const targetUser = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', targetTelegramId)
     if (!targetUser) {
       await reply(ctx, 'O usuário mencionado nunca usou a bot! Talvez você marcou a pessoa errada?')
       return
@@ -74,12 +73,8 @@ export default class SimpleTradeCommand extends Command {
       return
     }
 
-    const [refreshedProposer, refreshedTarget] = await Promise.all([
-      refreshAvatar(tg, ctx.message.author.id, proposerName, { force: true }),
-      refreshAvatar(tg, targetTelegramId, targetName, { force: true }),
-    ])
-    const proposerAvatarUrl = refreshedProposer?.avatarUrl || DEFAULT_AVATAR_URL
-    const targetAvatarUrl = refreshedTarget?.avatarUrl || DEFAULT_AVATAR_URL
+    const proposerAvatarUrl = proposerUser.avatarUrl || DEFAULT_AVATAR_URL
+    const targetAvatarUrl = targetUser.avatarUrl || DEFAULT_AVATAR_URL
 
     const image = await generateTradeImage({
       user1: { avatarURL: proposerAvatarUrl, name: proposerName, cards: args.myCard.imageUrl ? [args.myCard.imageUrl] : [] },

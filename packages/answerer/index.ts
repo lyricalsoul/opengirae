@@ -4,7 +4,12 @@ import { RESPONSE_QUEUE_NAME } from '@girae/common/queue/constants'
 import { sendAnswer } from './handler'
 import { info, error } from '@girae/common/logger'
 
+const jobLabel = (data: { method?: string; platform?: string; chatId?: string; messageId?: string } | undefined) =>
+  data ? `${data.method}/${data.platform} chat=${data.chatId} msg=${data.messageId ?? '-'}` : 'unknown'
+
 const worker = new Worker(RESPONSE_QUEUE_NAME, async (job) => {
+  const waitMs = Date.now() - job.timestamp
+  if (waitMs > 5000) info('answerer', `Response job ${job.id} (${jobLabel(job.data)}) started after waiting ${waitMs}ms in queue`)
   return sendAnswer(job.data)
 }, {
   connection,
@@ -12,11 +17,11 @@ const worker = new Worker(RESPONSE_QUEUE_NAME, async (job) => {
 })
 
 worker.on('completed', (job) => {
-  info('answerer', `Response job ${job.id} completed`)
+  info('answerer', `Response job ${job.id} (${jobLabel(job.data)}) completed`)
 })
 
 worker.on('failed', (job, err) => {
-  error('answerer', `Response job ${job?.id} failed: ${err.message}`)
+  error('answerer', `Response job ${job?.id} (${jobLabel(job?.data)}) failed after ${job?.attemptsMade ?? '?'} attempt(s): ${err.message}`)
 })
 
 info('answerer', 'Response worker is ready')

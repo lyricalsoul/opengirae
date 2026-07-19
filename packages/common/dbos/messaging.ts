@@ -3,6 +3,9 @@ import type { IncomingCommand, InlineReplyOptions, PendingResponse, StoredStep }
 import { responseQueue, responseQueueEvents, rawClient } from "../queue"
 import { groups } from "../utilities/groups"
 import { error as logError } from "../logger"
+import { db } from "@girae/database/index"
+import { users, userProfiles, linkedAccounts } from "@girae/database/schemas/users"
+import { eq, and } from "drizzle-orm"
 
 async function settleReply(job: Awaited<ReturnType<typeof responseQueue.add>>): Promise<string | undefined> {
     try {
@@ -64,6 +67,23 @@ const RESPONSE_JOB_OPTIONS = { attempts: 3, backoff: { type: 'exponential', dela
 
 const isAnimatedMediaUrl = (url?: string) => !!url && /\.(gif|mp4|webm)(\?|#|$)/i.test(url)
 
+// Discord-only nicety: accent the embed with the author's own favoriteColor.
+// Queries the raw `db` client directly rather than going through UsersDB's maybeTransaction
+// methods - `reply()` itself is a DBOS step, and DBOS forbids calling a transaction from
+// within a step (or another transaction), so a DBOS-wrapped query can't be used here.
+async function getEmbedColor(cmd: IncomingCommand): Promise<string | undefined> {
+    if (cmd.message.platform !== 'discord') return undefined
+    const row = await db
+        .select({ favoriteColor: userProfiles.favoriteColor })
+        .from(userProfiles)
+        .innerJoin(users, eq(userProfiles.userId, users.id))
+        .innerJoin(linkedAccounts, eq(linkedAccounts.userId, users.id))
+        .where(and(eq(linkedAccounts.platform, 'discord'), eq(linkedAccounts.platformId, cmd.message.author.id)))
+        .limit(1)
+        .then(rows => rows[0])
+    return row?.favoriteColor
+}
+
 const resolveButton = (cmd: IncomingCommand, b: ButtonSpec) => ({
     text: b.text,
     url: b.url,
@@ -87,8 +107,16 @@ export const reply = maybeStep('reply', async (cmd: IncomingCommand, content: Me
                 : content.buttons ? [content.buttons.map(b => resolveButton(cmd, b))]
                     : undefined;
 
+        // Discord slash-command replies have no "invoking message" to reply to - the first
+        // reply must instead edit the placeholder message created when the interaction was
+        // deferred (discord-inbounder sets cmd.message.id to that placeholder's real id).
+        const targetMessageId = editMessageId ?? (cmd.message.platform === 'discord' ? cmd.message.id : undefined);
+        // Editing the deferred placeholder must go through the interaction-response API or
+        // Discord's "thinking..." indicator never clears - a plain channel edit isn't enough.
+        const interactionToken = targetMessageId === cmd.message.id ? cmd.message.interactionToken : undefined;
+
         let method: PendingResponse['method'] = 'sendMessage';
-        if (editMessageId) {
+        if (targetMessageId) {
             method = photoUrl ? (captionOnly ? 'editMessageCaption' : 'editMessageMedia') : 'editMessageText';
         } else if (photoUrl) {
             method = isAnimatedMediaUrl(photoUrl) ? 'sendAnimation' : 'sendPhoto';
@@ -99,10 +127,12 @@ export const reply = maybeStep('reply', async (cmd: IncomingCommand, content: Me
             chatId: cmd.message.chat.id,
             content: text,
             photoUrl,
-            messageId: editMessageId,
-            replyToMessageId: editMessageId ? undefined : cmd.message.id,
+            messageId: targetMessageId,
+            replyToMessageId: targetMessageId ? undefined : cmd.message.id,
             platform: cmd.message.platform,
             buttons,
+            interactionToken,
+            embedColor: await getEmbedColor(cmd),
         } satisfies PendingResponse, RESPONSE_JOB_OPTIONS)
         return settleReply(job)
     }
@@ -123,7 +153,10 @@ export const reply = maybeStep('reply', async (cmd: IncomingCommand, content: Me
     }))
     const buttons = content.rows ? groups(flatButtons, content.rows) : [flatButtons]
 
-    const method: PendingResponse['method'] = content.editMessageId
+    const targetMessageId = content.editMessageId ?? (cmd.message.platform === 'discord' ? cmd.message.id : undefined);
+    const interactionToken = targetMessageId === cmd.message.id ? cmd.message.interactionToken : undefined;
+
+    const method: PendingResponse['method'] = targetMessageId
         ? (content.photoUrl ? 'editMessageMedia' : 'editMessageText')
         : content.photoUrl
             ? (isAnimatedMediaUrl(content.photoUrl) ? 'sendAnimation' : 'sendPhoto')
@@ -134,10 +167,12 @@ export const reply = maybeStep('reply', async (cmd: IncomingCommand, content: Me
         chatId: cmd.message.chat.id,
         content: content.content,
         photoUrl: content.photoUrl,
-        messageId: content.editMessageId,
-        replyToMessageId: content.editMessageId ? undefined : cmd.message.id,
+        messageId: targetMessageId,
+        replyToMessageId: targetMessageId ? undefined : cmd.message.id,
         platform: cmd.message.platform,
         buttons,
+        interactionToken,
+        embedColor: await getEmbedColor(cmd),
     } satisfies PendingResponse, RESPONSE_JOB_OPTIONS)
     return settleReply(job)
 })

@@ -42,7 +42,7 @@ describe("callback.ts multiUse handling", () => {
     cleanupJobWorkflowIds.push(workflowID);
     await seedStep(workflowID, eventName, true);
 
-    await processCallback(`${workflowID}.${eventName}.1`, 'proposer-id', 'cb-1');
+    await processCallback(`${workflowID}.${eventName}.1`, 'proposer-id', 'cb-1', 'telegram');
 
     const stillThere = await rawClient.hGet(`workflow:${workflowID}`, eventName);
     expect(stillThere).not.toBeNull(); // NOT deleted - a second click must still be routable
@@ -56,7 +56,7 @@ describe("callback.ts multiUse handling", () => {
     cleanupJobWorkflowIds.push(workflowID);
     await seedStep(workflowID, eventName, false);
 
-    await processCallback(`${workflowID}.${eventName}.0`, 'proposer-id', 'cb-2');
+    await processCallback(`${workflowID}.${eventName}.0`, 'proposer-id', 'cb-2', 'telegram');
 
     const gone = await rawClient.hGet(`workflow:${workflowID}`, eventName);
     expect(gone).toBeNull(); // single-author flows (girar, comprar, delcard) must keep this behavior
@@ -73,7 +73,7 @@ describe("callback.ts multiUse handling", () => {
     // 'target-id' is in authorIds, so the restricted-set check passes; whether this
     // specific option is *valid* for that clicker is the workflow's job, not
     // callback.ts's - it must still be delivered.
-    await processCallback(`${workflowID}.${eventName}.0`, 'target-id', 'cb-3');
+    await processCallback(`${workflowID}.${eventName}.0`, 'target-id', 'cb-3', 'telegram');
 
     const jobs = await resumeQueue.getJobs(['waiting', 'completed']);
     const delivered = jobs.some(j => j.data?.workflowID === workflowID && j.data?.clickerUserId === 'target-id');
@@ -88,7 +88,7 @@ describe("callback.ts multiUse handling", () => {
     cleanupJobWorkflowIds.push(workflowID);
     await seedStep(workflowID, eventName, true);
 
-    await processCallback(`${workflowID}.${eventName}.0`, 'some-random-stranger', 'cb-4');
+    await processCallback(`${workflowID}.${eventName}.0`, 'some-random-stranger', 'cb-4', 'telegram');
 
     const stillThere = await rawClient.hGet(`workflow:${workflowID}`, eventName);
     expect(stillThere).not.toBeNull(); // untouched - the click was rejected before consuming anything

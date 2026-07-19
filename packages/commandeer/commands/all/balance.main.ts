@@ -14,7 +14,7 @@ export default class BalanceCommand extends Command {
   }
 
   static override async execute(ctx: IncomingCommand) {
-    const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+    const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!user) {
       return
     }

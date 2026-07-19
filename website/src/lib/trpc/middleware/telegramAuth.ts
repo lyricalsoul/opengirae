@@ -5,7 +5,7 @@ import { env } from '$env/dynamic/private';
 import { UsersDB } from '@girae/database/users';
 
 export async function requireUser(telegramId: string) {
-	const user = await UsersDB.getUserByTelegramId(telegramId);
+	const user = await UsersDB.getUserByPlatformAccount('telegram', telegramId);
 	if (!user) throw new TRPCError({ code: 'NOT_FOUND' });
 	return user;
 }

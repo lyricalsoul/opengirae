@@ -45,7 +45,7 @@ export default class MergeSubcategoryCommand extends Command {
     if (confirmSelection?.messageId) await deleteMsg(ctx, confirmSelection.messageId)
     if (!confirmSelection?.value) return
 
-    const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+    const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!user) return
 
     const moved = await CardsDB.mergeSubcategory(fromId, toId)

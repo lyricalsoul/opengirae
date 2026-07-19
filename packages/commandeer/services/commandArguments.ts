@@ -149,7 +149,13 @@ async function parseUserMention(raw: string | undefined, ctx: IncomingCommand): 
   if (raw.startsWith('@')) {
     const username = raw.slice(1)
     const user = await UsersDB.getUserByUsername(username)
-    return user ? { ok: true, value: user.telegramId } : { ok: false, message: `Não encontrei o usuário @${escapeMarkdown(username)}.` }
+    if (!user) return { ok: false, message: `Não encontrei o usuário @${escapeMarkdown(username)}.` }
+
+    // user.telegramId is stale for post-migration users - resolve on the asker's platform instead.
+    const platformId = await UsersDB.getPlatformIdForUser(user.id, ctx.message.platform as 'telegram' | 'discord')
+    return platformId
+      ? { ok: true, value: platformId }
+      : { ok: false, message: `@${escapeMarkdown(username)} não tem uma conta vinculada nesta plataforma.` }
   }
 
   if (/^\d+$/.test(raw)) return { ok: true, value: raw }

@@ -4,7 +4,9 @@
   "type": "module",
   "private": true,
   "dependencies": {
+    "@girae/commandeer": "workspace:*",
     "@girae/common": "workspace:*",
+    "@girae/database": "workspace:*",
     "discordeno": "^21.0.0"
   }
 }

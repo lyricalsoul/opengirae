@@ -19,13 +19,13 @@ export default class NaoTrocoCommand extends Command {
     name: 'card',
     type: CommandArgumentType.CARD,
     guard: async (card: CardWithDetails, ctx: IncomingCommand) => {
-      const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+      const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
       if (!user) return false
       return (await CardsDB.hasUserCard(user.id, card.id)) || '😂 Não troca o que? Você não tem esse card.'
     },
   }])
   static override async execute(ctx: IncomingCommand, args: { card: CardWithDetails }) {
-    const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+    const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!user) return
 
     await CardsDB.setCardTradable(user.id, args.card.id, false)

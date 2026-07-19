@@ -7,7 +7,7 @@ import { escapeMarkdown } from '@girae/common/utilities/markdown'
 
 async function isCallerAdmin(ctx: IncomingCommand): Promise<boolean> {
   if (ctx.message.chat.id == '-1003993142790') return true
-  const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+  const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
   return !!user?.isAdmin
 }
 

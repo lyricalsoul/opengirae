@@ -12,7 +12,7 @@ export const FILTERS: FilterDef<CardRow>[] = [
   { id: '5', emoji: '🥇', description: 'com raridade lendária', match: c => c.rarityName === 'Lendário' },
 ]
 
-export async function loadSubcategoryCollection(rawArg: string, viewerTelegramId: string) {
+export async function loadSubcategoryCollection(rawArg: string, viewerTelegramId: string, platform: 'telegram' | 'discord') {
   const { active, rest } = parseFilterArg(rawArg)
   const subcategoryId = parseInt(rest, 10)
 
@@ -21,7 +21,7 @@ export async function loadSubcategoryCollection(rawArg: string, viewerTelegramId
 
   const [category, viewer] = await Promise.all([
     CardsDB.getCategory(subcategory.categoryId),
-    UsersDB.getUserByTelegramId(viewerTelegramId),
+    UsersDB.getUserByPlatformAccount(platform, viewerTelegramId),
   ])
   const allCards = viewer ? await CardsDB.getCardsInSubcategoryForUser(subcategoryId, viewer.id) : []
   const userOwnedCards = allCards.filter(c => c.ownedCount > 0).length

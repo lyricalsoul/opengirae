@@ -4,13 +4,14 @@ import {
   text,
   boolean,
   timestamp,
+  unique,
 } from "drizzle-orm/pg-core";
 import { cards } from "./cards";
 import { storeItems } from "./vanities";
 
 export const users = pgTable("users", {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
-  telegramId: text().notNull().unique(),
+  telegramId: text().unique(),
   username: text(),
   isBanned: boolean().notNull().default(false),
   banMessage: text(),
@@ -61,3 +62,11 @@ export const userProfiles = pgTable("user_profiles", {
   equipedStickerId: integer().references(() => storeItems.id, { onDelete: "set null" }),
   equipedProfileId: integer().references(() => storeItems.id, { onDelete: "set null" })
 });
+
+export const linkedAccounts = pgTable("linked_accounts", {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer().notNull().references(() => users.id),
+  platform: text().notNull(), // 'telegram' | 'discord'
+  platformId: text().notNull(),
+  createdAt: timestamp().notNull().defaultNow(),
+}, (t) => [unique().on(t.platform, t.platformId)]);

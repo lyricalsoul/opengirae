@@ -14,7 +14,7 @@ export default class FavColorCommand extends Command {
 
   @CommandArgument([{ name: 'color', type: CommandArgumentType.HEX_COLOR }])
   static override async execute(ctx: IncomingCommand, args: { color: string }) {
-    const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+    const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!user) return
 
     await UsersDB.updateUserProfile(user.id, { favoriteColor: args.color })

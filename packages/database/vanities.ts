@@ -1,7 +1,6 @@
 import { maybeTransaction } from "./decorators";
 import { storeItems, boughtItems, type storeItemTypes } from "./schemas/vanities";
-import { users } from "./schemas/users";
-import { UsersDB } from "./users";
+import { users, userProfiles } from "./schemas/users";
 import { and, desc, eq, gte, ilike, inArray, sql } from "drizzle-orm";
 
 type StoreItemType = (typeof storeItemTypes.enumValues)[number]
@@ -189,17 +188,19 @@ export class VanitiesDB {
     return { ok: true };
   }
 
-  static equipItem = async (userId: number, type: 'background' | 'sticker', itemId: number): Promise<
+  static equipItem = maybeTransaction('equipItem', async (client, userId: number, type: 'background' | 'sticker', itemId: number): Promise<
     { ok: true; title: string } | { ok: false; reason: 'not_owned' | 'not_found' }
   > => {
-    if (!(await VanitiesDB.hasBought(userId, itemId))) return { ok: false, reason: 'not_owned' };
-    const item = await VanitiesDB.getStoreItemById(itemId);
+    const owned = await client.select().from(boughtItems).where(and(eq(boughtItems.userId, userId), eq(boughtItems.itemId, itemId))).limit(1).then(a => !!a[0]);
+    if (!owned) return { ok: false, reason: 'not_owned' };
+
+    const [item] = await client.select().from(storeItems).where(eq(storeItems.id, itemId)).limit(1);
     if (!item) return { ok: false, reason: 'not_found' };
 
     const field = type === 'background' ? 'equipedBackgroundId' : 'equipedStickerId';
-    await UsersDB.updateUserProfile(userId, { [field]: itemId });
+    await client.update(userProfiles).set({ [field]: itemId }).where(eq(userProfiles.userId, userId));
     return { ok: true, title: item.title };
-  }
+  })
 
   // bulk ownership lookup - avoids one hasBought() call per item when rendering a browse list
   static getBoughtItemIds = maybeTransaction('getBoughtItemIds', async (client, userId: number): Promise<number[]> => {

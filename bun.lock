@@ -56,7 +56,9 @@
     "packages/discord-inbounder": {
       "name": "@girae/discord-inbounder",
       "dependencies": {
+        "@girae/commandeer": "workspace:*",
         "@girae/common": "workspace:*",
+        "@girae/database": "workspace:*",
         "discordeno": "^21.0.0",
       },
     },

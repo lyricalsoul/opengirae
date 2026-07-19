@@ -17,7 +17,7 @@ export default class FavCardCommand extends Command {
 
   @CommandArgument([{ name: 'card', type: CommandArgumentType.CARD }])
   static override async execute(ctx: IncomingCommand, args: { card: CardDetails }) {
-    const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+    const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!user) return
 
     if (!(await CardsDB.hasUserCard(user.id, args.card.id))) {

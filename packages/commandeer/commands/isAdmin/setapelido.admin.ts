@@ -21,7 +21,7 @@ export default class SetApelidoCommand extends Command {
   static override async execute(ctx: IncomingCommand, args: { subcategory: NonNullable<Awaited<ReturnType<typeof CardsDB.getSubcategory>>>; alias: string }) {
     const { subcategory, alias } = args
 
-    const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+    const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!user) return
 
     await CardsDB.addSubcategoryAlias(subcategory.id, alias)

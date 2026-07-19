@@ -107,7 +107,7 @@ export default class AddCardCommand extends Command {
 
       const existing = await CardsDB.getSubcategoryByNameAndCategory(subcategoryName, category.id)
       const cdnUrl = await uploadFromUrl(photoUrl, 'subcategories')
-      const user = await UsersDB.getUserByTelegramId(ctx.message.author.id)
+      const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
       if (!user) return
 
       if (existing) {
