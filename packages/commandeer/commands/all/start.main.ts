@@ -14,7 +14,10 @@ export default class StartCommand extends Command {
   @CommandArgument([{ name: 'payload', type: CommandArgumentType.STRING, nullable: true }])
   static override async execute(ctx: IncomingCommand, args: { payload?: string }) {
     const payload = args.payload
-    if (!payload) return
+    if (!payload) {
+      await reply(ctx, `🎉 Boas-vindas à Giraê!\n\n🕹 Digite / para ver meus comandos. O mais importante é, obviamente, o /girar.\n\n📢 Para usar a bot, entre no nosso canal [clicando aqui](https://t.me/undergirae).`)
+      return
+    }
 
     if (payload === 'trade') {
       const lockKey = `trade:lock:${ctx.message.author.id}`

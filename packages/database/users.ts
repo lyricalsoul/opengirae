@@ -153,6 +153,13 @@ export class UsersDB {
       .then(rows => rows[0]);
   })
 
+  static setSupportChannelJoined = maybeTransaction('setSupportChannelJoined', async (client, userId: number, joined: boolean) => {
+    await client
+      .update(users)
+      .set({ hasJoinedSupportChannel: joined, supportChannelCheckedAt: new Date() })
+      .where(eq(users.id, userId));
+  })
+
   static resetMidnightStats = maybeTransaction('resetMidnightStats', async (client) => {
     await client
       .update(users)

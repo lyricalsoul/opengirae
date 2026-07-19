@@ -6,6 +6,8 @@ import { info, error } from "@girae/common/logger";
 import { passesGuards } from "./guards";
 import { UsersDB } from "@girae/database/users";
 import { resolveCommandArguments } from "./commandArguments";
+import { hasJoinedSupportChannel } from "./supportChannel";
+import { reply } from "@girae/common/dbos/messaging";
 
 async function runCommand(
   targetClass: any,
@@ -39,12 +41,19 @@ export async function executeCommand(cmd: IncomingCommand) {
     return;
   }
 
-  await UsersDB.ensureUser({
+  const user = await UsersDB.ensureUser({
     platform: cmd.message.platform as 'telegram' | 'discord',
     platformId: cmd.message.author.id,
     displayName: cmd.message.author.name,
     avatarUrl: cmd.message.author.avatarUrl,
   });
+
+  if (cmd.message.platform === 'telegram' && cmd.name !== 'start' && user) {
+    if (!(await hasJoinedSupportChannel(user, cmd.message.author.id))) {
+      await reply(cmd, 'Você precisa entrar no nosso canal de suporte e novidades para usar a bot! [Entre e tente novamente](https://t.me/undergirae). 📢');
+      return;
+    }
+  }
 
   if (!(await passesGuards(command.guards, cmd))) {
     return;
