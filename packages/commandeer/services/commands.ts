@@ -50,7 +50,7 @@ export async function executeCommand(cmd: IncomingCommand) {
 
   if (cmd.message.platform === 'telegram' && cmd.name !== 'start' && user) {
     if (!(await hasJoinedSupportChannel(user, cmd.message.author.id))) {
-      await reply(cmd, 'Você precisa entrar no nosso canal de suporte e novidades para usar a bot! [Entre e tente novamente](https://t.me/undergirae). 📢');
+      await reply(cmd, 'Você precisa entrar no nosso canal de suporte @undergirae para usar a bot! [Entre e tente novamente](https://t.me/undergirae). 📢');
       return;
     }
   }

@@ -20,6 +20,6 @@ export async function hasJoinedSupportChannel(user: { id: number; hasJoinedSuppo
     joined = false
   }
 
-  await UsersDB.setSupportChannelJoined(user.id, joined)
+  if (joined) await UsersDB.setSupportChannelJoined(user.id, true)
   return joined
 }

@@ -15,7 +15,7 @@ export default class StartCommand extends Command {
   static override async execute(ctx: IncomingCommand, args: { payload?: string }) {
     const payload = args.payload
     if (!payload) {
-      await reply(ctx, `🎉 Boas-vindas à Giraê!\n\n🕹 Digite / para ver meus comandos. O mais importante é, obviamente, o /girar.\n\n📢 Para usar a bot, entre no nosso canal [clicando aqui](https://t.me/undergirae).`)
+      await reply(ctx, `🎉 Boas-vindas à Giraê!\n\n🕹 Digite / para ver meus comandos. O mais importante é, obviamente, o /girar.\n\n📢 Para usar a bot, entre no nosso canal @undergirae [clicando aqui](https://t.me/undergirae).`)
       return
     }
 
