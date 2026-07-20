@@ -1,0 +1,26 @@
+services:
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+    ports:
+      - "6379:6379"
+    volumes:
+      - dragonfly-data:/data
+    command: --cluster_mode=emulated --lock_on_hashtags
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:18
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: girae
+      POSTGRES_PASSWORD: girae
+      POSTGRES_DB: girae
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./docker/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+    restart: unless-stopped
+
+volumes:
+  dragonfly-data:
+  postgres-data:
