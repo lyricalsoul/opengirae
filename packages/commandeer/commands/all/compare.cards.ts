@@ -18,7 +18,7 @@ export default class CompareCommand extends Command {
     aliases: ['comparar', 'compare'],
   }
 
-  @CommandArgument([{ name: 'target', type: CommandArgumentType.USER_MENTION }])
+  @CommandArgument([{ name: 'target', type: CommandArgumentType.USER_MENTION, description: 'Usuário para comparar' }])
   static override async execute(ctx: IncomingCommand, args: { target: string }) {
     const targetTelegramId = args.target
 

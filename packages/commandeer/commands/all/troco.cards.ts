@@ -17,6 +17,7 @@ export default class TrocoCommand extends Command {
   @CommandArgument([{
     name: 'card',
     type: CommandArgumentType.CARD,
+    description: 'ID ou nome do personagem',
     guard: async (card: CardWithDetails, ctx: IncomingCommand) => {
       const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
       if (!user) return false

@@ -32,7 +32,7 @@ export default class StickerCommand extends Command {
     aliases: ['figurinha'],
   }
 
-  @CommandArgument([{ name: 'item', type: CommandArgumentType.VANITY_ITEM, vanityType: 'sticker', nullable: true }])
+  @CommandArgument([{ name: 'item', type: CommandArgumentType.VANITY_ITEM, vanityType: 'sticker', nullable: true, description: 'ID ou nome da figurinha' }])
   static override async execute(ctx: IncomingCommand, args: { item?: VanityItem }) {
     if (!args.item) {
       const arg = buildFilterArg([], 'sticker')

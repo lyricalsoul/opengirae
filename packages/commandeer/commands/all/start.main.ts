@@ -11,7 +11,7 @@ export default class StartCommand extends Command {
     description: 'Abre uma conversa privada com a bot',
   }
 
-  @CommandArgument([{ name: 'payload', type: CommandArgumentType.STRING, nullable: true }])
+  @CommandArgument([{ name: 'payload', type: CommandArgumentType.STRING, nullable: true, description: 'Parâmetro de inicialização' }])
   static override async execute(ctx: IncomingCommand, args: { payload?: string }) {
     const payload = args.payload
     if (!payload) {

@@ -175,11 +175,19 @@ describe("parseCommandArguments - USER_MENTION", () => {
     expect(result).toEqual({ ok: true, values: { user: 'replied-author' } });
   });
 
-  test("a raw numeric telegram id passes through with no DB lookup", async () => {
+  test("a short numeric argument is looked up as a girae id, not a platform id", async () => {
     const specs: CommandArgumentSpec[] = [{ name: 'user', type: CommandArgumentType.USER_MENTION }];
     const ctx = fakeCtx(['123456789']);
     const result = await parseCommandArguments(specs, ctx.args, ctx);
-    expect(result).toEqual({ ok: true, values: { user: '123456789' } });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain('Não encontrei o usuário com ID 123456789');
+  });
+
+  test("a 16+ digit argument passes through with no DB lookup - Discord snowflakes are UI-resolved, never typed", async () => {
+    const specs: CommandArgumentSpec[] = [{ name: 'user', type: CommandArgumentType.USER_MENTION }];
+    const ctx = fakeCtx(['1234567890123456']);
+    const result = await parseCommandArguments(specs, ctx.args, ctx);
+    expect(result).toEqual({ ok: true, values: { user: '1234567890123456' } });
   });
 
   test("no replyTo and no argument at all fails (nullable governs whether that's fatal)", async () => {

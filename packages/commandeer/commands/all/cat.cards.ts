@@ -44,7 +44,7 @@ export default class CategoryCommand extends Command {
     aliases: ['cats', 'ctg'],
   }
 
-  @CommandArgument([{ name: 'category', type: CommandArgumentType.CATEGORY, nullable: true }])
+  @CommandArgument([{ name: 'category', type: CommandArgumentType.CATEGORY, nullable: true, description: 'ID ou nome da categoria' }])
   static override async execute(ctx: IncomingCommand, args: { category?: NonNullable<Awaited<ReturnType<typeof CardsDB.getCategory>>> }) {
     if (!args.category) {
       await replyAllCategories(ctx, 'Escolha uma categoria:')

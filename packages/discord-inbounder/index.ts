@@ -3,7 +3,7 @@ import { avatarUrl, createBot, GatewayIntents, InteractionTypes, InteractionResp
 import { processCallback } from '@girae/common/inbound/callback'
 import { commandQueue } from '@girae/common/queue'
 import { info, error } from '@girae/common/logger'
-import { buildApplicationCommands } from './registerCommands'
+import { buildApplicationCommands, findArgumentSpec, searchChoicesFor } from './registerCommands'
 import { UsersDB } from '@girae/database/users'
 import { findCommand } from '@girae/commandeer/loader'
 
@@ -67,6 +67,20 @@ const bot = createBot({
     },
 
     interactionCreate: async (interaction) => {
+      if (interaction.type === InteractionTypes.ApplicationCommandAutocomplete) {
+        const commandName = interaction.data?.name
+        const focused = interaction.data?.options?.find(o => o.focused)
+        if (!commandName || !focused) return
+
+        const spec = findArgumentSpec(commandName, focused.name)
+        const choices = spec ? await searchChoicesFor(spec, String(focused.value ?? '')) : []
+        await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
+          type: InteractionResponseTypes.ApplicationCommandAutocompleteResult,
+          data: { choices },
+        })
+        return
+      }
+
       const invokingUser = interaction.member?.user ?? interaction.user
       if (!invokingUser || !interaction.channelId) return
 

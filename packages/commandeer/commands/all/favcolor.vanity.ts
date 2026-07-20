@@ -12,7 +12,7 @@ export default class FavColorCommand extends Command {
     aliases: ['cor', 'color', 'corfav', 'corfavorita']
   }
 
-  @CommandArgument([{ name: 'color', type: CommandArgumentType.HEX_COLOR }])
+  @CommandArgument([{ name: 'color', type: CommandArgumentType.HEX_COLOR, description: 'Cor em HEX (ex: #ff0000)' }])
   static override async execute(ctx: IncomingCommand, args: { color: string }) {
     const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!user) return

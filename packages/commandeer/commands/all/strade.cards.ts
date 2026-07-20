@@ -29,9 +29,9 @@ export default class SimpleTradeCommand extends Command {
 
   @DBOS.workflow()
   @CommandArgument([
-    { name: 'target', type: CommandArgumentType.USER_MENTION },
-    { name: 'myCard', type: CommandArgumentType.CARD },
-    { name: 'theirCard', type: CommandArgumentType.CARD },
+    { name: 'target', type: CommandArgumentType.USER_MENTION, description: 'Usuário para trocar cartas' },
+    { name: 'myCard', type: CommandArgumentType.CARD, description: 'ID ou nome do seu personagem' },
+    { name: 'theirCard', type: CommandArgumentType.CARD, description: 'ID ou nome do personagem dele' },
   ])
   static override async execute(ctx: IncomingCommand, args: { target: string; myCard: CardWithDetails; theirCard: CardWithDetails }) {
     const targetTelegramId = args.target

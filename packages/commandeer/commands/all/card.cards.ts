@@ -57,7 +57,7 @@ export default class CardCommand extends Command {
     aliases: ['view', 'ver'],
   }
 
-  @CommandArgument([{ name: 'card', type: CommandArgumentType.CARD }])
+  @CommandArgument([{ name: 'card', type: CommandArgumentType.CARD, description: 'ID ou nome do personagem' }])
   static override async execute(ctx: IncomingCommand, args: { card: CardDetails }) {
     await showCard(ctx, args.card)
   }

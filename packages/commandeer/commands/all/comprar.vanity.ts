@@ -21,7 +21,7 @@ export default class ComprarCommand extends Command {
   }
 
   @DBOS.workflow()
-  @CommandArgument([{ name: 'itemId', type: CommandArgumentType.NUMBER }])
+  @CommandArgument([{ name: 'itemId', type: CommandArgumentType.NUMBER, description: 'ID do item na loja' }])
   static override async execute(ctx: IncomingCommand, args: { itemId: number }) {
     const item = await VanitiesDB.getStoreItemById(args.itemId)
     if (!item || !item.isAvailable || item.type === 'profile') {

@@ -51,7 +51,7 @@ export default class CollectionImageCommand extends Command {
     aliases: ['subimg', 'colecimg'],
   }
 
-  @CommandArgument([{ name: 'subcategory', type: CommandArgumentType.SUBCATEGORY }])
+  @CommandArgument([{ name: 'subcategory', type: CommandArgumentType.SUBCATEGORY, description: 'ID ou nome da subcategoria' }])
   static override async execute(ctx: IncomingCommand, args: { subcategory: NonNullable<Awaited<ReturnType<typeof CardsDB.getSubcategory>>> }) {
     const arg = buildFilterArg([], String(args.subcategory.id))
     const page = await renderPage(arg, 0, ctx.message.author.id, ctx.message.platform as 'telegram' | 'discord')

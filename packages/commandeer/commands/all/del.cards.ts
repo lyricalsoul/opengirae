@@ -20,7 +20,7 @@ export default class DelCommand extends Command {
   }
 
   @DBOS.workflow()
-  @CommandArgument([{ name: 'ids', type: CommandArgumentType.STRING }])
+  @CommandArgument([{ name: 'ids', type: CommandArgumentType.STRING, description: 'IDs dos cards separados por espaço' }])
   static override async execute(ctx: IncomingCommand, args: { ids: string }) {
     const tokens = args.ids.split(/\s+/).filter(Boolean)
 

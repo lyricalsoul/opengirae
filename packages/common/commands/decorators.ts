@@ -12,6 +12,7 @@ export enum CommandArgumentType {
 
 interface BaseCommandArgumentSpec<T = any> {
   name: string;
+  description?: string;
   nullable?: boolean;
   guard?: (value: T, ctx: any) => boolean | string | Promise<boolean | string>;
 }

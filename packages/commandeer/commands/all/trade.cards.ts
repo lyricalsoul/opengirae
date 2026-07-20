@@ -178,7 +178,7 @@ export default class TradeCommand extends Command {
   }
 
   @DBOS.workflow()
-  @CommandArgument([{ name: 'target', type: CommandArgumentType.USER_MENTION }])
+  @CommandArgument([{ name: 'target', type: CommandArgumentType.USER_MENTION, description: 'Usuário para trocar cartas' }])
   static override async execute(ctx: IncomingCommand, args: { target: string }) {
     const targetTelegramId = args.target
     const m = (id: string, name: string) => mention(ctx.message.platform, id, name)

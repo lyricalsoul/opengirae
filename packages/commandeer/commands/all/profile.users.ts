@@ -17,7 +17,7 @@ export default class ProfileCommand extends Command {
     aliases: ['perfil', 'pf', 'pfp', 'ppc']
   }
 
-  @CommandArgument([{ name: 'target', type: CommandArgumentType.USER_MENTION, nullable: true }])
+  @CommandArgument([{ name: 'target', type: CommandArgumentType.USER_MENTION, nullable: true, description: 'Usuário para ver o perfil' }])
   static override async execute(ctx: IncomingCommand, args: { target?: string }) {
     const targetTelegramId = args.target ?? ctx.message.author.id
 
@@ -77,7 +77,7 @@ export default class ProfileCommand extends Command {
   }
 
   @Subcommand({ name: 'emo', description: 'Ativa ou desativa os emojis do seu perfil', aliases: ['emoji', 'emojis'] })
-  @CommandArgument([{ name: 'enabled', type: CommandArgumentType.BOOLEAN }])
+  @CommandArgument([{ name: 'enabled', type: CommandArgumentType.BOOLEAN, description: 'Ativar ou desativar' }])
   static async toggleEmojis(ctx: IncomingCommand, args: { enabled: boolean }) {
     const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
     if (!user) return

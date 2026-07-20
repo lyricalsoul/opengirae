@@ -13,7 +13,7 @@ export default class BioCommand extends Command {
   }
 
   @CommandArgument([{
-    name: 'bio', type: CommandArgumentType.STRING,
+    name: 'bio', type: CommandArgumentType.STRING, description: 'Sua nova biografia',
     guard: (v: string) => v.length <= MAX_BIO_LENGTH || `Desculpe, mas a sua biografia não pode ter mais de ${MAX_BIO_LENGTH} caracteres. 😅`,
   }])
   static override async execute(ctx: IncomingCommand, args: { bio: string }) {

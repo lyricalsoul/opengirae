@@ -32,7 +32,7 @@ export default class BackgroundCommand extends Command {
     aliases: ['background', 'papeldeparede'],
   }
 
-  @CommandArgument([{ name: 'item', type: CommandArgumentType.VANITY_ITEM, vanityType: 'background', nullable: true }])
+  @CommandArgument([{ name: 'item', type: CommandArgumentType.VANITY_ITEM, vanityType: 'background', nullable: true, description: 'ID ou nome do fundo' }])
   static override async execute(ctx: IncomingCommand, args: { item?: VanityItem }) {
     if (!args.item) {
       const arg = buildFilterArg([], 'background')

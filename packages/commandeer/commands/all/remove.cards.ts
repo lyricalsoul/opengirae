@@ -14,7 +14,7 @@ export default class RemoveCommand extends Command {
     aliases: ['rem'],
   }
 
-  @CommandArgument([{ name: 'card', type: CommandArgumentType.CARD }])
+  @CommandArgument([{ name: 'card', type: CommandArgumentType.CARD, description: 'ID ou nome do personagem' }])
   static override async execute(ctx: IncomingCommand, args: { card: CardDetails }) {
     const message = await modifyTradeOffer(ctx.message.author.id, ctx.message.platform as 'telegram' | 'discord', args.card.id, 'remove')
     await reply(ctx, { content: message, photoUrl: args.card.imageUrl ?? undefined })

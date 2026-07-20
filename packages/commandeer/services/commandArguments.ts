@@ -158,6 +158,8 @@ async function parseUserMention(raw: string | undefined, ctx: IncomingCommand): 
   }
 
   if (/^\d+$/.test(raw)) {
+    if (raw.length >= 16) return { ok: true, value: raw }
+
     const user = await UsersDB.getUserById(parseInt(raw, 10))
     if (!user) return { ok: false, message: `Não encontrei o usuário com ID ${raw}.` }
 
