@@ -7,9 +7,6 @@ import { buildApplicationCommands } from './registerCommands'
 import { UsersDB } from '@girae/database/users'
 import { findCommand } from '@girae/commandeer/loader'
 
-// TODO: make me do
-const DEV_GUILD_ID = 1528155050453635175n
-
 const bot = createBot({
   token: process.env.DISCORD_TOKEN!,
   intents: GatewayIntents.Guilds,
@@ -56,8 +53,14 @@ const bot = createBot({
 
       try {
         const commands = buildApplicationCommands()
-        await bot.helpers.upsertGuildApplicationCommands(DEV_GUILD_ID, commands)
-        info('discord-inbounder', `Registered ${commands.length} application commands on guild ${DEV_GUILD_ID}`)
+        const devGuildId = process.env.DISCORD_DEV_GUILD_ID
+        if (devGuildId) {
+          await bot.helpers.upsertGuildApplicationCommands(BigInt(devGuildId), commands)
+          info('discord-inbounder', `Registered ${commands.length} application commands on guild ${devGuildId}`)
+        } else {
+          await bot.helpers.upsertGlobalApplicationCommands(commands)
+          info('discord-inbounder', `Registered ${commands.length} application commands globally`)
+        }
       } catch (e) {
         error('discord-inbounder', `Failed to register application commands: ${e}`)
       }

@@ -1,6 +1,6 @@
 import { listCommands } from '@girae/commandeer/loader'
 import { CommandArgumentType, type CommandArgumentSpec } from '@girae/common/commands'
-import { ApplicationCommandOptionTypes } from 'discordeno'
+import { ApplicationCommandOptionTypes, DiscordApplicationIntegrationType, DiscordInteractionContextType } from 'discordeno'
 import type { CreateApplicationCommand } from 'discordeno'
 
 const OPTION_TYPE_MAP: Record<CommandArgumentType, ApplicationCommandOptionTypes> = {
@@ -48,6 +48,8 @@ export function buildApplicationCommands(): CreateApplicationCommand[] {
       name: info.name,
       description: info.description || info.name,
       options: optionsFor(info.name, specs),
+      integrationTypes: [DiscordApplicationIntegrationType.GuildInstall, DiscordApplicationIntegrationType.UserInstall],
+      contexts: [DiscordInteractionContextType.Guild, DiscordInteractionContextType.BotDm, DiscordInteractionContextType.PrivateChannel],
     })
   }
 
