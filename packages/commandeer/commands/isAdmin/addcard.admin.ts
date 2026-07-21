@@ -124,17 +124,12 @@ export default class AddCardCommand extends Command {
     }
 
     const categories = await CardsDB.getCategories()
-    const musicaCategory = categories.find(c => c.name === 'Música')
-    const musicaSubcategories = musicaCategory
-      ? (await CardsDB.getSubcategoriesForCategory(musicaCategory.id)).map(s => s.name)
-      : []
 
     const nameSubcategoryHint = parseCardNameAndSubcategoryHint(sourceText)
     const inferred = await inferCardData(
       sourceText,
-      categories.map(c => c.name),
+      categories,
       rarities.map(r => r.name),
-      musicaSubcategories,
       nameSubcategoryHint?.name,
       nameSubcategoryHint?.subcategoryHint,
     )

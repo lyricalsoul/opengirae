@@ -1,4 +1,4 @@
-import { generateJson, Type } from "@girae/common/gemini"
+import { generateJson } from "@girae/common/mistral"
 
 export interface InferredVanityData {
   title: string
@@ -23,13 +23,13 @@ Responda SOMENTE com um objeto JSON no formato:
     system,
     messages: [{ role: "user", content: hint }],
     responseSchema: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
-        title: { type: Type.STRING },
-        description: { type: Type.STRING },
-        price: { type: Type.NUMBER, nullable: true },
+        title: { type: "string" },
+        description: { type: "string" },
+        price: { type: ["number", "null"] },
       },
-      required: ["title", "description"],
+      required: ["title", "description", "price"],
     },
     maxOutputTokens: 200,
   })
