@@ -159,10 +159,17 @@ if (webhookUrl) {
         return new Response(null, { status: 403 })
       }
 
-      req.json()
-        .then((update) => tg.worker.processUpdate(update))
-        .catch((err) => error('telegram-inbound', `failed to parse/process webhook update: ${err}`))
+      // unfortunately we need to await the json() call or bun will
+      // flush out the request body before we can parse it
+      let update: any
+      try {
+        update = await req.json()
+      } catch (err) {
+        error('telegram-inbound', `failed to parse webhook update: ${err}`)
+        return new Response(null, { status: 415 })
+      }
 
+      tg.worker.processUpdate(update)
       return new Response('OK', { status: 200 })
     },
   })
