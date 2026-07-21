@@ -229,6 +229,12 @@ export class CardsDB {
       .onConflictDoUpdate({ target: [cardSubcategories.cardId, cardSubcategories.subcategoryId], set: { isMain: true } });
   })
 
+  static addCardSubcategory = maybeTransaction('addCardSubcategory', async (client, cardId: number, subcategoryId: number) => {
+    await client.insert(cardSubcategories)
+      .values({ cardId, subcategoryId, isMain: false })
+      .onConflictDoNothing({ target: [cardSubcategories.cardId, cardSubcategories.subcategoryId] });
+  })
+
   static deleteCard = maybeTransaction('deleteCard', async (client, cardId: number) => {
     await client.delete(cardSubcategories).where(eq(cardSubcategories.cardId, cardId));
     await client.delete(cards).where(eq(cards.id, cardId));
