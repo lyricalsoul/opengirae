@@ -67,7 +67,7 @@ export default class AddCardCommand extends Command {
           await reply(ctx, {
             content: `⚠️ Já existe um card chamado **${escapeMarkdown(parsed.name)}** em **${escapeMarkdown(existingSubcategory.name)}** (\`${duplicate.id}\`).`,
             eventName: 'addcard:confirmDuplicate',
-            restricted: 'author',
+            restricted: 'none',
             options: [
               { title: '✅ Criar mesmo assim', data: true },
               { title: '❌ Cancelar', data: false },
@@ -164,7 +164,7 @@ export default class AddCardCommand extends Command {
         await reply(ctx, {
           content: `⚠️ Já existe um card chamado **${escapeMarkdown(name)}** em **${escapeMarkdown(session.subcategoryName)}** (\`${duplicate.id}\`).`,
           eventName: 'addcard:confirmDuplicate',
-          restricted: 'author',
+          restricted: 'none',
           options: [
             { title: '✅ Criar mesmo assim', data: true },
             { title: '❌ Cancelar', data: false },
