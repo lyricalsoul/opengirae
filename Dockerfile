@@ -23,6 +23,8 @@ ENV GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
 ENV GIT_COMMIT_MESSAGE=${GIT_COMMIT_MESSAGE}
 COPY --from=deps /app ./
 COPY drizzle.config.ts tsconfig.json ./
+COPY drizzle/ drizzle/
+COPY scripts/ scripts/
 COPY packages/ packages/
 COPY website/src/lib/server/db/ website/src/lib/server/db/
 
