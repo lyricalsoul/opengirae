@@ -28,7 +28,7 @@ export const users = pgTable("users", {
   avatarUrl: text().notNull(),
   avatarUpdatedAt: timestamp(),
 
-  maxDraws: integer().notNull().default(12),
+  maxDraws: integer().notNull().default(24),
   usedDraws: integer().notNull().default(0),
   hasGottenDaily: boolean().notNull().default(false),
   dailyStreak: integer().notNull().default(0),

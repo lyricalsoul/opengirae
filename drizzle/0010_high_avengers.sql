@@ -1,0 +1,1 @@
+ALTER TABLE "users" ALTER COLUMN "maxDraws" SET DEFAULT 24;
