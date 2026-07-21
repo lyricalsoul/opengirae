@@ -42,7 +42,13 @@ const stripBotMention = (content: string): string | null => {
   return firstToken.slice(0, atIndex) + content.slice(firstToken.length)
 }
 
-const ADDCARD_CHAT_IDS = [['-1003993142790', '6016'], ['-1004365766145', '2']]
+const ADDCARD_CHAT_IDS = [
+  ['-1003993142790', '6016'],
+  ['-1004365766145', '2'],
+  ['-1003993142790', '69183'],
+  ['-1003993142790', '69186'],
+  ['-1003993142790', '69170'],
+]
 const ADDBG_CHAT_ID = [['-1003993142790', '10106']]
 const CARDIMG_FROM_CAPTION_CHAT_IDS = [['-1003993142790', '46522']]
 
