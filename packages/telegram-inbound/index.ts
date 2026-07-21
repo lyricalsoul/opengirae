@@ -2,7 +2,7 @@ import type { MessageChat, Message } from '@girae/common/commands/types'
 import { TelegramClient } from 'telegramsjs'
 import { processCommand } from '@girae/common/inbound/handler'
 import { processCallback } from '@girae/common/inbound/callback'
-import { info } from '@girae/common/logger'
+import { info, error } from '@girae/common/logger'
 import { UsersDB } from '@girae/database/users'
 import { commandQueue, responseQueue } from '@girae/common/queue'
 import { refreshAvatar } from '@girae/common/avatarRefresh'
@@ -135,14 +135,36 @@ const webhookUrl = process.env.TELEGRAM_WEBHOOK_URL
 
 if (webhookUrl) {
   info('telegram-inbound', `registering webhook at ${webhookUrl}`)
-  await tg.login({
-    webhook: {
-      url: webhookUrl,
-      host: '0.0.0.0',
-      port: parseInt(process.env.PORT ?? '8080', 10),
-      secretToken: process.env.TELEGRAM_WEBHOOK_SECRET,
-      maxConnections: 100,
-    }
+
+  const path = new URL(webhookUrl).pathname || '/'
+  const secretToken = process.env.TELEGRAM_WEBHOOK_SECRET
+  const port = parseInt(process.env.PORT ?? '8080', 10)
+
+  await tg.setWebhook({
+    url: webhookUrl,
+    secretToken,
+    maxConnections: 100,
+  })
+  tg.user = await tg.getMe()
+  tg.readyTimestamp = Date.now()
+  tg.emit('ready', tg)
+
+  Bun.serve({
+    port,
+    hostname: '0.0.0.0',
+    async fetch(req) {
+      const url = new URL(req.url)
+      if (url.pathname !== path) return new Response(null, { status: 404 })
+      if (secretToken && req.headers.get('x-telegram-bot-api-secret-token') !== secretToken) {
+        return new Response(null, { status: 403 })
+      }
+
+      req.json()
+        .then((update) => tg.worker.processUpdate(update))
+        .catch((err) => error('telegram-inbound', `failed to parse/process webhook update: ${err}`))
+
+      return new Response('OK', { status: 200 })
+    },
   })
 } else {
   info('telegram-inbound', 'TELEGRAM_WEBHOOK_URL not set, falling back to long polling')
