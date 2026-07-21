@@ -37,6 +37,35 @@ export function parseSubcategoryListing(text: string): ParsedSubcategoryListing 
   return { subcategory: match[2]!.trim(), categoryId }
 }
 
+const HEADER_CATEGORY_EMOJI: Record<string, string> = {
+  '🌟': 'GIRÁSIA',
+  '🎬': 'TV',
+  '🎧': 'Música',
+  '🌎': 'Variedades',
+  '📚': 'ambiguous', // Animangá or Jogos - needs the subcategory name to disambiguate
+}
+
+export interface ParsedCardHeader {
+  name: string
+  categoryHint: string
+}
+
+// Shares its shape with parseSubcategoryListing and 📚 collides between them - 🧩 disambiguates.
+export function parseCardHeader(text: string): ParsedCardHeader | null {
+  if (!text.includes('🧩')) return null
+  const match = text.split('\n')[0]?.match(LINE_RE)
+  if (!match) return null
+  const categoryHint = HEADER_CATEGORY_EMOJI[match[1]!]
+  if (!categoryHint) return null
+  return { name: match[2]!.trim(), categoryHint }
+}
+
+// Strips a leading "<emoji> <id>. " prefix if present, else returns the text as-is.
+export function extractCardName(text: string): string {
+  const match = text.split('\n')[0]?.match(LINE_RE)
+  return (match ? match[2]! : text).trim()
+}
+
 export interface CardNameSubcategoryHint {
   name: string
   subcategoryHint: string

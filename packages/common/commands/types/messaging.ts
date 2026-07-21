@@ -9,6 +9,8 @@ export interface MessageAuthor {
 export interface MessageChat {
   id: string;
   title: string;
+  // Telegram forum topic id, when the message was posted inside one.
+  threadId?: string;
 }
 
 export interface Message {

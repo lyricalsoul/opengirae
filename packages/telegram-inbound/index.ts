@@ -76,7 +76,8 @@ tg.on('message', async (msg) => {
 
   const chat: MessageChat = {
     id: String(msg.chat!.id),
-    title: msg.chat!.title || 'DM'
+    title: msg.chat!.title || 'DM',
+    threadId: msg.chat?.threadId ? String(msg.chat.threadId) : undefined,
   }
 
   const isTopicAnchorReply = !!msg.threadId && String(msg.originalMessage?.id) === msg.threadId

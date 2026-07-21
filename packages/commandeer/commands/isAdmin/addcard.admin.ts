@@ -7,9 +7,10 @@ import { reply, deleteMsg } from '@girae/common/dbos/messaging'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { uploadCardImage } from '../../services/cardImage'
 import { uploadFromUrl } from '@girae/common/utilities/storage'
-import { inferCardData } from '../../services/cardInference'
-import { parseCardListing, parseSubcategoryListing, parseCardNameAndSubcategoryHint } from '../../services/cardListingParser'
+import { inferCardData, resolveAmbiguousCategory, inferRarityOnly } from '../../services/cardInference'
+import { parseCardListing, parseSubcategoryListing, parseCardNameAndSubcategoryHint, parseCardHeader, extractCardName } from '../../services/cardListingParser'
 import { runCardWizard, finalizeCard } from '../../services/cardWizard'
+import { getAddcardSession, setAddcardSession } from '../../services/addcardSession'
 import type { IncomingCommand } from '@girae/common/commands/types'
 
 export default class AddCardCommand extends Command {
@@ -120,6 +121,69 @@ export default class AddCardCommand extends Command {
         await AuditDB.log(user.id, 'subcategory.create', { subcategoryId: created.id, name: created.name, categoryEmoji: category.emoji })
         await reply(ctx, `📂 Subcategoria **${escapeMarkdown(created.name)}** criada com foto.`)
       }
+      return
+    }
+
+    const header = parseCardHeader(sourceText)
+    if (header) {
+      const categoryName = header.categoryHint === 'ambiguous' ? await resolveAmbiguousCategory(header.name) : header.categoryHint
+      const category = await CardsDB.getOrCreateCategory(categoryName)
+      if (!category) return
+
+      const existing = await CardsDB.getSubcategoryByNameAndCategory(header.name, category.id)
+      const cdnUrl = await uploadFromUrl(photoUrl, 'subcategories')
+      const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
+      if (!user) return
+
+      const subcategory = existing
+        ? await CardsDB.updateSubcategory(existing.id, { imageUrl: cdnUrl })
+        : await CardsDB.createSubcategory(header.name, category.id, cdnUrl)
+      if (!subcategory) return
+
+      await AuditDB.log(user.id, existing ? 'subcategory.updatePhoto' : 'subcategory.create', { subcategoryId: subcategory.id, name: subcategory.name, categoryEmoji: category.emoji })
+      await setAddcardSession(ctx.message.chat.id, ctx.message.chat.threadId, {
+        subcategoryId: subcategory.id,
+        subcategoryName: subcategory.name,
+        categoryId: category.id,
+        categoryName: category.name,
+      })
+      await reply(ctx, `📂 Subcategoria **${escapeMarkdown(subcategory.name)}** ${existing ? 'atualizada' : 'criada'} com foto.\n💡 Cards adicionados neste chat agora entram automaticamente em **${escapeMarkdown(subcategory.name)}**.`)
+      return
+    }
+
+    const session = await getAddcardSession(ctx.message.chat.id, ctx.message.chat.threadId)
+    if (session) {
+      const name = extractCardName(sourceText)
+
+      const duplicate = await CardsDB.getCardByNameAndSubcategory(name, session.subcategoryId)
+      if (duplicate) {
+        await reply(ctx, {
+          content: `⚠️ Já existe um card chamado **${escapeMarkdown(name)}** em **${escapeMarkdown(session.subcategoryName)}** (\`${duplicate.id}\`).`,
+          eventName: 'addcard:confirmDuplicate',
+          restricted: 'author',
+          options: [
+            { title: '✅ Criar mesmo assim', data: true },
+            { title: '❌ Cancelar', data: false },
+          ],
+        })
+
+        const confirmSelection = await DBOS.recv<{ value: boolean, messageId?: string }>('addcard:confirmDuplicate')
+        if (confirmSelection?.messageId) await deleteMsg(ctx, confirmSelection.messageId)
+        if (!confirmSelection?.value) {
+          await reply(ctx, 'Upload cancelado.')
+          return
+        }
+      }
+
+      const rarity = await inferRarityOnly(name, session.subcategoryName, rarities.map(r => r.name)) ?? rarities[0]!.name
+      const cdnUrl = isAnimated ? await uploadFromUrl(photoUrl, 'cards') : await uploadCardImage(photoUrl)
+      await finalizeCard(replyCtx, {
+        name,
+        category: session.categoryName,
+        subcategory: session.subcategoryName,
+        rarity,
+        tags: [],
+      }, cdnUrl, 'create')
       return
     }
 

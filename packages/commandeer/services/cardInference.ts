@@ -1,4 +1,4 @@
-import { generateJsonWithTools, type ToolDef } from "@girae/common/mistral"
+import { generateJson, generateJsonWithTools, type ToolDef } from "@girae/common/mistral"
 import { debug } from "@girae/common/logger"
 import { CardsDB } from "@girae/database/cards"
 
@@ -133,4 +133,36 @@ O nome deste card já foi identificado com certeza: "${nameHint}". Ainda assim, 
     subcategory,
     tags: (tags ?? []).filter(t => !blocked.includes(t.toLowerCase())),
   }
+}
+
+// Used only for the 📚 header emoji, which covers both Animangá and Jogos.
+export async function resolveAmbiguousCategory(subcategoryName: string): Promise<"Animangá" | "Jogos"> {
+  const result = await generateJson<{ category: "Animangá" | "Jogos" }>({
+    logTag: "cardInference",
+    system: `Você decide se uma subcategoria de cards colecionáveis é "Animangá" (personagens de anime/mangá) ou "Jogos" (personagens de jogos eletrônicos). Responda apenas com o JSON pedido.`,
+    messages: [{ role: "user", content: subcategoryName }],
+    responseSchema: {
+      type: "object",
+      properties: { category: { type: "string", enum: ["Animangá", "Jogos"] } },
+      required: ["category"],
+    },
+    maxOutputTokens: 50,
+  })
+  return result?.category ?? "Animangá"
+}
+
+// Used once category/subcategory are already known - only rarity still needs judgment.
+export async function inferRarityOnly(name: string, subcategoryName: string, knownRarities: string[]): Promise<string | null> {
+  const result = await generateJson<{ rarity: string }>({
+    logTag: "cardInference",
+    system: `Você escolhe a raridade de um card colecionável. Escolha exatamente uma destas: ${knownRarities.join(", ")}. Primeiro procure por uma palavra explícita de raridade no texto (em português; Bronze refere-se a Comum, Prata a Raro, Ouro a Lendário). Se não houver nenhuma palavra explícita, avalie a popularidade/relevância do personagem/artista dentro da subcategoria "${subcategoryName}" - quão central ele é à obra ou grupo, seu impacto cultural, o quanto é reconhecido pelo público em geral - e escolha uma raridade proporcional: protagonistas, membros centrais e figuras muito populares tendem a raridades mais altas; personagens secundários ou figuras obscuras, mais baixas. Na dúvida mesmo assim, prefira a raridade mais comum da lista. Responda apenas com o JSON pedido.`,
+    messages: [{ role: "user", content: name }],
+    responseSchema: {
+      type: "object",
+      properties: { rarity: { type: "string", enum: knownRarities } },
+      required: ["rarity"],
+    },
+    maxOutputTokens: 50,
+  })
+  return result?.rarity ?? null
 }
