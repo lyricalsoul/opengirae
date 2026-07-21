@@ -34,7 +34,7 @@ export default class PingCommand extends Command {
     const dittoLine = dittoMetadata
       ? `🖼 Gerador de imagem: 🟢 online (${dittoMetadata.engine} v${dittoMetadata.scheme})`
       : `🖼 Gerador de imagem: 🔴 offline`
-    const commitLine = commitShortSha ? `📦 Commit: \`${commitShortSha}\` ${commitMessage ?? ''}`.trim() : undefined
+    const commitLine = commitShortSha ? `📦 Commit: \`${commitShortSha} ${commitMessage ?? ''}\``.trim() : undefined
 
     await reply(cmd, {
       content: [`🤖 Status da bot: ${status.emoji} ${status.label}`, dittoLine, commitLine].filter(Boolean).join('\n'),
