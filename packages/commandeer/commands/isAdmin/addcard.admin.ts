@@ -8,7 +8,7 @@ import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { uploadCardImage } from '../../services/cardImage'
 import { uploadFromUrl } from '@girae/common/utilities/storage'
 import { inferCardData } from '../../services/cardInference'
-import { parseCardListing, parseSubcategoryListing } from '../../services/cardListingParser'
+import { parseCardListing, parseSubcategoryListing, parseCardNameAndSubcategoryHint } from '../../services/cardListingParser'
 import { runCardWizard, finalizeCard } from '../../services/cardWizard'
 import type { IncomingCommand } from '@girae/common/commands/types'
 
@@ -129,7 +129,15 @@ export default class AddCardCommand extends Command {
       ? (await CardsDB.getSubcategoriesForCategory(musicaCategory.id)).map(s => s.name)
       : []
 
-    const inferred = await inferCardData(sourceText, categories.map(c => c.name), rarities.map(r => r.name), musicaSubcategories)
+    const nameSubcategoryHint = parseCardNameAndSubcategoryHint(sourceText)
+    const inferred = await inferCardData(
+      sourceText,
+      categories.map(c => c.name),
+      rarities.map(r => r.name),
+      musicaSubcategories,
+      nameSubcategoryHint?.name,
+      nameSubcategoryHint?.subcategoryHint,
+    )
     if (!inferred) {
       await reply(ctx, 'Não foi possível inferir os dados do card. Tente novamente.')
       return

@@ -36,3 +36,18 @@ export function parseSubcategoryListing(text: string): ParsedSubcategoryListing 
   if (!categoryId) return null
   return { subcategory: match[2]!.trim(), categoryId }
 }
+
+export interface CardNameSubcategoryHint {
+  name: string
+  subcategoryHint: string
+}
+
+const HINT_LINE_RE = /^\S+\s*(.+)$/u
+
+export function parseCardNameAndSubcategoryHint(text: string): CardNameSubcategoryHint | null {
+  const lines = text.split('\n')
+  const nameMatch = lines[0]?.match(LINE_RE)
+  const subcategoryMatch = lines[1]?.match(HINT_LINE_RE)
+  if (!nameMatch || !subcategoryMatch) return null
+  return { name: nameMatch[2]!.trim(), subcategoryHint: subcategoryMatch[1]!.trim() }
+}

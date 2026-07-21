@@ -1,8 +1,4 @@
-import Groq from "groq-sdk"
-import { error } from "@girae/common/logger"
-
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
-const MODEL = process.env.GROQ_MODEL || "qwen/qwen3.6-27b"
+import { generateJson, Type } from "@girae/common/gemini"
 
 export interface InferredVanityData {
   title: string
@@ -22,28 +18,19 @@ Responda SOMENTE com um objeto JSON no formato:
 - "description": uma frase curta, simples e objetiva em português descrevendo o item (ex.: "Banner de Azealia Banks na era BROKE WITH EXPANSIVE TASTE"). Uma frase só, direta, sem enrolação e sem emojis.
 - "price": se um preço em moedas for mencionado no texto (de qualquer forma, ex.: "por 5000", "5k moedas", "custa 20.000"), extraia o valor numérico. Caso contrário, null. Nunca invente um preço.`
 
-  const completion = await groq.chat.completions.create({
-    model: MODEL,
-    response_format: { type: "json_object" },
-    reasoning_effort: "none",
-    temperature: 0.3,
-    max_tokens: 200,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: hint },
-    ],
-  }).catch((e) => {
-    error("vanityInference", `groq request failed: ${e}`)
-    return null
+  return generateJson<InferredVanityData>({
+    logTag: "vanityInference",
+    system,
+    messages: [{ role: "user", content: hint }],
+    responseSchema: {
+      type: Type.OBJECT,
+      properties: {
+        title: { type: Type.STRING },
+        description: { type: Type.STRING },
+        price: { type: Type.NUMBER, nullable: true },
+      },
+      required: ["title", "description"],
+    },
+    maxOutputTokens: 200,
   })
-
-  const content = completion?.choices?.[0]?.message?.content
-  if (!content) return null
-
-  try {
-    return JSON.parse(content) as InferredVanityData
-  } catch (e) {
-    error("vanityInference", `failed to parse groq response: ${e}`)
-    return null
-  }
 }
