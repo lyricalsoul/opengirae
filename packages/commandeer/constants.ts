@@ -1,7 +1,6 @@
 export const EMOJI = {
   category: '📁',
   subcategory: '📂',
-  tag: '🔖',
   owner: '👾',
   quickView: '🧁',
   ownersCount: '👨‍👨‍👧‍👧',

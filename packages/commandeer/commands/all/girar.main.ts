@@ -157,12 +157,12 @@ export default class GirarCommand extends Command {
       const subcategory = allSubcategories.find(s => s.id === subcategoryId);
       const subcategoryName = subcategory?.name ?? 'Desconhecida';
       const count = userCard?.count ?? 1;
-      const tagExtra = tags[0] ? `\n🔖 ${escapeMarkdown(tags[0])}` : '';
+      const subcategoryNames = [subcategoryName, ...tags].map(escapeMarkdown).join(' / ');
 
       const text = `🎰 Parabéns, você ganhou e vai levar:
 
 ${drawnCard.rarityEmoji} \`${drawnCard.id}\`. **${escapeMarkdown(drawnCard.name)}**
-${category.emoji} _${escapeMarkdown(subcategoryName)}_${tagExtra}
+${category.emoji} _${subcategoryNames}_
 
 👾 \`${user.id}\`. ${mention(ctx.message.platform, ctx.message.author.id, ctx.message.author.name)} (\`${count}x\`)`;
 

@@ -21,11 +21,11 @@ async function showCard(ctx: IncomingCommand, card: CardDetails) {
   const count = owned?.count ?? 0
   const badge = cativeiroEmoji(count)
 
-  const tagLine = tags.length > 0 ? `\n${EMOJI.tag} ${tags.map(escapeMarkdown).join(', ')}` : ''
+  const subcategoryNames = [card.subcategoryName ?? '?', ...tags].map(escapeMarkdown).join(' / ')
   const countSuffix = count > 0 ? ` (\`${count}x\`)` : ''
 
   const text = `${card.rarityEmoji} \`${card.id}\`. **${escapeMarkdown(card.name)}**${badge ? ` ${badge}` : ''}
-${card.categoryEmoji ?? EMOJI.category} _${escapeMarkdown(card.subcategoryName ?? '?')}_${tagLine}
+${card.categoryEmoji ?? EMOJI.category} _${subcategoryNames}_
 
 ${EMOJI.owner} \`${user?.id ?? '?'}\`. ${mention(ctx.message.platform, ctx.message.author.id, ctx.message.author.name)}${countSuffix}`
 
