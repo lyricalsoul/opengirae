@@ -151,12 +151,31 @@ export async function resolveAmbiguousCategory(subcategoryName: string): Promise
   return result?.category ?? "Animangá"
 }
 
+const RARITY_FEW_SHOT: Array<{ role: "user" | "assistant"; content: string }> = [
+  { role: "user", content: "Subcategoria: Harry Potter. Personagem: Colin Creevey" },
+  { role: "assistant", content: JSON.stringify({ rarity: "Comum" }) },
+  { role: "user", content: "Subcategoria: Naruto. Personagem: Naruto Uzumaki" },
+  { role: "assistant", content: JSON.stringify({ rarity: "Lendário" }) },
+  { role: "user", content: "Subcategoria: Naruto. Personagem: Iruka Umino" },
+  { role: "assistant", content: JSON.stringify({ rarity: "Comum" }) },
+]
+
 // Used once category/subcategory are already known - only rarity still needs judgment.
 export async function inferRarityOnly(name: string, subcategoryName: string, knownRarities: string[]): Promise<string | null> {
+  const system = `Você escolhe a raridade de um card colecionável. Escolha exatamente uma destas: ${knownRarities.join(", ")}. Primeiro procure por uma palavra explícita de raridade no texto (em português; Bronze refere-se a Comum, Prata a Raro, Ouro a Lendário).
+
+Se não houver palavra explícita, julgue comparando este personagem com TODOS os outros personagens da obra/subcategoria "${subcategoryName}" que você conhece - não apenas os que já foram cadastrados, já que a maioria ainda nem existe no sistema. A raridade é relativa ao elenco completo, não uma escala absoluta:
+- Protagonistas e personagens-título da obra são sempre a raridade mais alta disponível, mesmo que outro personagem pareça mais "marcante" ou memorável.
+- Coadjuvantes recorrentes e bem conhecidos ficam no meio.
+- Personagens secundários, cameos ou com pouca participação ficam nas raridades mais baixas - mesmo que sejam visualmente vistosos ou tenham uma cena icônica, isso não os torna centrais à obra.
+- Julgue pela importância NARRATIVA dentro da obra/grupo, nunca pelo quão marcante ou "cool" o personagem parece à primeira vista.
+
+Na dúvida mesmo assim, prefira a raridade mais comum da lista. Responda apenas com o JSON pedido.`
+
   const result = await generateJson<{ rarity: string }>({
     logTag: "cardInference",
-    system: `Você escolhe a raridade de um card colecionável. Escolha exatamente uma destas: ${knownRarities.join(", ")}. Primeiro procure por uma palavra explícita de raridade no texto (em português; Bronze refere-se a Comum, Prata a Raro, Ouro a Lendário). Se não houver nenhuma palavra explícita, avalie a popularidade/relevância do personagem/artista dentro da subcategoria "${subcategoryName}" - quão central ele é à obra ou grupo, seu impacto cultural, o quanto é reconhecido pelo público em geral - e escolha uma raridade proporcional: protagonistas, membros centrais e figuras muito populares tendem a raridades mais altas; personagens secundários ou figuras obscuras, mais baixas. Na dúvida mesmo assim, prefira a raridade mais comum da lista. Responda apenas com o JSON pedido.`,
-    messages: [{ role: "user", content: name }],
+    system,
+    messages: [...RARITY_FEW_SHOT, { role: "user", content: `Subcategoria: ${subcategoryName}. Personagem: ${name}` }],
     responseSchema: {
       type: "object",
       properties: { rarity: { type: "string", enum: knownRarities } },
