@@ -9,6 +9,7 @@ COPY packages/common/package.json packages/common/package.json
 COPY packages/database/package.json packages/database/package.json
 COPY packages/discord-inbounder/package.json packages/discord-inbounder/package.json
 COPY packages/telegram-inbound/package.json packages/telegram-inbound/package.json
+COPY packages/tests/package.json packages/tests/package.json
 
 RUN mkdir -p website && echo '{"name":"website","private":true}' > website/package.json
 
