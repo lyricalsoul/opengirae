@@ -13,4 +13,3 @@ export const commitMessage = process.env.GIT_COMMIT_MESSAGE ?? gitFallback("log 
 export const commitShortSha = commitSha?.slice(0, 7)
 
 export const REPO_URL = 'https://github.com/lyricalsoul/opengirae'
-export const commitUrl = commitSha ? `${REPO_URL}/commit/${commitSha}` : REPO_URL

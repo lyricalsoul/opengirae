@@ -2,7 +2,7 @@ import { Command, Subcommand } from '@girae/common/commands'
 import { reply } from '@girae/common/dbos/messaging'
 import { commandQueue, responseQueue } from '@girae/common/queue'
 import { getDittoMetadata } from '@girae/common/ditto'
-import { commitShortSha, commitMessage, commitUrl } from '@girae/common/version'
+import { commitShortSha, commitMessage, REPO_URL } from '@girae/common/version'
 import type { IncomingCommand } from '@girae/common/commands/types'
 
 const BACKLOG_SLOW_THRESHOLD = 20
@@ -38,7 +38,7 @@ export default class PingCommand extends Command {
 
     await reply(cmd, {
       content: [`🤖 Status da bot: ${status.emoji} ${status.label}`, dittoLine, commitLine].filter(Boolean).join('\n'),
-      buttons: [{ text: '💻 Veja o código-fonte da Giraê', url: commitUrl }],
+      buttons: [{ text: '💻 Veja o código-fonte da Giraê', url: REPO_URL }],
     })
   }
 
