@@ -38,6 +38,7 @@
     "dev:telegram-inbound": "bun --watch packages/telegram-inbound/index.ts",
     "dev:commandeer": "bun --watch packages/commandeer/index.ts",
     "commands:sync": "bun packages/commandeer/scripts/setMyCommands.ts",
+    "investigate": "bun packages/tests/scripts/investigate.ts",
     "dev:answerer": "bun --watch packages/answerer/index.ts"
   }
 }
