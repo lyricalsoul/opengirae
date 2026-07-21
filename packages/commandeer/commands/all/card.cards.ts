@@ -1,5 +1,5 @@
 import { Command, QuickView, CommandArgument, CommandArgumentType } from '@girae/common/commands'
-import { reply } from '@girae/common/dbos/messaging'
+import { reply, type ButtonSpec } from '@girae/common/dbos/messaging'
 import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { getActiveTradeSide } from './trade.cards'
@@ -29,16 +29,16 @@ ${card.categoryEmoji ?? EMOJI.category} _${escapeMarkdown(card.subcategoryName ?
 
 ${EMOJI.owner} \`${user?.id ?? '?'}\`. ${mention(ctx.message.platform, ctx.message.author.id, ctx.message.author.name)}${countSuffix}`
 
-  const buttonRows = [[{ text: EMOJI.quickView, quickView: { handler: 'cardinfo', arg: String(card.id) } }]]
+  const buttonRows: ButtonSpec[][] = [[{ text: EMOJI.quickView, quickView: { handler: 'cardinfo', arg: String(card.id) } }]]
 
   const activeTrade = await getActiveTradeSide(ctx.message.author.id)
   if (activeTrade) {
     const inOffer = !!activeTrade.state.offers[activeTrade.side][card.id]
     if (!inOffer && count > 0) {
-      buttonRows.push([{ text: '➕ Trocar este card', quickView: { handler: 'tradeCard', arg: `add:${card.id}` } }])
+      buttonRows.push([{ text: '➕ Trocar este card', quickView: { handler: 'tradeCard', arg: `add:${card.id}` }, color: 'success' }])
     }
     if (inOffer) {
-      buttonRows.push([{ text: '➖ Retirar este card da troca', quickView: { handler: 'tradeCard', arg: `remove:${card.id}` } }])
+      buttonRows.push([{ text: '➖ Retirar este card da troca', quickView: { handler: 'tradeCard', arg: `remove:${card.id}` }, color: 'danger' }])
     }
   }
 

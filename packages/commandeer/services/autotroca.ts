@@ -12,5 +12,6 @@ export function autotrocaBulkButton(enabled: boolean): ButtonSpec {
   return {
     text: enabled ? '🔄 Marcar cards que eu já tenho como trocáveis' : '🔒 Marcar cards que eu já tenho como não trocáveis',
     quickView: { handler: AUTOTROCA_BULK_QUICKVIEW, arg: enabled ? 'true' : 'false' },
+    color: 'secondary',
   }
 }

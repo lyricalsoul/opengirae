@@ -235,7 +235,7 @@ export default class TradeCommand extends Command {
           content: `${m(targetTelegramId, targetName)}, você quer trocar cartas com ${m(ctx.message.author.id, proposerName)}?\n\n${m(ctx.message.author.id, proposerName)}, você ainda pode cancelar clicando em recusar!`,
           photoUrl: inviteImage.url,
         },
-        [{ title: '✅ Aceitar', data: 'accept' }, { title: '❌ Recusar', data: 'decline' }],
+        [{ title: '✅ Aceitar', data: 'accept', color: 'success' }, { title: '❌ Recusar', data: 'decline', color: 'danger' }],
         [ctx.message.author.id, targetTelegramId],
         (c) => c.data === 'decline' || c.clickerUserId === targetTelegramId,
         INACTIVITY_TIMEOUT_SECONDS,
@@ -360,7 +360,7 @@ export default class TradeCommand extends Command {
           photoUrl: finalizeImage.url,
           editMessageId: groupMessageId,
         },
-        [{ title: '✅ Finalizar troca', data: 'finalize' }, { title: '❌ Cancelar', data: 'cancel' }],
+        [{ title: '✅ Finalizar troca', data: 'finalize', color: 'success' }, { title: '❌ Cancelar', data: 'cancel', color: 'danger' }],
         [ctx.message.author.id, targetTelegramId],
         (c) => {
           if (c.data === 'cancel') return true

@@ -24,7 +24,7 @@ const AUTOCOMPLETE_TYPES = new Set([
   CommandArgumentType.VANITY_ITEM,
 ])
 
-type DiscordOption = { name: string; description: string; type: ApplicationCommandOptionTypes; required?: boolean; autocomplete?: boolean }
+type DiscordOption = { name: string; description: string; type: ApplicationCommandOptionTypes; required?: boolean; autocomplete?: boolean; options?: DiscordOption[] }
 
 const OPTION_OVERRIDES: Record<string, DiscordOption[]> = {
   wish: [{ name: 'card', description: 'ID ou nome do card', type: ApplicationCommandOptionTypes.String, required: false }],
@@ -32,8 +32,7 @@ const OPTION_OVERRIDES: Record<string, DiscordOption[]> = {
 
 const toOptionName = (name: string) => name.replace(/([A-Z])/g, '_$1').toLowerCase()
 
-function optionsFor(commandName: string, specs: CommandArgumentSpec[] | undefined): DiscordOption[] | undefined {
-  if (OPTION_OVERRIDES[commandName]) return OPTION_OVERRIDES[commandName]
+function mapSpecsToOptions(specs: CommandArgumentSpec[] | undefined): DiscordOption[] | undefined {
   if (!specs?.length) return undefined
   return specs.map(spec => ({
     name: toOptionName(spec.name),
@@ -44,10 +43,32 @@ function optionsFor(commandName: string, specs: CommandArgumentSpec[] | undefine
   }))
 }
 
-export function findArgumentSpec(commandName: string, discordOptionName: string): CommandArgumentSpec | undefined {
+type SubcommandEntry = { name: string; description: string; methodName: string }
+
+function optionsFor(commandName: string, module: any): DiscordOption[] | undefined {
+  if (OPTION_OVERRIDES[commandName]) return OPTION_OVERRIDES[commandName]
+
+  const subcommands: Record<string, SubcommandEntry> | undefined = module.subcommands
+  if (subcommands) {
+    const unique = [...new Set(Object.values(subcommands))]
+    return unique.map(entry => ({
+      name: entry.name,
+      description: entry.description,
+      type: ApplicationCommandOptionTypes.SubCommand,
+      options: mapSpecsToOptions(module.commandArguments?.[entry.methodName]),
+    }))
+  }
+
+  return mapSpecsToOptions(module.commandArguments?.['execute'])
+}
+
+export function findArgumentSpec(commandName: string, discordOptionName: string, subcommandName?: string): CommandArgumentSpec | undefined {
   const cmd = findCommand(commandName)
   if (!cmd) return undefined
-  const specs: CommandArgumentSpec[] | undefined = (cmd.module as any).commandArguments?.['execute']
+  const module = cmd.module as any
+  const methodName = subcommandName ? module.subcommands?.[subcommandName]?.methodName : 'execute'
+  if (!methodName) return undefined
+  const specs: CommandArgumentSpec[] | undefined = module.commandArguments?.[methodName]
   return specs?.find(spec => toOptionName(spec.name) === discordOptionName)
 }
 
@@ -83,11 +104,10 @@ export function buildApplicationCommands(): CreateApplicationCommand[] {
     const info = module.info
     if (info.name === 'unimplemented') continue
 
-    const specs: CommandArgumentSpec[] | undefined = (module as any).commandArguments?.['execute']
     commands.push({
       name: info.name,
       description: info.description || info.name,
-      options: optionsFor(info.name, specs),
+      options: optionsFor(info.name, module),
       integrationTypes: [DiscordApplicationIntegrationType.GuildInstall, DiscordApplicationIntegrationType.UserInstall],
       contexts: [DiscordInteractionContextType.Guild, DiscordInteractionContextType.BotDm, DiscordInteractionContextType.PrivateChannel],
     })

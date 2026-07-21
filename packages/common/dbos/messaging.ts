@@ -1,5 +1,5 @@
 import { DBOS } from "@dbos-inc/dbos-sdk"
-import type { IncomingCommand, InlineReplyOptions, PendingResponse, StoredStep } from "../commands/types"
+import type { IncomingCommand, InlineReplyOptions, PendingResponse, StoredStep, ButtonColor } from "../commands/types"
 import { responseQueue, responseQueueEvents, rawClient } from "../queue"
 import { groups } from "../utilities/groups"
 import { error as logError } from "../logger"
@@ -28,6 +28,7 @@ export interface ButtonSpec {
     text: string;
     callbackData?: string;
     url?: string;
+    color?: ButtonColor;
     quickView?: { handler: string; arg: string };
     page?: { handler: string; arg: string; page: number };
     // simulates a command `/name arg1 arg2...`
@@ -58,6 +59,7 @@ export type MessageReply = string | {
     buttons?: ButtonSpec[];
     buttonRows?: ButtonSpec[][];
     captionOnly?: boolean;
+    embedFields?: { name: string; value: string; inline?: boolean }[];
 }
 
 const WORKFLOW_TTL_SECONDS = 1 * 60 * 60
@@ -67,10 +69,6 @@ const RESPONSE_JOB_OPTIONS = { attempts: 3, backoff: { type: 'exponential', dela
 
 const isAnimatedMediaUrl = (url?: string) => !!url && /\.(gif|mp4|webm)(\?|#|$)/i.test(url)
 
-// Discord-only nicety: accent the embed with the author's own favoriteColor.
-// Queries the raw `db` client directly rather than going through UsersDB's maybeTransaction
-// methods - `reply()` itself is a DBOS step, and DBOS forbids calling a transaction from
-// within a step (or another transaction), so a DBOS-wrapped query can't be used here.
 async function getEmbedColor(cmd: IncomingCommand): Promise<string | undefined> {
     if (cmd.message.platform !== 'discord') return undefined
     const row = await db
@@ -87,6 +85,7 @@ async function getEmbedColor(cmd: IncomingCommand): Promise<string | undefined> 
 const resolveButton = (cmd: IncomingCommand, b: ButtonSpec) => ({
     text: b.text,
     url: b.url,
+    color: b.color,
     callbackData: b.quickView
         ? `qv:${b.quickView.handler}:${b.quickView.arg}`
         : b.page
@@ -102,17 +101,13 @@ export const reply = maybeStep('reply', async (cmd: IncomingCommand, content: Me
         const photoUrl = typeof content === 'string' ? undefined : content.photoUrl;
         const editMessageId = typeof content === 'string' ? undefined : content.editMessageId;
         const captionOnly = typeof content === 'string' ? false : !!content.captionOnly;
+        const embedFields = typeof content === 'string' ? undefined : content.embedFields;
         const buttons = typeof content === 'string' ? undefined
             : content.buttonRows ? content.buttonRows.map(row => row.map(b => resolveButton(cmd, b)))
                 : content.buttons ? [content.buttons.map(b => resolveButton(cmd, b))]
                     : undefined;
 
-        // Discord slash-command replies have no "invoking message" to reply to - the first
-        // reply must instead edit the placeholder message created when the interaction was
-        // deferred (discord-inbounder sets cmd.message.id to that placeholder's real id).
         const targetMessageId = editMessageId ?? (cmd.message.platform === 'discord' ? cmd.message.id : undefined);
-        // Editing the deferred placeholder must go through the interaction-response API or
-        // Discord's "thinking..." indicator never clears - a plain channel edit isn't enough.
         const interactionToken = targetMessageId === cmd.message.id ? cmd.message.interactionToken : undefined;
 
         let method: PendingResponse['method'] = 'sendMessage';
@@ -133,6 +128,7 @@ export const reply = maybeStep('reply', async (cmd: IncomingCommand, content: Me
             buttons,
             interactionToken,
             embedColor: await getEmbedColor(cmd),
+            embedFields,
         } satisfies PendingResponse, RESPONSE_JOB_OPTIONS)
         return settleReply(job)
     }
@@ -150,6 +146,7 @@ export const reply = maybeStep('reply', async (cmd: IncomingCommand, content: Me
     const flatButtons = content.options.map((o, i) => ({
         text: o.title,
         callbackData: `${cmd.workflowIDToBeAssigned}.${content.eventName}.${i}`,
+        color: o.color,
     }))
     const buttons = content.rows ? groups(flatButtons, content.rows) : [flatButtons]
 
@@ -198,7 +195,7 @@ export async function awaitMultiPartyChoice<T>(
     cmd: IncomingCommand,
     eventName: string,
     content: { content: string; photoUrl?: string; editMessageId?: string; rows?: number[] },
-    options: Array<{ title: string; data: T }>,
+    options: Array<{ title: string; data: T; color?: ButtonColor }>,
     authorIds: string[],
     isValid: (choice: { data: T; clickerUserId: string }) => boolean,
     timeoutSeconds?: number,
@@ -208,6 +205,7 @@ export async function awaitMultiPartyChoice<T>(
     const flatButtons = options.map((o, i) => ({
         text: o.title,
         callbackData: `${cmd.workflowIDToBeAssigned}.${eventName}.${i}`,
+        color: o.color,
     }))
     const buttons = content.rows ? groups(flatButtons, content.rows) : [flatButtons]
 
@@ -220,7 +218,7 @@ export async function awaitMultiPartyChoice<T>(
         restricted: 'author',
         authorIds,
         multiUse: true,
-        options: options.map(o => ({ title: o.title, data: o.data })),
+        options: options.map(o => ({ title: o.title, data: o.data, color: o.color })),
     })
 
     const deadline = timeoutSeconds ? Date.now() + timeoutSeconds * 1000 : undefined

@@ -1,11 +1,16 @@
 import type { MessageAuthor, MessageChat, Message, IncomingCommand } from '@girae/common/commands/types'
-import { avatarUrl, createBot, GatewayIntents, InteractionTypes, InteractionResponseTypes, ActivityTypes, MessageFlags } from 'discordeno'
+import { avatarUrl, createBot, GatewayIntents, InteractionTypes, InteractionResponseTypes, ActivityTypes, MessageFlags, ApplicationCommandOptionTypes } from 'discordeno'
 import { processCallback } from '@girae/common/inbound/callback'
 import { commandQueue } from '@girae/common/queue'
 import { info, error } from '@girae/common/logger'
 import { buildApplicationCommands, findArgumentSpec, searchChoicesFor } from './registerCommands'
 import { UsersDB } from '@girae/database/users'
 import { findCommand } from '@girae/commandeer/loader'
+
+function unwrapSubcommand(options: { name: string; type: number; options?: any[] }[] | undefined) {
+  const subcommand = options?.[0]?.type === ApplicationCommandOptionTypes.SubCommand ? options[0] : undefined
+  return { subcommandName: subcommand?.name, options: (subcommand ? subcommand.options : options) ?? [] }
+}
 
 const bot = createBot({
   token: process.env.DISCORD_TOKEN!,
@@ -69,10 +74,12 @@ const bot = createBot({
     interactionCreate: async (interaction) => {
       if (interaction.type === InteractionTypes.ApplicationCommandAutocomplete) {
         const commandName = interaction.data?.name
-        const focused = interaction.data?.options?.find(o => o.focused)
-        if (!commandName || !focused) return
+        if (!commandName) return
+        const { subcommandName, options } = unwrapSubcommand(interaction.data?.options)
+        const focused = options.find(o => o.focused)
+        if (!focused) return
 
-        const spec = findArgumentSpec(commandName, focused.name)
+        const spec = findArgumentSpec(commandName, focused.name, subcommandName)
         const choices = spec ? await searchChoicesFor(spec, String(focused.value ?? '')) : []
         await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
           type: InteractionResponseTypes.ApplicationCommandAutocompleteResult,
@@ -97,7 +104,6 @@ const bot = createBot({
         if (!interaction.data?.name) return
         const commandName = interaction.data.name
 
-        // Ack within Discord's 3s window - ephemeral-ness can only be set here, not on later edits.
         const ephemeral = findCommand(commandName)?.module.info.ephemeral
         await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
           type: InteractionResponseTypes.DeferredChannelMessageWithSource,
@@ -105,8 +111,8 @@ const bot = createBot({
         })
         const placeholder = await bot.helpers.getOriginalInteractionResponse(interaction.token)
 
-        // options arrive typed - stringify in the order registerCommands.ts declared them.
-        const args = (interaction.data.options ?? []).map(o => String(o.value ?? ''))
+        const { subcommandName, options } = unwrapSubcommand(interaction.data.options)
+        const args = [...(subcommandName ? [subcommandName] : []), ...options.map(o => String(o.value ?? ''))]
 
         const message: Message = {
           id: String(placeholder.id),

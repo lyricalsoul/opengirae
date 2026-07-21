@@ -87,8 +87,8 @@ const VANITY_EDIT_CMD = { background: 'editbg', sticker: 'editsticker' } as cons
 const VANITY_DEL_CMD = { background: 'delbg', sticker: 'delsticker' } as const
 
 const vanityActionButtons = (itemId: number, type: VanityType) => [
-  { text: '✏️ Editar', runCommand: { name: VANITY_EDIT_CMD[type], args: [String(itemId)] } },
-  { text: '🗑️ Deletar', runCommand: { name: VANITY_DEL_CMD[type], args: [String(itemId)] } },
+  { text: '✏️ Editar', runCommand: { name: VANITY_EDIT_CMD[type], args: [String(itemId)] }, color: 'secondary' as const },
+  { text: '🗑️ Deletar', runCommand: { name: VANITY_DEL_CMD[type], args: [String(itemId)] }, color: 'danger' as const },
 ]
 
 export async function finalizeVanityItem(
@@ -195,7 +195,7 @@ export async function deleteVanityItem(ctx: IncomingCommand, type: VanityType, i
     photoUrl: item.itemURL,
     eventName: DELETE_CONFIRM_EVENT,
     restricted: 'author',
-    options: [{ title: '✅ Confirmar', data: true }, { title: '❌ Cancelar', data: false }],
+    options: [{ title: '✅ Confirmar', data: true, color: 'success' }, { title: '❌ Cancelar', data: false, color: 'danger' }],
   })
 
   const confirmSelection = await DBOS.recv<{ value: boolean, messageId?: string }>(DELETE_CONFIRM_EVENT)
@@ -244,11 +244,11 @@ export async function runVanityWizard(
     const previewContent = `${EMOJI.dice} **${escapeMarkdown(itemData.title || 'sem nome')}**\n\n${itemData.description ? escapeMarkdown(itemData.description) : '_sem descrição_'}\n💸 ${priceText} moedas${warnings}`
 
     const options = [
-      { title: '📓 Nome', data: { action: 'edit', field: 'title' } as Action },
-      { title: '📝 Descrição', data: { action: 'edit', field: 'description' } as Action },
-      { title: '💰 Preço', data: { action: 'edit', field: 'price' } as Action },
-      { title: '✅ Confirmar', data: { action: 'confirm' } as Action },
-      { title: '❌ Cancelar', data: { action: 'cancel' } as Action },
+      { title: '📓 Nome', data: { action: 'edit', field: 'title' } as Action, color: 'secondary' as const },
+      { title: '📝 Descrição', data: { action: 'edit', field: 'description' } as Action, color: 'secondary' as const },
+      { title: '💰 Preço', data: { action: 'edit', field: 'price' } as Action, color: 'secondary' as const },
+      { title: '✅ Confirmar', data: { action: 'confirm' } as Action, color: 'success' as const },
+      { title: '❌ Cancelar', data: { action: 'cancel' } as Action, color: 'danger' as const },
     ]
 
     await reply(ctx, {

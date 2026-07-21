@@ -21,15 +21,16 @@ export interface Message {
   platform: Platform;
   photoUrl?: string;
   isAnimatedPhoto?: boolean;
-  // Discord only: the slash-command interaction's token, needed to edit the deferred
-  // response via the interaction-response API rather than a plain channel message edit -
-  // a plain edit changes the content but never clears Discord's "thinking..." indicator.
   interactionToken?: string;
 }
+
+// Discord-only button color
+export type ButtonColor = 'primary' | 'secondary' | 'success' | 'danger';
 
 export interface InlineOption {
   title: string;
   data: any;
+  color?: ButtonColor;
 }
 
 export interface InlineReplyOptions {
@@ -60,10 +61,12 @@ export interface PendingResponse {
   callbackQueryId?: string;
   chatId: string;
   platform: Platform;
-  buttons?: Array<Array<{ text: string; callbackData?: string; url?: string }>>;
+  buttons?: Array<Array<{ text: string; callbackData?: string; url?: string; color?: ButtonColor }>>;
   interactionToken?: string;
   // Discord only: the author's favoriteColor, used as the embed's accent color.
   embedColor?: string;
+  // Discord only: rendered as embed fields (side-by-side when inline); ignored by Telegram.
+  embedFields?: { name: string; value: string; inline?: boolean }[];
 }
 
 export interface IncomingCommand {

@@ -49,6 +49,12 @@ export default class CompareCommand extends Command {
         ? `🎁 ${m(targetTelegramId, target.displayName)} tem que você quer:\n\n${theyHaveIWant.map(cardLine).join('\n')}`
         : `🎁 ${m(targetTelegramId, target.displayName)} não tem nenhum card trocável que você quer.`
 
-    await reply(ctx, `🔍 Comparando listas de desejos\n\n${iHaveSection}\n\n${theyHaveSection}`)
+    await reply(ctx, {
+      content: `🔍 Comparando listas de desejos\n\n${iHaveSection}\n\n${theyHaveSection}`,
+      embedFields: [
+        { name: '🎁 Você tem que ele(a) quer', value: iHaveSection, inline: true },
+        { name: '🎁 Ele(a) tem que você quer', value: theyHaveSection, inline: true },
+      ],
+    })
   }
 }

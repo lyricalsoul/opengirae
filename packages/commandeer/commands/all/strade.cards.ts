@@ -87,7 +87,7 @@ export default class SimpleTradeCommand extends Command {
       ctx,
       CONFIRM_EVENT,
       { content, photoUrl: image.url },
-      [{ title: '✅ Confirmar', data: 'confirm' }, { title: '❌ Cancelar', data: 'cancel' }],
+      [{ title: '✅ Confirmar', data: 'confirm', color: 'success' }, { title: '❌ Cancelar', data: 'cancel', color: 'danger' }],
       [ctx.message.author.id, targetTelegramId],
       (c) => c.data === 'cancel' || c.clickerUserId === targetTelegramId,
       INACTIVITY_TIMEOUT_SECONDS,

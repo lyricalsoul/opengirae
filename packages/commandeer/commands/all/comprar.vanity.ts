@@ -46,7 +46,7 @@ export default class ComprarCommand extends Command {
       photoUrl: preview?.url ?? item.itemURL,
       eventName: CONFIRM_EVENT,
       restricted: 'author',
-      options: [{ title: '✅ Confirmar', data: true }, { title: '❌ Cancelar', data: false }],
+      options: [{ title: '✅ Confirmar', data: true, color: 'success' }, { title: '❌ Cancelar', data: false, color: 'danger' }],
     })
 
     const confirmSelection = await DBOS.recv<{ value: boolean, messageId?: string }>(CONFIRM_EVENT)
@@ -68,7 +68,7 @@ export default class ComprarCommand extends Command {
     await reply(ctx, {
       content: `🛍 Você comprou **${escapeMarkdown(item.title)}**!\n💸 -${item.price} moedas`,
       photoUrl: item.itemURL,
-      buttons: [{ text: '✅ Equipar agora', quickView: { handler: 'equip', arg: `${item.type}:${item.id}` } }],
+      buttons: [{ text: '✅ Equipar agora', quickView: { handler: 'equip', arg: `${item.type}:${item.id}` }, color: 'success' }],
     })
   }
 

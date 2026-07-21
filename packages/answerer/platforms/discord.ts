@@ -18,13 +18,20 @@ function unescapeHtmlEntities(text?: string): string | undefined {
   return text?.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
 }
 
+const BUTTON_COLOR_STYLES: Record<string, ButtonStyles> = {
+  secondary: ButtonStyles.Secondary,
+  success: ButtonStyles.Success,
+  danger: ButtonStyles.Danger,
+  primary: ButtonStyles.Primary,
+}
+
 function buildComponents(buttons?: PendingResponse['buttons']) {
   if (!buttons?.length) return []
   return buttons.map(row => ({
     type: MessageComponentTypes.ActionRow,
     components: row.map(b => b.url
       ? { type: MessageComponentTypes.Button, style: ButtonStyles.Link, label: b.text, url: b.url }
-      : { type: MessageComponentTypes.Button, style: ButtonStyles.Primary, label: b.text, customId: b.callbackData }
+      : { type: MessageComponentTypes.Button, style: BUTTON_COLOR_STYLES[b.color ?? 'primary'], label: b.text, customId: b.callbackData }
     ),
   })) as any
 }
@@ -34,11 +41,6 @@ function imageFileName(url: string): string {
   return `image.${ext}`
 }
 
-// Discord's client optimistically renders an embed image URL immediately, but its servers
-// asynchronously re-fetch/proxy that URL shortly after - if that check fails or is slow, the
-// image silently disappears from the embed a moment later. Fetching the image ourselves and
-// uploading it as a file attachment (referenced via attachment://) sidesteps that entirely,
-// since Discord then hosts the file itself with nothing left to re-validate.
 async function fetchAsAttachment(photoUrl: string): Promise<{ file: { blob: Blob; name: string }; embedImageUrl: string } | undefined> {
   try {
     const res = await fetch(photoUrl)
@@ -52,15 +54,13 @@ async function fetchAsAttachment(photoUrl: string): Promise<{ file: { blob: Blob
   }
 }
 
-// Every command already builds one continuous markdown string - rather than rewriting all of
-// them to author structured embeds, wrap whatever content/photoUrl they produced into one
-// rich embed here.
-async function buildEmbedAndFile(content?: string, photoUrl?: string, embedColor?: string) {
+async function buildEmbedAndFile(content?: string, photoUrl?: string, embedColor?: string, embedFields?: PendingResponse['embedFields']) {
   const attachment = photoUrl ? await fetchAsAttachment(photoUrl) : undefined
   const embeds = [{
     description: unescapeHtmlEntities(content),
     color: hexToDiscordColor(embedColor),
     image: photoUrl ? { url: attachment?.embedImageUrl ?? photoUrl } : undefined,
+    fields: embedFields,
     timestamp: new Date().toISOString(),
     footer: { text: 'Giraê' },
   }]
@@ -77,7 +77,7 @@ export async function sendDiscordAnswer(response: PendingResponse): Promise<stri
     case 'sendMessage':
     case 'sendPhoto':
     case 'sendAnimation': {
-      const { embeds, files } = await buildEmbedAndFile(response.content, response.photoUrl, response.embedColor)
+      const { embeds, files } = await buildEmbedAndFile(response.content, response.photoUrl, response.embedColor, response.embedFields)
       const msg = await manager.sendMessage(BigInt(response.chatId), {
         embeds,
         files,
@@ -94,11 +94,7 @@ export async function sendDiscordAnswer(response: PendingResponse): Promise<stri
     case 'editMessageText':
     case 'editMessageCaption':
     case 'editMessageMedia': {
-      const { embeds, files } = await buildEmbedAndFile(response.content, response.photoUrl, response.embedColor)
-
-      // Editing a deferred slash-command response has to go through the interaction-response
-      // API (using its token) - a plain channel message edit changes the content but never
-      // clears Discord's "thinking..." indicator, since that's tracked on the interaction itself.
+      const { embeds, files } = await buildEmbedAndFile(response.content, response.photoUrl, response.embedColor, response.embedFields)
       if (response.interactionToken) {
         const msg = await manager.editOriginalInteractionResponse(response.interactionToken, {
           embeds,
@@ -120,8 +116,6 @@ export async function sendDiscordAnswer(response: PendingResponse): Promise<stri
       return
     case 'answerCallbackQuery': {
       const { interactionId, token } = splitInteractionId(response.callbackQueryId!)
-      // Mirrors Telegram's answerCallbackQuery: non-empty content becomes a visible alert
-      // (here, an ephemeral message only the clicker sees); empty content stays silent.
       if (response.content) {
         await manager.sendInteractionResponse(interactionId, token, {
           type: InteractionResponseTypes.ChannelMessageWithSource,
