@@ -20,7 +20,7 @@ services:
 
   db-push:
     build: .
-    command: ["bun", "run", "db:push"]
+    command: ["bun", "run", "db:migrate"]
     env_file: .env
 
   discord-inbounder:
