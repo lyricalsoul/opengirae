@@ -1,7 +1,10 @@
 import { DBOS } from '@girae/common/dbos';
 import { info } from '@girae/common/logger';
+import { startHealthServer } from '@girae/common/health';
 import './services'
 import { CronJobs } from './cron'
+
+startHealthServer(parseInt(process.env.PORT ?? '8080', 10))
 
 DBOS.setConfig({
     name: 'openGIRAÊ',

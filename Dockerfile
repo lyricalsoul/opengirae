@@ -28,4 +28,7 @@ COPY scripts/ scripts/
 COPY packages/ packages/
 COPY website/src/lib/server/db/ website/src/lib/server/db/
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD bun -e "fetch('http://localhost:'+(process.env.PORT||8080)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
 CMD ["bun", "packages/commandeer/index.ts"]

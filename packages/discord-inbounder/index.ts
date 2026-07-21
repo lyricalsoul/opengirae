@@ -3,9 +3,12 @@ import { avatarUrl, createBot, GatewayIntents, InteractionTypes, InteractionResp
 import { processCallback } from '@girae/common/inbound/callback'
 import { commandQueue } from '@girae/common/queue'
 import { info, error } from '@girae/common/logger'
+import { startHealthServer } from '@girae/common/health'
 import { buildApplicationCommands, findArgumentSpec, searchChoicesFor } from './registerCommands'
 import { UsersDB } from '@girae/database/users'
 import { findCommand } from '@girae/commandeer/loader'
+
+startHealthServer(parseInt(process.env.PORT ?? '8080', 10))
 
 function unwrapSubcommand(options: { name: string; type: number; options?: any[] }[] | undefined) {
   const subcommand = options?.[0]?.type === ApplicationCommandOptionTypes.SubCommand ? options[0] : undefined

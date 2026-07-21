@@ -3,6 +3,9 @@ import { connection } from '@girae/common/queue'
 import { RESPONSE_QUEUE_NAME } from '@girae/common/queue/constants'
 import { sendAnswer } from './handler'
 import { info, error } from '@girae/common/logger'
+import { startHealthServer } from '@girae/common/health'
+
+startHealthServer(parseInt(process.env.PORT ?? '8080', 10))
 
 const jobLabel = (data: { method?: string; platform?: string; chatId?: string; messageId?: string } | undefined) =>
   data ? `${data.method}/${data.platform} chat=${data.chatId} msg=${data.messageId ?? '-'}` : 'unknown'

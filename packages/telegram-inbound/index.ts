@@ -4,8 +4,9 @@ import { processCommand } from '@girae/common/inbound/handler'
 import { processCallback } from '@girae/common/inbound/callback'
 import { info, error } from '@girae/common/logger'
 import { UsersDB } from '@girae/database/users'
-import { commandQueue, responseQueue } from '@girae/common/queue'
+import { commandQueue, responseQueue, rawClient } from '@girae/common/queue'
 import { refreshAvatar } from '@girae/common/avatarRefresh'
+import { startHealthServer } from '@girae/common/health'
 
 const tg = new TelegramClient(process.env.TELEGRAM_TOKEN!)
 
@@ -160,6 +161,9 @@ if (webhookUrl) {
     hostname: '0.0.0.0',
     async fetch(req) {
       const url = new URL(req.url)
+      if (url.pathname === '/health') {
+        return rawClient.isReady ? new Response('OK') : new Response('Redis not connected', { status: 503 })
+      }
       if (url.pathname !== path) return new Response(null, { status: 404 })
       if (secretToken && req.headers.get('x-telegram-bot-api-secret-token') !== secretToken) {
         return new Response(null, { status: 403 })
@@ -181,6 +185,7 @@ if (webhookUrl) {
   })
 } else {
   info('telegram-inbound', 'TELEGRAM_WEBHOOK_URL not set, falling back to long polling')
+  startHealthServer(parseInt(process.env.PORT ?? '8080', 10))
   const dropPendingUpdates = !!process.env.POLL_DROP_PENDING_UPDATES
   if (dropPendingUpdates) {
     info('telegram-inbound', 'POLL_DROP_PENDING_UPDATES set, dropping pending updates and queued commands on start')
