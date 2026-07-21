@@ -32,12 +32,12 @@ export default class PingCommand extends Command {
   static override async execute(cmd: IncomingCommand) {
     const [status, dittoMetadata] = await Promise.all([backlogStatus(), getDittoMetadata()])
     const dittoLine = dittoMetadata
-      ? `🖼 Gerador de imagem: 🟢 online (${dittoMetadata.engine} v${dittoMetadata.scheme})`
-      : `🖼 Gerador de imagem: 🔴 offline`
-    const commitLine = commitShortSha ? `📦 Commit: \`${commitShortSha} ${commitMessage ?? ''}\``.trim() : undefined
+      ? `🖼 **Gerador de imagem**: 🟢 online (${dittoMetadata.engine} v${dittoMetadata.scheme})`
+      : `🖼 **Gerador de imagem**: 🔴 offline`
+    const commitLine = commitShortSha ? `📦 **Commit**: \`${commitShortSha} ${commitMessage ?? ''}\``.trim() : undefined
 
     await reply(cmd, {
-      content: [`🤖 Status da bot: ${status.emoji} ${status.label}`, dittoLine, commitLine].filter(Boolean).join('\n'),
+      content: [`🤖 **Status da bot**: ${status.emoji} ${status.label}`, dittoLine, commitLine].filter(Boolean).join('\n'),
       buttons: [{ text: '💻 Veja o código-fonte da Giraê', url: REPO_URL }],
     })
   }
