@@ -126,18 +126,22 @@ export default class AddCardCommand extends Command {
 
     const header = parseCardHeader(sourceText)
     if (header) {
-      const categoryName = header.categoryHint === 'ambiguous' ? await resolveAmbiguousCategory(header.name) : header.categoryHint
-      const category = await CardsDB.getOrCreateCategory(categoryName)
+      const headerCorrection = await CardsDB.getCorrection(header.name)
+      const categoryName = headerCorrection ? undefined : (header.categoryHint === 'ambiguous' ? await resolveAmbiguousCategory(header.name) : header.categoryHint)
+      const category = headerCorrection
+        ? await CardsDB.getCategory(headerCorrection.categoryId)
+        : await CardsDB.getOrCreateCategory(categoryName!)
       if (!category) return
 
-      const existing = await CardsDB.getSubcategoryByNameAndCategory(header.name, category.id)
+      const subcategoryName = headerCorrection?.subcategoryName ?? header.name
+      const existing = await CardsDB.getSubcategoryByNameAndCategory(subcategoryName, category.id)
       const cdnUrl = await uploadFromUrl(photoUrl, 'subcategories')
       const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
       if (!user) return
 
       const subcategory = existing
         ? await CardsDB.updateSubcategory(existing.id, { imageUrl: cdnUrl })
-        : await CardsDB.createSubcategory(header.name, category.id, cdnUrl)
+        : await CardsDB.createSubcategory(subcategoryName, category.id, cdnUrl)
       if (!subcategory) return
 
       await AuditDB.log(user.id, existing ? 'subcategory.updatePhoto' : 'subcategory.create', { subcategoryId: subcategory.id, name: subcategory.name, categoryEmoji: category.emoji })
