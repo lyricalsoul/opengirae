@@ -5,6 +5,7 @@ import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { VanitiesDB } from '@girae/database/vanities'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
+import { normalizeText } from '@girae/common/utilities/normalizeText'
 import { TYPE_LABEL } from './vanityBrowser'
 
 const GREEDY_TYPES = new Set([
@@ -42,6 +43,14 @@ export async function resolveCardByIdOrName(raw: string): Promise<ParseOutcome> 
   return parseCard(raw)
 }
 
+export async function resolveSubcategoryByIdOrName(raw: string): Promise<ParseOutcome> {
+  return parseSubcategory(raw)
+}
+
+export async function resolveCategoryByIdOrName(raw: string): Promise<ParseOutcome> {
+  return parseCategory(raw)
+}
+
 async function parseCard(raw: string): Promise<ParseOutcome> {
   const asId = parseInt(raw, 10)
   if (!isNaN(asId)) {
@@ -73,15 +82,19 @@ async function parseCategory(raw: string): Promise<ParseOutcome> {
     return category ? { ok: true, value: category } : { ok: false, message: await categoryNotFoundMessage() }
   }
 
-  const results = await CardsDB.searchCategoriesByName(raw, 100)
+  // Accent-insensitive ("musica" must resolve "Música"); categories are few, so filter client-side.
+  const normalizedQuery = normalizeText(raw)
+  const allCategories = await CardsDB.getCategories()
+  const results = allCategories.filter(c => normalizeText(c.name).includes(normalizedQuery))
   if (results.length === 0) return { ok: false, message: await categoryNotFoundMessage() }
   if (results.length > 1) {
+    const exact = results.filter(c => normalizeText(c.name) === normalizedQuery)
+    if (exact.length === 1) return { ok: true, value: exact[0] }
     const list = results.map(c => `${c.emoji} \`${c.id}\`. **${escapeMarkdown(c.name)}**`).join('\n')
     return { ok: false, message: `🔎 **${results.length}** resultados encontrados:\n\n${list}\n\nUse o ID para especificar.` }
   }
 
-  const category = await CardsDB.getCategory(results[0]!.id)
-  return category ? { ok: true, value: category } : { ok: false }
+  return { ok: true, value: results[0] }
 }
 
 async function parseVanityItem(raw: string, vanityType: 'background' | 'sticker'): Promise<ParseOutcome> {

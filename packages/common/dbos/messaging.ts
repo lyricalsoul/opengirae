@@ -6,6 +6,7 @@ import { error as logError } from "../logger"
 import { db } from "@girae/database/index"
 import { users, userProfiles, linkedAccounts } from "@girae/database/schemas/users"
 import { eq, and } from "drizzle-orm"
+import { maybeStep } from "./maybeStep"
 
 async function settleReply(job: Awaited<ReturnType<typeof responseQueue.add>>): Promise<string | undefined> {
     try {
@@ -14,14 +15,6 @@ async function settleReply(job: Awaited<ReturnType<typeof responseQueue.add>>): 
         logError('messaging', `reply job ${job.id} failed: ${e}`)
         return undefined
     }
-}
-
-function maybeStep<Args extends unknown[], Return>(
-    name: string,
-    fn: (...args: Args) => Promise<Return>
-): (...args: Args) => Promise<Return> {
-    const stepWrapped = DBOS.registerStep(fn, { name })
-    return (...args: Args) => DBOS.isWithinWorkflow() ? stepWrapped(...args) : fn(...args)
 }
 
 export interface ButtonSpec {
@@ -206,12 +199,7 @@ export async function awaitMultiPartyChoice<T>(
 
     onProgress?: (choice: { data: T; clickerUserId: string }, buttons: ButtonSpec[][]) => void | Promise<void>,
 ): Promise<{ data: T; clickerUserId: string; messageId?: string } | null> {
-    const flatButtons = options.map((o, i) => ({
-        text: o.title,
-        callbackData: `${cmd.workflowIDToBeAssigned}.${eventName}.${i}`,
-        color: o.color,
-    }))
-    const buttons = content.rows ? groups(flatButtons, content.rows) : [flatButtons]
+    const buttons = buildInteractiveButtons(cmd.workflowIDToBeAssigned, eventName, options, content.rows)
 
     await reply(cmd, {
         content: content.content,

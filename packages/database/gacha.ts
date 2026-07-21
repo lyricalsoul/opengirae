@@ -22,6 +22,7 @@ export interface BulkDrawResult {
   card: CardForDraw;
   categoryId: number;
   categoryName: string;
+  categoryEmoji: string;
   subcategoryId: number;
   subcategoryName: string;
   isFromFavorite: boolean;
@@ -137,7 +138,7 @@ export class GachaLogic {
 
     for (const categoryId of categoryOrder) {
       const category = await client
-        .select({ name: categories.name, subcategoriesOnDraw: categories.subcategoriesOnDraw })
+        .select({ name: categories.name, emoji: categories.emoji, subcategoriesOnDraw: categories.subcategoriesOnDraw })
         .from(categories)
         .where(eq(categories.id, categoryId))
         .limit(1)
@@ -200,6 +201,7 @@ export class GachaLogic {
         card: drawnCard,
         categoryId,
         categoryName: category.name,
+        categoryEmoji: category.emoji,
         subcategoryId: chosenSubcategory.id,
         subcategoryName: chosenSubcategory.name,
         isFromFavorite: favoritesRolled.length > 0,

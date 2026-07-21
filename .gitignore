@@ -35,6 +35,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 /generated/prisma
 
+# production db dump for testing
+/assets/*.sql
+
 neoditto
 ditto
 girae

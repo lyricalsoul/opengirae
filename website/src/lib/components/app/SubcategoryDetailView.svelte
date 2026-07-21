@@ -14,11 +14,13 @@
 	let {
 		subcategoryId,
 		subcategoryName,
+		initialIsGoal,
 		onBack,
 		onOpenActions,
 	}: {
 		subcategoryId: number;
 		subcategoryName: string;
+		initialIsGoal?: boolean;
 		onBack: () => void;
 		onOpenActions?: (card: Row) => void;
 	} = $props();
@@ -26,6 +28,11 @@
 	let tab = $state<Tab>('owned');
 	let ownedCount = $state(0);
 	let missingCount = $state(0);
+	let isGoal = $state(initialIsGoal ?? false);
+
+	if (initialIsGoal === undefined) {
+		telegramTrpc.telegram.cards.goalStatus.query({ subcategoryId }).then((result) => (isGoal = result));
+	}
 
 	const cards = createPaginatedList<Row, Result>(
 		(offset) => telegramTrpc.telegram.cards.subcategoryCards.query({ subcategoryId, ownedFilter: tab, limit: PAGE_SIZE, offset }),
@@ -39,12 +46,25 @@
 		tab;
 		cards.reset();
 	});
+
+	async function toggleGoal() {
+		if (isGoal) {
+			await telegramTrpc.telegram.cards.goalRemove.mutate({ subcategoryId });
+			isGoal = false;
+		} else {
+			await telegramTrpc.telegram.cards.goalAdd.mutate({ subcategoryId });
+			isGoal = true;
+		}
+	}
 </script>
 
 <Page class="pb-safe-24">
 	<Navbar title={subcategoryName}>
 		{#snippet left()}
 			<NavbarBackLink onclick={onBack} />
+		{/snippet}
+		{#snippet right()}
+			<button onclick={toggleGoal} class="px-2 text-xl">{isGoal ? '⭐' : '☆'}</button>
 		{/snippet}
 	</Navbar>
 

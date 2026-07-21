@@ -111,6 +111,29 @@ export const telegramCardsRouter = t.router({
 			return { ok: true };
 		}),
 
+	goalStatus: telegramProcedure
+		.input(z.object({ subcategoryId: z.number().int().positive() }))
+		.query(async ({ ctx, input }) => {
+			const user = await requireUser(ctx.tgUser.id.toString());
+			return CardsDB.isOnGoals(user.id, input.subcategoryId);
+		}),
+
+	goalAdd: telegramProcedure
+		.input(z.object({ subcategoryId: z.number().int().positive() }))
+		.mutation(async ({ ctx, input }) => {
+			const user = await requireUser(ctx.tgUser.id.toString());
+			await CardsDB.addToGoals(user.id, input.subcategoryId);
+			return { ok: true };
+		}),
+
+	goalRemove: telegramProcedure
+		.input(z.object({ subcategoryId: z.number().int().positive() }))
+		.mutation(async ({ ctx, input }) => {
+			const user = await requireUser(ctx.tgUser.id.toString());
+			await CardsDB.removeFromGoals(user.id, input.subcategoryId);
+			return { ok: true };
+		}),
+
 	wishlistReorder: telegramProcedure
 		.input(z.object({ cardIds: z.array(z.number().int().positive()).min(1).max(200) }))
 		.mutation(async ({ ctx, input }) => {

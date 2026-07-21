@@ -7,7 +7,7 @@
 	import InfiniteScrollSentinel from './InfiniteScrollSentinel.svelte';
 	import CardActionsSheet from './CardActionsSheet.svelte';
 
-	type Progress = { subcategoryId: number; subcategoryName: string; categoryName: string; imageUrl: string | null; owned: number; total: number };
+	type Progress = { subcategoryId: number; subcategoryName: string; categoryName: string; imageUrl: string | null; owned: number; total: number; isGoal: boolean };
 	type CardRow = { id: number; name: string; imageUrl: string | null; rarityName: string; rarityEmoji: string; ownedCount: number };
 	type ViewMode = 'default' | 'closest' | 'completed';
 
@@ -51,6 +51,7 @@
 	<SubcategoryDetailView
 		subcategoryId={detail.subcategoryId}
 		subcategoryName={detail.subcategoryName}
+		initialIsGoal={detail.isGoal}
 		onBack={() => (detail = undefined)}
 		onOpenActions={(c) => (actionsCard = c)}
 	/>
