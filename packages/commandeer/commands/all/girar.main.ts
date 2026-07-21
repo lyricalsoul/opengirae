@@ -60,7 +60,9 @@ export default class GirarCommand extends Command {
     }), { EX: 3600 });
 
     try {
-      const categories = await CardsDB.getCategories()
+      const categories = (await CardsDB.getCategories())
+        .filter(c => !c.isHidden)
+        .sort((a, b) => a.id - b.id)
       const remainingDraws = user.maxDraws - user.usedDraws
       await reply(ctx, {
         content: `🎲 Olá, **${mention(ctx.message.platform, ctx.message.author.id, ctx.message.author.name)}**! Bem-vindo de volta. Pronto para girar?\n🎨 Você tem **${remainingDraws}** de **${user.maxDraws}** giros restantes.\n\n🕹 Escolha uma categoria:`,
