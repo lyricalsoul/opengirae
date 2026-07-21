@@ -1,0 +1,11 @@
+{
+  "name": "@girae/tests",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@girae/answerer": "workspace:*",
+    "@girae/commandeer": "workspace:*",
+    "@girae/common": "workspace:*"
+  }
+}

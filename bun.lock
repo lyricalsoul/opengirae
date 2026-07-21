@@ -38,9 +38,13 @@
       "name": "@girae/commandeer",
       "dependencies": {
         "@discordeno/rest": "^21.0.0",
+        "@girae/answerer": "workspace:*",
         "@girae/common": "workspace:*",
         "@girae/database": "workspace:*",
         "date-fns": "^4.4.0",
+      },
+      "devDependencies": {
+        "@girae/tests": "workspace:*",
       },
     },
     "packages/common": {
@@ -67,6 +71,14 @@
       "dependencies": {
         "@girae/common": "workspace:*",
         "@girae/database": "workspace:*",
+      },
+    },
+    "packages/tests": {
+      "name": "@girae/tests",
+      "dependencies": {
+        "@girae/answerer": "workspace:*",
+        "@girae/commandeer": "workspace:*",
+        "@girae/common": "workspace:*",
       },
     },
     "website": {
@@ -316,6 +328,8 @@
     "@girae/discord-inbounder": ["@girae/discord-inbounder@workspace:packages/discord-inbounder"],
 
     "@girae/telegram-inbound": ["@girae/telegram-inbound@workspace:packages/telegram-inbound"],
+
+    "@girae/tests": ["@girae/tests@workspace:packages/tests"],
 
     "@img/colour": ["@img/colour@1.1.0", "", {}, "sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ=="],
 

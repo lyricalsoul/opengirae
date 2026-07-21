@@ -5,8 +5,12 @@
   "private": true,
   "dependencies": {
     "@discordeno/rest": "^21.0.0",
+    "@girae/answerer": "workspace:*",
     "@girae/common": "workspace:*",
     "@girae/database": "workspace:*",
     "date-fns": "^4.4.0"
+  },
+  "devDependencies": {
+    "@girae/tests": "workspace:*"
   }
 }

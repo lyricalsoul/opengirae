@@ -1,7 +1,11 @@
-import { test, expect, describe } from "bun:test";
+import { test, expect, describe, beforeAll, afterAll } from "bun:test";
 import { CommandArgumentType, type CommandArgumentSpec } from "@girae/common/commands";
 import type { IncomingCommand } from "@girae/common/commands/types";
-import { splitPositionalTokens, parseCommandArguments, resolveCommandArguments } from "../../services/commandArguments";
+import { splitPositionalTokens, parseCommandArguments, resolveCommandArguments, resolveSubcategoryByIdOrName, resolveCategoryByIdOrName } from "../../services/commandArguments";
+import { db } from "@girae/database/index";
+import { categories, subcategories } from "@girae/database/schemas/cards";
+import { CardsDB } from "@girae/database/cards";
+import { eq, inArray } from "drizzle-orm";
 
 function fakeCtx(args: string[], opts: { replyToAuthorId?: string } = {}): IncomingCommand {
   return {
@@ -345,6 +349,94 @@ describe("parseCommandArguments - CATEGORY fuzzy search (fixed gap: previously e
     const result = await parseCommandArguments(specs, ['zzzznonexistentcategoryzzzz'], fakeCtx([]));
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.message).toContain('Categoria não encontrada.');
+  });
+});
+
+// Closes a real gap: CommandArgumentType.CATEGORY must resolve "musica" to "Música", not just exact spelling.
+describe("resolveCategoryByIdOrName - accent-insensitive name resolution", () => {
+  test("an unaccented query resolves an accented category name", async () => {
+    const outcome = await resolveCategoryByIdOrName('musica');
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) expect((outcome.value as { name: string }).name).toBe('Música');
+  });
+
+  test("case doesn't matter either", async () => {
+    const outcome = await resolveCategoryByIdOrName('MUSICA');
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) expect((outcome.value as { name: string }).name).toBe('Música');
+  });
+
+  test("the accented spelling still resolves too", async () => {
+    const outcome = await resolveCategoryByIdOrName('música');
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) expect((outcome.value as { name: string }).name).toBe('Música');
+  });
+});
+
+// Closes a real gap: only the not-found-by-id path had coverage; /quero's actual UX (alias, name, disambiguation) didn't.
+describe("SUBCATEGORY resolution success paths (parseSubcategory, via resolveSubcategoryByIdOrName)", () => {
+  let categoryId: number;
+  let uniqueId: number, dupAId: number, dupBId: number, aliasedId: number;
+
+  beforeAll(async () => {
+    const [category] = await db.insert(categories).values({
+      name: `Test Parsing Category ${Date.now()}`, emoji: "🧪",
+    }).returning();
+    categoryId = category!.id;
+
+    const [unique, dupA, dupB, aliased] = await db.insert(subcategories).values([
+      { categoryId, name: `Test Parsing Unique ${Date.now()}` },
+      { categoryId, name: "Test Parsing Duplicate A" },
+      { categoryId, name: "Test Parsing Duplicate B" },
+      { categoryId, name: `Test Parsing Aliased ${Date.now()}` },
+    ]).returning();
+    uniqueId = unique!.id;
+    dupAId = dupA!.id;
+    dupBId = dupB!.id;
+    aliasedId = aliased!.id;
+
+    await CardsDB.addSubcategoryAlias(aliasedId, 'tpsalias');
+  });
+
+  afterAll(async () => {
+    await db.delete(subcategories).where(inArray(subcategories.id, [uniqueId, dupAId, dupBId, aliasedId]));
+    await db.delete(categories).where(eq(categories.id, categoryId));
+  });
+
+  test("resolves by exact numeric ID", async () => {
+    const result = await resolveSubcategoryByIdOrName(String(uniqueId));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect((result.value as { id: number }).id).toBe(uniqueId);
+  });
+
+  test("resolves by alias, case-insensitively", async () => {
+    const result = await resolveSubcategoryByIdOrName('TPSAlias');
+    expect(result.ok).toBe(true);
+    if (result.ok) expect((result.value as { id: number }).id).toBe(aliasedId);
+  });
+
+  test("resolves by a name that matches exactly one subcategory", async () => {
+    const result = await resolveSubcategoryByIdOrName(`Test Parsing Unique`);
+    // ILIKE %query% substring match against the fixture's "Test Parsing Unique <timestamp>" name.
+    expect(result.ok).toBe(true);
+    if (result.ok) expect((result.value as { id: number }).id).toBe(uniqueId);
+  });
+
+  test("an ambiguous name returns the same '🔎 N resultados' disambiguation list /clc uses, not a silent pick", async () => {
+    const result = await resolveSubcategoryByIdOrName('Test Parsing Duplicate');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toContain('🔎');
+      expect(result.message).toContain('resultados encontrados');
+      expect(result.message).toContain(`\`${dupAId}\``);
+      expect(result.message).toContain(`\`${dupBId}\``);
+      expect(result.message).toContain('Use o ID para especificar.');
+    }
+  });
+
+  test("a name nobody has ever used gets the by-name not-found message", async () => {
+    const result = await resolveSubcategoryByIdOrName('zzzznonexistentsubcategoryzzzz');
+    expect(result).toEqual({ ok: false, message: 'Não encontrei uma subcategoria com esse nome.' });
   });
 });
 

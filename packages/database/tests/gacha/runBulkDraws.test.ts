@@ -9,8 +9,8 @@ describe("GachaLogic.runBulkDraws", () => {
   let userId: number;
   let rarityId: number;
   let categoryId: number;
-  let favSubId: number, otherSubId: number, emptySubId: number;
-  let favCardId: number, otherCardId: number;
+  let favSubId: number, favSubBId: number, otherSubId: number, emptySubId: number;
+  let favCardId: number, favCardBId: number, otherCardId: number;
 
   beforeAll(async () => {
     rarityId = await db.select().from(rarities).limit(1).then(r => r[0]!.id);
@@ -19,28 +19,33 @@ describe("GachaLogic.runBulkDraws", () => {
     userId = user!.id;
 
     const [category] = await db.insert(categories).values({
-      name: "Test Bulk Category", emoji: "🧪", subcategoriesOnDraw: 3,
+      name: "Test Bulk Category", emoji: "🧪", subcategoriesOnDraw: 4,
     }).returning();
     categoryId = category!.id;
 
-    const [fav, other, empty] = await db.insert(subcategories).values([
+    const [fav, favB, other, empty] = await db.insert(subcategories).values([
       { categoryId, name: "Test Bulk Fav Sub" },
+      { categoryId, name: "Test Bulk Fav Sub B" },
       { categoryId, name: "Test Bulk Other Sub" },
       { categoryId, name: "Test Bulk Empty Sub" }, // no cards linked - forces the empty-card-pool skip
     ]).returning();
     favSubId = fav!.id;
+    favSubBId = favB!.id;
     otherSubId = other!.id;
     emptySubId = empty!.id;
 
-    const [favCard, otherCard] = await db.insert(cards).values([
+    const [favCard, favCardB, otherCard] = await db.insert(cards).values([
       { name: "Test Bulk Fav Card", rarityId },
+      { name: "Test Bulk Fav Card B", rarityId },
       { name: "Test Bulk Other Card", rarityId },
     ]).returning();
     favCardId = favCard!.id;
+    favCardBId = favCardB!.id;
     otherCardId = otherCard!.id;
 
     await db.insert(cardSubcategories).values([
       { cardId: favCardId, subcategoryId: favSubId, isMain: true },
+      { cardId: favCardBId, subcategoryId: favSubBId, isMain: true },
       { cardId: otherCardId, subcategoryId: otherSubId, isMain: true },
     ]);
   });
@@ -48,9 +53,9 @@ describe("GachaLogic.runBulkDraws", () => {
   afterAll(async () => {
     await db.delete(cardDrawHistory).where(eq(cardDrawHistory.userId, userId));
     await db.delete(userCards).where(eq(userCards.userId, userId));
-    await db.delete(cardSubcategories).where(inArray(cardSubcategories.cardId, [favCardId, otherCardId]));
-    await db.delete(cards).where(inArray(cards.id, [favCardId, otherCardId]));
-    await db.delete(subcategories).where(inArray(subcategories.id, [favSubId, otherSubId, emptySubId]));
+    await db.delete(cardSubcategories).where(inArray(cardSubcategories.cardId, [favCardId, favCardBId, otherCardId]));
+    await db.delete(cards).where(inArray(cards.id, [favCardId, favCardBId, otherCardId]));
+    await db.delete(subcategories).where(inArray(subcategories.id, [favSubId, favSubBId, otherSubId, emptySubId]));
     await db.delete(categories).where(eq(categories.id, categoryId));
     await db.delete(users).where(eq(users.id, userId));
   });
@@ -67,6 +72,35 @@ describe("GachaLogic.runBulkDraws", () => {
     for (const r of results) {
       if (r.isFromFavorite) expect(r.subcategoryId).toBe(favSubId);
     }
+
+    const after = await db.select({ usedDraws: users.usedDraws }).from(users).where(eq(users.id, userId)).then(r => r[0]!.usedDraws);
+    expect(after - before).toBe(results.length);
+
+    await db.delete(cardDrawHistory).where(eq(cardDrawHistory.userId, userId));
+    await db.delete(userCards).where(eq(userCards.userId, userId));
+  });
+
+  test("with two favorite subcategories rolled together, weighted-picks among just the favorites - never the non-favorite, and actually varies which favorite wins", async () => {
+    const before = await db.select({ usedDraws: users.usedDraws }).from(users).where(eq(users.id, userId)).then(r => r[0]!.usedDraws);
+
+    const drawCount = 30;
+    const results = await GachaLogic.runBulkDraws(
+      userId,
+      Array(drawCount).fill(categoryId),
+      100,
+      new Set([favSubId, favSubBId]),
+    );
+
+    // every draw must land on one of the two favorites, never the plain "other" subcategory.
+    expect(results.every(r => r.isFromFavorite)).toBe(true);
+    expect(results.every(r => r.subcategoryId === favSubId || r.subcategoryId === favSubBId)).toBe(true);
+
+    // equal weights, 30 draws all on one side is (1/2)^30 - a flake here means the weighting is broken.
+    const favSubHits = results.filter(r => r.subcategoryId === favSubId).length;
+    const favSubBHits = results.filter(r => r.subcategoryId === favSubBId).length;
+    expect(favSubHits).toBeGreaterThan(0);
+    expect(favSubBHits).toBeGreaterThan(0);
+    expect(favSubHits + favSubBHits).toBe(results.length);
 
     const after = await db.select({ usedDraws: users.usedDraws }).from(users).where(eq(users.id, userId)).then(r => r[0]!.usedDraws);
     expect(after - before).toBe(results.length);
