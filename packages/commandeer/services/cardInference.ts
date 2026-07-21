@@ -152,11 +152,15 @@ export async function resolveAmbiguousCategory(subcategoryName: string): Promise
 }
 
 const RARITY_FEW_SHOT: Array<{ role: "user" | "assistant"; content: string }> = [
-  { role: "user", content: "Subcategoria: Harry Potter. Personagem: Colin Creevey" },
+  { role: "user", content: "Subcategoria: Harry Potter. Item: Colin Creevey" },
   { role: "assistant", content: JSON.stringify({ rarity: "Comum" }) },
-  { role: "user", content: "Subcategoria: Naruto. Personagem: Naruto Uzumaki" },
+  { role: "user", content: "Subcategoria: Naruto. Item: Naruto Uzumaki" },
   { role: "assistant", content: JSON.stringify({ rarity: "Lendário" }) },
-  { role: "user", content: "Subcategoria: Naruto. Personagem: Iruka Umino" },
+  { role: "user", content: "Subcategoria: Naruto. Item: Iruka Umino" },
+  { role: "assistant", content: JSON.stringify({ rarity: "Comum" }) },
+  { role: "user", content: "Subcategoria: Animais. Item: Leão" },
+  { role: "assistant", content: JSON.stringify({ rarity: "Lendário" }) },
+  { role: "user", content: "Subcategoria: Animais. Item: Toupeira-nariz-de-estrela" },
   { role: "assistant", content: JSON.stringify({ rarity: "Comum" }) },
 ]
 
@@ -164,18 +168,18 @@ const RARITY_FEW_SHOT: Array<{ role: "user" | "assistant"; content: string }> = 
 export async function inferRarityOnly(name: string, subcategoryName: string, knownRarities: string[]): Promise<string | null> {
   const system = `Você escolhe a raridade de um card colecionável. Escolha exatamente uma destas: ${knownRarities.join(", ")}. Primeiro procure por uma palavra explícita de raridade no texto (em português; Bronze refere-se a Comum, Prata a Raro, Ouro a Lendário).
 
-Se não houver palavra explícita, julgue comparando este personagem com TODOS os outros personagens da obra/subcategoria "${subcategoryName}" que você conhece - não apenas os que já foram cadastrados, já que a maioria ainda nem existe no sistema. A raridade é relativa ao elenco completo, não uma escala absoluta:
-- Protagonistas e personagens-título da obra são sempre a raridade mais alta disponível, mesmo que outro personagem pareça mais "marcante" ou memorável.
-- Coadjuvantes recorrentes e bem conhecidos ficam no meio.
-- Personagens secundários, cameos ou com pouca participação ficam nas raridades mais baixas - mesmo que sejam visualmente vistosos ou tenham uma cena icônica, isso não os torna centrais à obra.
-- Julgue pela importância NARRATIVA dentro da obra/grupo, nunca pelo quão marcante ou "cool" o personagem parece à primeira vista.
+Se não houver palavra explícita, julgue comparando este item com TODOS os outros itens do assunto "${subcategoryName}" que você conhece - não apenas os que já foram cadastrados, já que a maioria ainda nem existe no sistema. A subcategoria pode ser qualquer tipo de assunto: uma obra de ficção (filme, anime, jogo), um grupo de pessoas/artistas, uma categoria de coisas do mundo real (animais, objetos, lugares, etc.) - adapte o julgamento ao tipo de assunto. A raridade é relativa ao conjunto completo desse assunto, não uma escala absoluta:
+- O item mais central, icônico ou representativo do assunto é sempre a raridade mais alta disponível (ex.: o protagonista de uma obra, ou o animal/exemplo mais famoso e reconhecível de um grupo), mesmo que outro item pareça mais "marcante" isoladamente.
+- Itens conhecidos mas secundários dentro do mesmo assunto ficam no meio.
+- Itens obscuros, raros ou pouco conhecidos dentro do mesmo assunto ficam nas raridades mais baixas - mesmo que sejam visualmente vistosos, isso não os torna centrais ao assunto.
+- Julgue pela relevância DENTRO do assunto específico da subcategoria, nunca por quão marcante ou "cool" o item parece à primeira vista.
 
 Na dúvida mesmo assim, prefira a raridade mais comum da lista. Responda apenas com o JSON pedido.`
 
   const result = await generateJson<{ rarity: string }>({
     logTag: "cardInference",
     system,
-    messages: [...RARITY_FEW_SHOT, { role: "user", content: `Subcategoria: ${subcategoryName}. Personagem: ${name}` }],
+    messages: [...RARITY_FEW_SHOT, { role: "user", content: `Subcategoria: ${subcategoryName}. Item: ${name}` }],
     responseSchema: {
       type: "object",
       properties: { rarity: { type: "string", enum: knownRarities } },
