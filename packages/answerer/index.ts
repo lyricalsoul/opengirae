@@ -1,4 +1,4 @@
-import { Worker, DelayedError, MetricsTime } from 'bullmq'
+import { Worker, DelayedError, UnrecoverableError, MetricsTime } from 'bullmq'
 import { connection } from '@girae/common/queue'
 import { RESPONSE_QUEUE_NAME } from '@girae/common/queue/constants'
 import { sendAnswer } from './handler'
@@ -7,7 +7,7 @@ import { info, error } from '@girae/common/logger'
 const jobLabel = (data: { method?: string; platform?: string; chatId?: string; messageId?: string } | undefined) =>
   data ? `${data.method}/${data.platform} chat=${data.chatId} msg=${data.messageId ?? '-'}` : 'unknown'
 
-const worker = new Worker(RESPONSE_QUEUE_NAME, async (job, token) => {
+export const worker = new Worker(RESPONSE_QUEUE_NAME, async (job, token) => {
   const waitMs = Date.now() - job.timestamp
   if (waitMs > 5000) info('answerer', `Response job ${job.id} (${jobLabel(job.data)}) started after waiting ${waitMs}ms in queue`)
 
@@ -19,6 +19,10 @@ const worker = new Worker(RESPONSE_QUEUE_NAME, async (job, token) => {
       info('answerer', `Response job ${job.id} (${jobLabel(job.data)}) rate-limited, retrying in ${retryAfter}s`)
       await job.moveToDelayed(Date.now() + retryAfter * 1000, token)
       throw new DelayedError()
+    }
+    // 403s (bot kicked/blocked, missing permissions, etc.) won't succeed on retry - fail once, don't burn attempts.
+    if (err?.code === 403) {
+      throw new UnrecoverableError(err.message)
     }
     throw err
   }
