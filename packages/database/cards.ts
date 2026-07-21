@@ -10,6 +10,7 @@ import {
   chocolateFactoryCorrections,
   trades,
   wishlist,
+  subcategoryGoals,
 } from "./schemas/cards";
 import { users } from "./schemas/users";
 import { eq, and, sql, ilike, desc, gte, inArray } from "drizzle-orm";
@@ -722,6 +723,68 @@ export class CardsDB {
     return { rows, total };
   })
 
+  static isOnGoals = maybeTransaction('isOnGoals', async (client, userId: number, subcategoryId: number) => {
+    return !!(await client
+      .select()
+      .from(subcategoryGoals)
+      .where(and(eq(subcategoryGoals.userId, userId), eq(subcategoryGoals.subcategoryId, subcategoryId)))
+      .limit(1)
+      .then(a => a?.[0]));
+  })
+
+  static addToGoals = maybeTransaction('addToGoals', async (client, userId: number, subcategoryId: number) => {
+    await client.insert(subcategoryGoals).values({ userId, subcategoryId }).onConflictDoNothing();
+  })
+
+  static removeFromGoals = maybeTransaction('removeFromGoals', async (client, userId: number, subcategoryId: number) => {
+    await client.delete(subcategoryGoals).where(and(eq(subcategoryGoals.userId, userId), eq(subcategoryGoals.subcategoryId, subcategoryId)));
+  })
+
+  static getGoalSubcategoryIdsForUser = maybeTransaction('getGoalSubcategoryIdsForUser', async (client, userId: number) => {
+    return await client
+      .select({ subcategoryId: subcategoryGoals.subcategoryId, categoryId: subcategories.categoryId })
+      .from(subcategoryGoals)
+      .innerJoin(subcategories, eq(subcategories.id, subcategoryGoals.subcategoryId))
+      .where(eq(subcategoryGoals.userId, userId));
+  })
+
+  static getGoals = maybeTransaction('getGoals', async (
+    client, userId: number, opts: { limit?: number; offset?: number } = {},
+  ) => {
+    const { limit = 20, offset = 0 } = opts;
+    const [rows, total] = await Promise.all([
+      client
+        .select({
+          subcategoryId: subcategories.id,
+          subcategoryName: subcategories.name,
+          categoryName: categories.name,
+          imageUrl: subcategories.imageUrl,
+        })
+        .from(subcategoryGoals)
+        .innerJoin(subcategories, eq(subcategories.id, subcategoryGoals.subcategoryId))
+        .innerJoin(categories, eq(categories.id, subcategories.categoryId))
+        .where(eq(subcategoryGoals.userId, userId))
+        .orderBy(subcategoryGoals.createdAt)
+        .limit(limit)
+        .offset(offset),
+      client
+        .select({ total: sql<number>`CAST(COUNT(*) AS INTEGER)` })
+        .from(subcategoryGoals)
+        .where(eq(subcategoryGoals.userId, userId))
+        .then(r => r[0]?.total ?? 0),
+    ]);
+    return { rows, total };
+  })
+
+  static getSubcategoriesByIds = maybeTransaction('getSubcategoriesByIds', async (client, ids: number[]) => {
+    if (ids.length === 0) return [];
+    return await client
+      .select({ id: subcategories.id, name: subcategories.name, categoryEmoji: categories.emoji })
+      .from(subcategories)
+      .innerJoin(categories, eq(categories.id, subcategories.categoryId))
+      .where(inArray(subcategories.id, ids));
+  })
+
   static searchAllCardsPaginated = maybeTransaction('searchAllCardsPaginated', async (
     client, opts: { query?: string; limit?: number; offset?: number } = {},
   ) => {
@@ -912,11 +975,13 @@ export class CardsDB {
         imageUrl: subcategories.imageUrl,
         total: sql<number>`CAST(${totalExpr} AS INTEGER)`,
         owned: sql<number>`CAST(${ownedExpr} AS INTEGER)`,
+        isGoal: sql<boolean>`BOOL_OR(${subcategoryGoals.subcategoryId} IS NOT NULL)`,
       })
       .from(subcategories)
       .innerJoin(categories, eq(categories.id, subcategories.categoryId))
       .innerJoin(cardSubcategories, eq(cardSubcategories.subcategoryId, subcategories.id))
       .leftJoin(userCards, and(eq(userCards.cardId, cardSubcategories.cardId), eq(userCards.userId, userId)))
+      .leftJoin(subcategoryGoals, and(eq(subcategoryGoals.subcategoryId, subcategories.id), eq(subcategoryGoals.userId, userId)))
       .where(where)
       .groupBy(subcategories.id, categories.id)
       .having(having)

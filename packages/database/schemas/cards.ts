@@ -105,6 +105,23 @@ export const wishlist = pgTable(
   ],
 );
 
+export const subcategoryGoals = pgTable(
+  "subcategory_goals",
+  {
+    userId: integer()
+      .notNull()
+      .references(() => users.id),
+    subcategoryId: integer()
+      .notNull()
+      .references(() => subcategories.id, { onDelete: "cascade" }),
+    createdAt: timestamp().notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.subcategoryId] }),
+    index("subcategory_goals_sub_idx").on(table.subcategoryId),
+  ],
+);
+
 export const cardDrawHistory = pgTable("card_draw_history", {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
   userId: integer().notNull().references(() => users.id),

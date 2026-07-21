@@ -113,4 +113,16 @@ describe("CardsDB.getUserCollectionProgress", () => {
     await db.delete(cards).where(inArray(cards.id, [tinyCard!.id, ...bigCards.map(c => c.id)]));
     await db.delete(subcategories).where(inArray(subcategories.id, [tiny!.id, big!.id]));
   });
+
+  test("isGoal reflects whether the viewer favorited the subcategory", async () => {
+    const before = await CardsDB.getUserCollectionProgress(userId, { query: "Test Progress Subcategory" });
+    const row = before.rows.find(r => r.subcategoryId === subcategoryId)!;
+    expect(row.isGoal).toBe(false);
+
+    await CardsDB.addToGoals(userId, subcategoryId);
+    const after = await CardsDB.getUserCollectionProgress(userId, { query: "Test Progress Subcategory" });
+    expect(after.rows.find(r => r.subcategoryId === subcategoryId)!.isGoal).toBe(true);
+
+    await CardsDB.removeFromGoals(userId, subcategoryId);
+  });
 });

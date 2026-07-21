@@ -1,5 +1,5 @@
 import { DBOS } from "@dbos-inc/dbos-sdk"
-import type { IncomingCommand, InlineReplyOptions, PendingResponse, StoredStep, ButtonColor } from "../commands/types"
+import type { IncomingCommand, InlineReplyOptions, PendingResponse, StoredStep, ButtonColor, InlineOption } from "../commands/types"
 import { responseQueue, responseQueueEvents, rawClient } from "../queue"
 import { groups } from "../utilities/groups"
 import { error as logError } from "../logger"
@@ -82,6 +82,15 @@ async function getEmbedColor(cmd: IncomingCommand): Promise<string | undefined> 
     return row?.favoriteColor
 }
 
+export function buildInteractiveButtons(workflowID: string, eventName: string, options: InlineOption[], rows?: number[]): ButtonSpec[][] {
+    const flatButtons = options.map((o, i) => ({
+        text: o.title,
+        callbackData: `${workflowID}.${eventName}.${i}`,
+        color: o.color,
+    }))
+    return rows ? groups(flatButtons, rows) : [flatButtons]
+}
+
 const resolveButton = (cmd: IncomingCommand, b: ButtonSpec) => ({
     text: b.text,
     url: b.url,
@@ -143,12 +152,7 @@ export const reply = maybeStep('reply', async (cmd: IncomingCommand, content: Me
     await rawClient.hSet(redisKey, content.eventName, JSON.stringify(stored))
     await rawClient.expire(redisKey, WORKFLOW_TTL_SECONDS)
 
-    const flatButtons = content.options.map((o, i) => ({
-        text: o.title,
-        callbackData: `${cmd.workflowIDToBeAssigned}.${content.eventName}.${i}`,
-        color: o.color,
-    }))
-    const buttons = content.rows ? groups(flatButtons, content.rows) : [flatButtons]
+    const buttons = buildInteractiveButtons(cmd.workflowIDToBeAssigned, content.eventName, content.options, content.rows)
 
     const targetMessageId = content.editMessageId ?? (cmd.message.platform === 'discord' ? cmd.message.id : undefined);
     const interactionToken = targetMessageId === cmd.message.id ? cmd.message.interactionToken : undefined;

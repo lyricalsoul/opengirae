@@ -1,6 +1,7 @@
 import { maybeTransaction } from "./decorators";
-import { cards, subcategories, rarities, cardSubcategories } from "./schemas/cards";
-import { eq } from "drizzle-orm";
+import { cards, categories, subcategories, rarities, cardSubcategories, userCards, cardDrawHistory } from "./schemas/cards";
+import { users } from "./schemas/users";
+import { eq, and, sql } from "drizzle-orm";
 
 export interface SubcategoryForDraw {
   id: number;
@@ -15,6 +16,15 @@ export interface CardForDraw {
   rarityWeight: number;
   rarityEmoji: string;
   imageUrl: string | null;
+}
+
+export interface BulkDrawResult {
+  card: CardForDraw;
+  categoryId: number;
+  categoryName: string;
+  subcategoryId: number;
+  subcategoryName: string;
+  isFromFavorite: boolean;
 }
 
 export class GachaLogic {
@@ -114,5 +124,88 @@ export class GachaLogic {
       .innerJoin(cardSubcategories, eq(cardSubcategories.cardId, cards.id))
       .innerJoin(rarities, eq(rarities.id, cards.rarityId))
       .where(eq(cardSubcategories.subcategoryId, subcategoryId));
+  })
+
+  static runBulkDraws = maybeTransaction('runBulkDraws', async (
+    client,
+    userId: number,
+    categoryOrder: number[],
+    luckModifier: number,
+    favoriteSubcategoryIds?: Set<number>,
+  ): Promise<BulkDrawResult[]> => {
+    const results: BulkDrawResult[] = [];
+
+    for (const categoryId of categoryOrder) {
+      const category = await client
+        .select({ name: categories.name, subcategoriesOnDraw: categories.subcategoriesOnDraw })
+        .from(categories)
+        .where(eq(categories.id, categoryId))
+        .limit(1)
+        .then(a => a?.[0]);
+      if (!category) continue;
+
+      const subcategoriesForDraw = await client
+        .select({ id: subcategories.id, name: subcategories.name, rarityModifier: subcategories.rarityModifier })
+        .from(subcategories)
+        .where(eq(subcategories.categoryId, categoryId));
+      if (subcategoriesForDraw.length === 0) continue;
+
+      const rolled = GachaLogic.selectSubcategories(subcategoriesForDraw, category.subcategoriesOnDraw, luckModifier);
+      if (rolled.length === 0) continue;
+
+      const favoritesRolled = favoriteSubcategoryIds
+        ? rolled.filter(s => favoriteSubcategoryIds.has(s.id))
+        : [];
+      const candidatePool = favoritesRolled.length > 0 ? favoritesRolled : rolled;
+      const chosenSubcategory = GachaLogic.selectSubcategories(candidatePool, 1, luckModifier)[0];
+      if (!chosenSubcategory) continue;
+
+      const cardPool = await client
+        .select({
+          id: cards.id,
+          name: cards.name,
+          rarityModifier: cards.rarityModifier,
+          rarityWeight: rarities.weight,
+          rarityEmoji: rarities.emoji,
+          imageUrl: cards.imageUrl,
+        })
+        .from(cards)
+        .innerJoin(cardSubcategories, eq(cardSubcategories.cardId, cards.id))
+        .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+        .where(eq(cardSubcategories.subcategoryId, chosenSubcategory.id));
+      const drawnCard = GachaLogic.selectCard(cardPool);
+      if (!drawnCard) continue;
+
+      const existingUserCard = await client
+        .select()
+        .from(userCards)
+        .where(and(eq(userCards.userId, userId), eq(userCards.cardId, drawnCard.id)))
+        .limit(1)
+        .then(a => a?.[0]);
+      if (existingUserCard) {
+        await client
+          .update(userCards)
+          .set({ count: sql`${userCards.count} + 1` })
+          .where(and(eq(userCards.userId, userId), eq(userCards.cardId, drawnCard.id)));
+      } else {
+        await client.insert(userCards).values({ userId, cardId: drawnCard.id, count: 1 });
+      }
+
+      await client.insert(cardDrawHistory).values({
+        userId, cardId: drawnCard.id, categoryId, subcategoryId: chosenSubcategory.id,
+      });
+      await client.update(users).set({ usedDraws: sql`${users.usedDraws} + 1` }).where(eq(users.id, userId));
+
+      results.push({
+        card: drawnCard,
+        categoryId,
+        categoryName: category.name,
+        subcategoryId: chosenSubcategory.id,
+        subcategoryName: chosenSubcategory.name,
+        isFromFavorite: favoritesRolled.length > 0,
+      });
+    }
+
+    return results;
   })
 }
