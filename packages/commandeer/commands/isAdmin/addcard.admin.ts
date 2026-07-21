@@ -48,6 +48,37 @@ export default class AddCardCommand extends Command {
       ? { ...ctx, message: { ...ctx.message, id: ctx.message.replyTo.id } }
       : ctx
 
+    const header = parseCardHeader(sourceText)
+    if (header) {
+      const headerCorrection = await CardsDB.getCorrection(header.name)
+      const categoryName = headerCorrection ? undefined : (header.categoryHint === 'ambiguous' ? await resolveAmbiguousCategory(header.name) : header.categoryHint)
+      const category = headerCorrection
+        ? await CardsDB.getCategory(headerCorrection.categoryId)
+        : await CardsDB.getOrCreateCategory(categoryName!)
+      if (!category) return
+
+      const subcategoryName = headerCorrection?.subcategoryName ?? header.name
+      const existing = await CardsDB.getSubcategoryByNameAndCategory(subcategoryName, category.id)
+      const cdnUrl = await uploadFromUrl(photoUrl, 'subcategories')
+      const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
+      if (!user) return
+
+      const subcategory = existing
+        ? await CardsDB.updateSubcategory(existing.id, { imageUrl: cdnUrl })
+        : await CardsDB.createSubcategory(subcategoryName, category.id, cdnUrl)
+      if (!subcategory) return
+
+      await AuditDB.log(user.id, existing ? 'subcategory.updatePhoto' : 'subcategory.create', { subcategoryId: subcategory.id, name: subcategory.name, categoryEmoji: category.emoji })
+      await setAddcardSession(ctx.message.chat.id, ctx.message.chat.threadId, {
+        subcategoryId: subcategory.id,
+        subcategoryName: subcategory.name,
+        categoryId: category.id,
+        categoryName: category.name,
+      })
+      await reply(ctx, `📂 Subcategoria **${escapeMarkdown(subcategory.name)}** ${existing ? 'atualizada' : 'criada'} com foto.\n💡 Cards adicionados neste chat agora entram automaticamente em **${escapeMarkdown(subcategory.name)}**.`)
+      return
+    }
+
     const parsed = parseCardListing(sourceText)
     if (parsed) {
       const correction = await CardsDB.getCorrection(parsed.subcategory)
@@ -121,37 +152,6 @@ export default class AddCardCommand extends Command {
         await AuditDB.log(user.id, 'subcategory.create', { subcategoryId: created.id, name: created.name, categoryEmoji: category.emoji })
         await reply(ctx, `📂 Subcategoria **${escapeMarkdown(created.name)}** criada com foto.`)
       }
-      return
-    }
-
-    const header = parseCardHeader(sourceText)
-    if (header) {
-      const headerCorrection = await CardsDB.getCorrection(header.name)
-      const categoryName = headerCorrection ? undefined : (header.categoryHint === 'ambiguous' ? await resolveAmbiguousCategory(header.name) : header.categoryHint)
-      const category = headerCorrection
-        ? await CardsDB.getCategory(headerCorrection.categoryId)
-        : await CardsDB.getOrCreateCategory(categoryName!)
-      if (!category) return
-
-      const subcategoryName = headerCorrection?.subcategoryName ?? header.name
-      const existing = await CardsDB.getSubcategoryByNameAndCategory(subcategoryName, category.id)
-      const cdnUrl = await uploadFromUrl(photoUrl, 'subcategories')
-      const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
-      if (!user) return
-
-      const subcategory = existing
-        ? await CardsDB.updateSubcategory(existing.id, { imageUrl: cdnUrl })
-        : await CardsDB.createSubcategory(subcategoryName, category.id, cdnUrl)
-      if (!subcategory) return
-
-      await AuditDB.log(user.id, existing ? 'subcategory.updatePhoto' : 'subcategory.create', { subcategoryId: subcategory.id, name: subcategory.name, categoryEmoji: category.emoji })
-      await setAddcardSession(ctx.message.chat.id, ctx.message.chat.threadId, {
-        subcategoryId: subcategory.id,
-        subcategoryName: subcategory.name,
-        categoryId: category.id,
-        categoryName: category.name,
-      })
-      await reply(ctx, `📂 Subcategoria **${escapeMarkdown(subcategory.name)}** ${existing ? 'atualizada' : 'criada'} com foto.\n💡 Cards adicionados neste chat agora entram automaticamente em **${escapeMarkdown(subcategory.name)}**.`)
       return
     }
 
