@@ -45,12 +45,20 @@ function mapSpecsToOptions(specs: CommandArgumentSpec[] | undefined): DiscordOpt
 
 type SubcommandEntry = { name: string; description: string; methodName: string }
 
+function entrypointSubcommand(module: any): SubcommandEntry | undefined {
+  const name = module.info?.discordEntrypointName
+  if (!name) return undefined
+  return { name, description: module.info.description || module.info.name, methodName: 'execute' }
+}
+
 function optionsFor(commandName: string, module: any): DiscordOption[] | undefined {
   if (OPTION_OVERRIDES[commandName]) return OPTION_OVERRIDES[commandName]
 
   const subcommands: Record<string, SubcommandEntry> | undefined = module.subcommands
   if (subcommands) {
     const unique = [...new Set(Object.values(subcommands))]
+    const entrypoint = entrypointSubcommand(module)
+    if (entrypoint) unique.unshift(entrypoint)
     return unique.map(entry => ({
       name: entry.name,
       description: entry.description,
@@ -66,7 +74,9 @@ export function findArgumentSpec(commandName: string, discordOptionName: string,
   const cmd = findCommand(commandName)
   if (!cmd) return undefined
   const module = cmd.module as any
-  const methodName = subcommandName ? module.subcommands?.[subcommandName]?.methodName : 'execute'
+  const methodName = !subcommandName || subcommandName === module.info?.discordEntrypointName
+    ? 'execute'
+    : module.subcommands?.[subcommandName]?.methodName
   if (!methodName) return undefined
   const specs: CommandArgumentSpec[] | undefined = module.commandArguments?.[methodName]
   return specs?.find(spec => toOptionName(spec.name) === discordOptionName)

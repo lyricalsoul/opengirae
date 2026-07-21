@@ -103,8 +103,9 @@ const bot = createBot({
       if (interaction.type === InteractionTypes.ApplicationCommand) {
         if (!interaction.data?.name) return
         const commandName = interaction.data.name
+        const commandModule = findCommand(commandName)?.module
 
-        const ephemeral = findCommand(commandName)?.module.info.ephemeral
+        const ephemeral = commandModule?.info.ephemeral
         await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
           type: InteractionResponseTypes.DeferredChannelMessageWithSource,
           data: ephemeral ? { flags: MessageFlags.Ephemeral } : undefined,
@@ -112,7 +113,8 @@ const bot = createBot({
         const placeholder = await bot.helpers.getOriginalInteractionResponse(interaction.token)
 
         const { subcommandName, options } = unwrapSubcommand(interaction.data.options)
-        const args = [...(subcommandName ? [subcommandName] : []), ...options.map(o => String(o.value ?? ''))]
+        const isEntrypoint = subcommandName && subcommandName === commandModule?.info.discordEntrypointName
+        const args = [...(subcommandName && !isEntrypoint ? [subcommandName] : []), ...options.map(o => String(o.value ?? ''))]
 
         const message: Message = {
           id: String(placeholder.id),

@@ -9,6 +9,7 @@ interface CommandInfo {
   useWorkflow?: boolean;
   // Discord only: acks the interaction as ephemeral (visible only to the invoking user).
   ephemeral?: boolean;
+  discordEntrypointName?: string;
 }
 
 export class Command {

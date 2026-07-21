@@ -42,6 +42,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Get commit info
+        id: commit
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "message=$(git log -1 --pretty=%s)" >> "$GITHUB_OUTPUT"
+
       # Install the cosign tool except on PR
       # https://github.com/sigstore/cosign-installer
       - name: Install cosign
@@ -89,6 +95,9 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_COMMIT_SHA=${{ steps.commit.outputs.sha }}
+            GIT_COMMIT_MESSAGE=${{ steps.commit.outputs.message }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 

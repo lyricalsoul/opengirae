@@ -5,6 +5,24 @@ import { buildProfileData } from "./profileData"
 
 export { DEFAULT_BACKGROUND_URL }
 
+export interface DittoMetadata {
+  name: string
+  engine: string
+  scheme: number
+  themes: string[]
+}
+
+export async function getDittoMetadata(): Promise<DittoMetadata | null> {
+  if (!process.env.DITTO_URL) return null
+
+  return fetch(`${process.env.DITTO_URL}/metadata`, { signal: AbortSignal.timeout(3000) })
+    .then(async (r) => (r.ok ? await r.json() as DittoMetadata : null))
+    .catch((e) => {
+      warn("ditto", `getDittoMetadata failed: ${e}`)
+      return null
+    })
+}
+
 export interface DittoProfileData {
   avatarURL: string
   username: string

@@ -16,6 +16,10 @@ RUN bun install
 
 FROM base AS runtime
 ENV NODE_ENV=production
+ARG GIT_COMMIT_SHA
+ARG GIT_COMMIT_MESSAGE
+ENV GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
+ENV GIT_COMMIT_MESSAGE=${GIT_COMMIT_MESSAGE}
 COPY --from=deps /app ./
 COPY drizzle.config.ts tsconfig.json ./
 COPY packages/ packages/
