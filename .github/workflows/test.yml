@@ -29,6 +29,7 @@ jobs:
         image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
         ports:
           - 6379:6379
+        command: --cluster_mode=emulated --lock_on_hashtags
 
     env:
       DATABASE_URL: postgres://girae:girae@localhost:5432/girae
