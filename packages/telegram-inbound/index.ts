@@ -7,26 +7,11 @@ import { UsersDB } from '@girae/database/users'
 import { commandQueue, responseQueue, rawClient } from '@girae/common/queue'
 import { refreshAvatar } from '@girae/common/avatarRefresh'
 import { startHealthServer } from '@girae/common/health'
+import { buildReplyTo, resolveMedia } from './replyTo'
 
 const tg = new TelegramClient(process.env.TELEGRAM_TOKEN!)
 
 tg.on('ready', () => info('telegram-inbound', `logged in as @${tg.user?.username}`))
-
-const resolveMedia = async (msg: any): Promise<{ photoUrl?: string, isAnimatedPhoto?: boolean }> => {
-  if (msg.animation) {
-    const file = await msg.animation.fetch()
-    return { photoUrl: file.url ?? undefined, isAnimatedPhoto: true }
-  }
-
-  if (msg.document?.mimeType?.startsWith('image/')) {
-    const file = await msg.document.fetch()
-    return { photoUrl: file.url ?? undefined }
-  }
-  const largest = msg.photo?.[msg.photo.length - 1]
-  if (!largest) return {}
-  const file = await largest.fetch()
-  return { photoUrl: file.url ?? undefined }
-}
 
 const refreshAvatarIfStale = (telegramId: string, displayName: string) => refreshAvatar(tg, telegramId, displayName)
 
@@ -87,20 +72,7 @@ tg.on('message', async (msg) => {
     threadId: msg.chat?.threadId ? String(msg.chat.threadId) : undefined,
   }
 
-  const isTopicAnchorReply = !!msg.threadId && String(msg.originalMessage?.id) === msg.threadId
-  const replyTo: Message | undefined = (msg.originalMessage && !isTopicAnchorReply) ? {
-    content: msg.originalMessage.content ?? msg.originalMessage.caption ?? '',
-    id: String(msg.originalMessage.id),
-    author: {
-      id: msg.originalMessage.author!.id.toString(),
-      name: msg.originalMessage.author!.firstName,
-      avatarUrl: ''
-    },
-    chat,
-    timestamp: new Date(msg.originalMessage.createdTimestamp),
-    platform: 'telegram',
-    ...await resolveMedia(msg.originalMessage)
-  } : undefined
+  const replyTo = await buildReplyTo(msg, chat)
 
   const m: Message = {
     content: content ?? '',
