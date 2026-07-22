@@ -1,16 +1,16 @@
-import { Command, Subcommand } from '@girae/common/commands'
+import { Command, Subcommand, Page } from '@girae/common/commands'
 import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { GachaLogic } from '@girae/database/gacha'
 import { DBOS } from '@dbos-inc/dbos-sdk'
-import { reply, buildInteractiveButtons } from '@girae/common/dbos/messaging'
+import { reply, buildInteractiveButtons, pageNavRow } from '@girae/common/dbos/messaging'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { mention } from '@girae/common/utilities/mention'
 import { addHours, formatDistanceToNow, startOfHour } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { claimGirar, getGirarActive, updateGirarStep, releaseGirar } from '../../services/girarClaim'
-import { renderBulkDrawSummary } from '../../services/bulkDrawSummary'
+import { buildBulkDrawSummary, renderBulkDrawSummaryPage, cacheBulkDrawSummary, loadBulkDrawSummary } from '../../services/bulkDrawSummary'
 
 function outOfDrawsMessage(): string {
   const nextRegen = startOfHour(addHours(new Date(), 1));
@@ -37,10 +37,11 @@ export default class GirarCommand extends Command {
   @DBOS.workflow()
   static override async execute(ctx: IncomingCommand) {
     const authorId = ctx.message.author.id;
+    const chatId = ctx.message.chat.id;
 
-    let claimed = await claimGirar(authorId, { workflowID: ctx.workflowIDToBeAssigned, kind: 'interactive' });
+    let claimed = await claimGirar(authorId, chatId, { workflowID: ctx.workflowIDToBeAssigned, kind: 'interactive' });
     if (!claimed) {
-      const existing = await getGirarActive(authorId);
+      const existing = await getGirarActive(authorId, chatId);
       if (existing?.kind === 'batch') {
         await reply(ctx, 'Você já está girando em lote. Aguarde a mensagem com o resumo. 🎰');
         return;
@@ -50,19 +51,19 @@ export default class GirarCommand extends Command {
         return;
       }
       // existing is null: claim expired between our failed SET and this GET - retry once before giving up.
-      claimed = await claimGirar(authorId, { workflowID: ctx.workflowIDToBeAssigned, kind: 'interactive' });
+      claimed = await claimGirar(authorId, chatId, { workflowID: ctx.workflowIDToBeAssigned, kind: 'interactive' });
       if (!claimed) return;
     }
 
     const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id);
     if (!user) {
-      await releaseGirar(authorId);
+      await releaseGirar(authorId, chatId);
       return;
     }
 
     if (user.usedDraws >= user.maxDraws) {
       await reply(ctx, outOfDrawsMessage());
-      await releaseGirar(authorId);
+      await releaseGirar(authorId, chatId);
       return;
     }
 
@@ -82,7 +83,7 @@ export default class GirarCommand extends Command {
         options: categoryOptions,
         rows: categoryRows,
       })
-      await updateGirarStep(authorId, ctx.workflowIDToBeAssigned, {
+      await updateGirarStep(authorId, chatId, ctx.workflowIDToBeAssigned, {
         content: categoryContent,
         buttons: buildInteractiveButtons(ctx.workflowIDToBeAssigned, GirarCommand.CATEGORY_SELECTED_EVENT, categoryOptions, categoryRows),
       })
@@ -126,7 +127,7 @@ export default class GirarCommand extends Command {
         rows: subcategoryRows,
         editMessageId: messageId,
       })
-      await updateGirarStep(authorId, ctx.workflowIDToBeAssigned, {
+      await updateGirarStep(authorId, chatId, ctx.workflowIDToBeAssigned, {
         content: subcategoryContent,
         buttons: buildInteractiveButtons(ctx.workflowIDToBeAssigned, GirarCommand.SUBCATEGORY_SELECTED_EVENT, subcategoryOptions, subcategoryRows),
       })
@@ -172,13 +173,14 @@ ${category.emoji} _${subcategoryNames}_
         editMessageId: messageId,
       });
     } finally {
-      await releaseGirar(authorId);
+      await releaseGirar(authorId, chatId);
     }
   }
 
   @Subcommand({ name: '*', description: 'Gasta todos os giros restantes, sem critério algum' })
   static async all(ctx: IncomingCommand) {
     const authorId = ctx.message.author.id;
+    const chatId = ctx.message.chat.id;
     const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', authorId);
     if (!user) return;
 
@@ -187,7 +189,7 @@ ${category.emoji} _${subcategoryNames}_
       return;
     }
 
-    const claimed = await claimGirar(authorId, { workflowID: ctx.workflowIDToBeAssigned, kind: 'batch' });
+    const claimed = await claimGirar(authorId, chatId, { workflowID: ctx.workflowIDToBeAssigned, kind: 'batch' });
     if (!claimed) {
       await reply(ctx, 'Você já está girando. Aguarde a mensagem com o resultado. 🎰');
       return;
@@ -203,9 +205,32 @@ ${category.emoji} _${subcategoryNames}_
 
       const categoryOrder = Array.from({ length: drawCount }, () => categories[Math.floor(Math.random() * categories.length)]!.id);
       const results = await GachaLogic.runBulkDraws(user.id, categoryOrder, user.luckModifier);
-      await reply(ctx, await renderBulkDrawSummary(results, { splitFavorites: false }));
+      const summary = await buildBulkDrawSummary(results, { splitFavorites: false });
+
+      if (results.length === 0) {
+        await reply(ctx, summary.header);
+        return;
+      }
+
+      const runId = ctx.workflowIDToBeAssigned;
+      await cacheBulkDrawSummary(runId, summary);
+
+      const firstPage = renderBulkDrawSummaryPage(summary, 0);
+      const navRow = pageNavRow('girarall', runId, 0, firstPage.hasNext, firstPage.totalPages);
+      await reply(ctx, {
+        content: firstPage.content,
+        photoUrl: firstPage.photoUrl,
+        buttonRows: navRow.length ? [navRow] : undefined,
+      });
     } finally {
-      await releaseGirar(authorId);
+      await releaseGirar(authorId, chatId);
     }
+  }
+
+  @Page({ name: 'girarall', restricted: true })
+  static async girarAllPage(runId: string, page: number) {
+    const summary = await loadBulkDrawSummary(runId);
+    if (!summary) return null;
+    return renderBulkDrawSummaryPage(summary, page);
   }
 }

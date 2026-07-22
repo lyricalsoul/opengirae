@@ -39,6 +39,16 @@ function parseNumber(raw: string): ParseOutcome {
   return isNaN(n) ? { ok: false } : { ok: true, value: n }
 }
 
+const AMBIGUOUS_RESULTS_SHOWN = 15
+
+// telegram caps messages at 4096 chars - a raw dump of up to 100 matches has hit that limit in prod
+function ambiguousResultsMessage(lines: string[]): string {
+  const shown = lines.slice(0, AMBIGUOUS_RESULTS_SHOWN)
+  const rest = lines.length - shown.length
+  const extra = rest > 0 ? `\n\n_e mais ${rest}..._` : ''
+  return `🔎 **${lines.length}** resultados encontrados:\n\n${shown.join('\n')}${extra}\n\nUse o ID para especificar.`
+}
+
 export async function resolveCardByIdOrName(raw: string): Promise<ParseOutcome> {
   return parseCard(raw)
 }
@@ -61,8 +71,8 @@ async function parseCard(raw: string): Promise<ParseOutcome> {
   const results = await CardsDB.searchCardsByName(raw, 100)
   if (results.length === 0) return { ok: false, message: 'Não encontrei um personagem com esse nome.' }
   if (results.length > 1) {
-    const list = results.map(c => `${c.rarityEmoji} \`${c.id}\`. **${escapeMarkdown(c.name)}** ${c.categoryEmoji ?? ''} _${escapeMarkdown(c.subcategoryName ?? '')}_`).join('\n')
-    return { ok: false, message: `🔎 **${results.length}** resultados encontrados:\n\n${list}\n\nUse o ID para especificar.` }
+    const lines = results.map(c => `${c.rarityEmoji} \`${c.id}\`. **${escapeMarkdown(c.name)}** ${c.categoryEmoji ?? ''} _${escapeMarkdown(c.subcategoryName ?? '')}_`)
+    return { ok: false, message: ambiguousResultsMessage(lines) }
   }
 
   const card = await CardsDB.getCardWithDetails(results[0]!.id)
@@ -90,8 +100,8 @@ async function parseCategory(raw: string): Promise<ParseOutcome> {
   if (results.length > 1) {
     const exact = results.filter(c => normalizeText(c.name) === normalizedQuery)
     if (exact.length === 1) return { ok: true, value: exact[0] }
-    const list = results.map(c => `${c.emoji} \`${c.id}\`. **${escapeMarkdown(c.name)}**`).join('\n')
-    return { ok: false, message: `🔎 **${results.length}** resultados encontrados:\n\n${list}\n\nUse o ID para especificar.` }
+    const lines = results.map(c => `${c.emoji} \`${c.id}\`. **${escapeMarkdown(c.name)}**`)
+    return { ok: false, message: ambiguousResultsMessage(lines) }
   }
 
   return { ok: true, value: results[0] }
@@ -108,8 +118,8 @@ async function parseVanityItem(raw: string, vanityType: 'background' | 'sticker'
   const results = await VanitiesDB.searchStoreItemsByType(vanityType, raw, 100)
   if (results.length === 0) return { ok: false, message: `Não encontrei um ${label} com esse nome.` }
   if (results.length > 1) {
-    const list = results.map(i => `💸 \`${i.id}\`. **${escapeMarkdown(i.title)}** — ${i.price} moedas`).join('\n')
-    return { ok: false, message: `🔎 **${results.length}** resultados encontrados:\n\n${list}\n\nUse o ID para especificar.` }
+    const lines = results.map(i => `💸 \`${i.id}\`. **${escapeMarkdown(i.title)}** — ${i.price} moedas`)
+    return { ok: false, message: ambiguousResultsMessage(lines) }
   }
 
   const item = await VanitiesDB.getStoreItemById(results[0]!.id)
@@ -146,8 +156,8 @@ async function parseSubcategory(raw: string): Promise<ParseOutcome> {
   const results = await CardsDB.searchSubcategoriesByName(raw, 100)
   if (results.length === 0) return { ok: false, message: 'Não encontrei uma subcategoria com esse nome.' }
   if (results.length > 1) {
-    const list = results.map(s => `${s.categoryEmoji} \`${s.id}\`. **${escapeMarkdown(s.name)}**`).join('\n')
-    return { ok: false, message: `🔎 **${results.length}** resultados encontrados:\n\n${list}\n\nUse o ID para especificar.` }
+    const lines = results.map(s => `${s.categoryEmoji} \`${s.id}\`. **${escapeMarkdown(s.name)}**`)
+    return { ok: false, message: ambiguousResultsMessage(lines) }
   }
 
   const subcategory = await CardsDB.getSubcategory(results[0]!.id)
