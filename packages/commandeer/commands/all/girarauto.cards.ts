@@ -27,6 +27,7 @@ export default class GirarAutoCommand extends Command {
 
   static override async execute(ctx: IncomingCommand) {
     const authorId = ctx.message.author.id;
+    const chatId = ctx.message.chat.id;
     const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', authorId);
     if (!user) return;
 
@@ -83,7 +84,7 @@ export default class GirarAutoCommand extends Command {
 
     const categoryOrder = Array.from({ length: drawCount }, (_, i) => goalCategoryIds[i % goalCategoryIds.length]!);
 
-    const claimed = await claimGirar(authorId, { workflowID: ctx.workflowIDToBeAssigned, kind: 'batch' });
+    const claimed = await claimGirar(authorId, chatId, { workflowID: ctx.workflowIDToBeAssigned, kind: 'batch' });
     if (!claimed) {
       await reply(ctx, 'Você já está girando. Aguarde a mensagem com o resultado. 🎰');
       return;
@@ -109,7 +110,7 @@ export default class GirarAutoCommand extends Command {
         buttonRows: navRow.length ? [navRow] : undefined,
       });
     } finally {
-      await releaseGirar(authorId);
+      await releaseGirar(authorId, chatId);
     }
   }
 

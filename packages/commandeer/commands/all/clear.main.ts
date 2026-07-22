@@ -15,7 +15,8 @@ export default class ClearCommand extends Command {
   }
 
   static override async execute(ctx: IncomingCommand) {
-    const lockKey = `girar:lock:${ctx.message.author.id}`;
+    // must match girarClaim.ts's claimKey - was pointing at a dead namespace nothing wrote to
+    const lockKey = `girar:active:${ctx.message.author.id}:${ctx.message.chat.id}`;
     const existingLock = await rawClient.get(lockKey);
 
     if (existingLock) {
