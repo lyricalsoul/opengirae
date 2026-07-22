@@ -66,6 +66,8 @@ services:
       context: .
       dockerfile: website/Dockerfile
     env_file: .env
+    environment:
+      PORT: "3000"
     ports:
       - "${WEBSITE_PORT:-3001}:3000"
     depends_on:

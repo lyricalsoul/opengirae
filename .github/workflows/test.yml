@@ -1,0 +1,72 @@
+name: Tests
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: girae
+          POSTGRES_PASSWORD: girae
+          POSTGRES_DB: girae
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U girae"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      dragonfly:
+        image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+        ports:
+          - 6379:6379
+
+    env:
+      DATABASE_URL: postgres://girae:girae@localhost:5432/girae
+      DBOS_SYSTEM_DATABASE_URL: postgres://girae:girae@localhost:5432/girae_dbos_sys
+      REDIS_URL: redis://localhost:6379
+      TELEGRAM_TOKEN: ci-placeholder
+      DISCORD_TOKEN: MTIzNDU2Nzg5MDEyMzQ1Njc4.fake.fake
+      DITTO_URL: http://localhost:9
+      DITTO_API_KEY: ci-placeholder
+      MISTRAL_API_KEY: ci-placeholder
+      S3_ENDPOINT: http://localhost:9
+      S3_BUCKET: ci-placeholder
+      S3_REGION: auto
+      S3_ACCESS_KEY_ID: ci-placeholder
+      S3_SECRET_ACCESS_KEY: ci-placeholder
+      S3_PUBLIC_URL: http://localhost:9
+      OIDC_CLIENT_ID: ci-placeholder
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Create dbos system database
+        run: PGPASSWORD=girae psql -h localhost -U girae -d girae -c "CREATE DATABASE girae_dbos_sys;"
+
+      - name: Run migrations
+        run: bun run db:migrate
+
+      - name: Seed data
+        run: PGPASSWORD=girae psql -h localhost -U girae -d girae -c "INSERT INTO rarities (name, weight, emoji) VALUES ('Comum', 100, '🥉'), ('Raro', 25, '🥈'), ('Lendário', 3, '🥇');"
+
+      - name: Run tests
+        run: bun test

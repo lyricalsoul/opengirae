@@ -1,27 +1,20 @@
 import { test, expect, describe, afterAll } from "bun:test";
 import { rawClient } from "@girae/common/queue";
+import { tryAcquireLock, lockKey } from "../../services/tradeLock";
 
-// trade.cards.ts guards "already in a trade" by acquiring `trade:lock:{telegramId}`
-// via `SET ... NX`, not a GET-then-SET check. This proves the atomicity that fix
-// depends on: two callers racing to acquire the same key must never both win. A
-// GET-then-SET version of this same test would flake exactly the bug that was fixed
-// (both callers observing "no lock" before either writes one).
+// exercises the real tradeLock.ts (SET NX, not GET-then-SET) trade.cards.ts uses to guard "already in a trade"
 describe("trade lock acquisition race", () => {
-  const testKey = `test:trade:lock:${Date.now()}`;
+  const telegramId = `test-trade-lock-${Date.now()}`;
 
   afterAll(async () => {
-    await rawClient.del(testKey);
+    await rawClient.del(lockKey(telegramId));
   });
 
-  async function tryAcquire(value: string): Promise<boolean> {
-    const result = await rawClient.set(testKey, value, { EX: 60, NX: true });
-    return result === 'OK';
-  }
-
-  test("only one of many concurrent acquisitions on the same key succeeds", async () => {
+  test("only one of many concurrent acquisitions on the same telegram id succeeds", async () => {
     const attempts = 20;
     const results = await Promise.all(
-      Array.from({ length: attempts }, (_, i) => tryAcquire(`attempt-${i}`))
+      Array.from({ length: attempts }, (_, i) =>
+        tryAcquireLock(telegramId, { workflowID: `wf-${i}`, partnerId: 'partner' }))
     );
 
     const wins = results.filter(Boolean).length;
@@ -29,11 +22,11 @@ describe("trade lock acquisition race", () => {
   });
 
   test("a released lock can be re-acquired", async () => {
-    await rawClient.del(testKey);
-    expect(await tryAcquire('first')).toBe(true);
-    expect(await tryAcquire('second')).toBe(false); // still held
+    await rawClient.del(lockKey(telegramId));
+    expect(await tryAcquireLock(telegramId, { workflowID: 'wf-first', partnerId: 'partner' })).toBe(true);
+    expect(await tryAcquireLock(telegramId, { workflowID: 'wf-second', partnerId: 'partner' })).toBe(false); // still held
 
-    await rawClient.del(testKey);
-    expect(await tryAcquire('third')).toBe(true); // free again after release
+    await rawClient.del(lockKey(telegramId));
+    expect(await tryAcquireLock(telegramId, { workflowID: 'wf-third', partnerId: 'partner' })).toBe(true); // free again after release
   });
 });

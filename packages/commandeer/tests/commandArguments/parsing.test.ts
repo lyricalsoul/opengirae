@@ -354,22 +354,36 @@ describe("parseCommandArguments - CATEGORY fuzzy search (fixed gap: previously e
 
 // Closes a real gap: CommandArgumentType.CATEGORY must resolve "musica" to "Música", not just exact spelling.
 describe("resolveCategoryByIdOrName - accent-insensitive name resolution", () => {
+  let categoryId: number;
+  const suffix = Date.now();
+  const categoryName = `Música Teste ${suffix}`;
+  const unaccentedQuery = `musica teste ${suffix}`;
+
+  beforeAll(async () => {
+    const [category] = await db.insert(categories).values({ name: categoryName, emoji: '🎸' }).returning();
+    categoryId = category!.id;
+  });
+
+  afterAll(async () => {
+    await db.delete(categories).where(eq(categories.id, categoryId));
+  });
+
   test("an unaccented query resolves an accented category name", async () => {
-    const outcome = await resolveCategoryByIdOrName('musica');
+    const outcome = await resolveCategoryByIdOrName(unaccentedQuery);
     expect(outcome.ok).toBe(true);
-    if (outcome.ok) expect((outcome.value as { name: string }).name).toBe('Música');
+    if (outcome.ok) expect((outcome.value as { name: string }).name).toBe(categoryName);
   });
 
   test("case doesn't matter either", async () => {
-    const outcome = await resolveCategoryByIdOrName('MUSICA');
+    const outcome = await resolveCategoryByIdOrName(unaccentedQuery.toUpperCase());
     expect(outcome.ok).toBe(true);
-    if (outcome.ok) expect((outcome.value as { name: string }).name).toBe('Música');
+    if (outcome.ok) expect((outcome.value as { name: string }).name).toBe(categoryName);
   });
 
   test("the accented spelling still resolves too", async () => {
-    const outcome = await resolveCategoryByIdOrName('música');
+    const outcome = await resolveCategoryByIdOrName(categoryName);
     expect(outcome.ok).toBe(true);
-    if (outcome.ok) expect((outcome.value as { name: string }).name).toBe('Música');
+    if (outcome.ok) expect((outcome.value as { name: string }).name).toBe(categoryName);
   });
 });
 

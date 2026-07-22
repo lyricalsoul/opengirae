@@ -6,6 +6,7 @@ import { reply, deleteMsg, awaitMultiPartyChoice } from '@girae/common/dbos/mess
 import { generateTradeImage } from '@girae/common/ditto'
 import { DEFAULT_AVATAR_URL } from '@girae/database/constants'
 import { getBotUsername, tg } from '../../services/botInfo'
+import { lockKey, tryAcquireLock } from '../../services/tradeLock'
 import { rawClient } from '@girae/common/queue'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
@@ -38,13 +39,8 @@ interface NegotiationEvent {
   chatId?: string
 }
 
-const lockKey = (telegramId: string) => `trade:lock:${telegramId}`
 const stateKey = (workflowID: string) => `trade:state:${workflowID}`
 
-async function tryAcquireLock(telegramId: string, value: { workflowID: string; partnerId: string }): Promise<boolean> {
-  const result = await rawClient.set(lockKey(telegramId), JSON.stringify(value), { EX: LOCK_TTL_SECONDS, NX: true })
-  return result === 'OK'
-}
 async function loadState(workflowID: string): Promise<TradeState | null> {
   const raw = await rawClient.get(stateKey(workflowID))
   return raw ? JSON.parse(raw) : null
