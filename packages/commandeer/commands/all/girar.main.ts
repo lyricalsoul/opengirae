@@ -1,16 +1,16 @@
-import { Command, Subcommand } from '@girae/common/commands'
+import { Command, Subcommand, Page } from '@girae/common/commands'
 import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { GachaLogic } from '@girae/database/gacha'
 import { DBOS } from '@dbos-inc/dbos-sdk'
-import { reply, buildInteractiveButtons } from '@girae/common/dbos/messaging'
+import { reply, buildInteractiveButtons, pageNavRow } from '@girae/common/dbos/messaging'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { mention } from '@girae/common/utilities/mention'
 import { addHours, formatDistanceToNow, startOfHour } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { claimGirar, getGirarActive, updateGirarStep, releaseGirar } from '../../services/girarClaim'
-import { renderBulkDrawSummary } from '../../services/bulkDrawSummary'
+import { buildBulkDrawSummary, renderBulkDrawSummaryPage, cacheBulkDrawSummary, loadBulkDrawSummary } from '../../services/bulkDrawSummary'
 
 function outOfDrawsMessage(): string {
   const nextRegen = startOfHour(addHours(new Date(), 1));
@@ -203,9 +203,32 @@ ${category.emoji} _${subcategoryNames}_
 
       const categoryOrder = Array.from({ length: drawCount }, () => categories[Math.floor(Math.random() * categories.length)]!.id);
       const results = await GachaLogic.runBulkDraws(user.id, categoryOrder, user.luckModifier);
-      await reply(ctx, await renderBulkDrawSummary(results, { splitFavorites: false }));
+      const summary = await buildBulkDrawSummary(results, { splitFavorites: false });
+
+      if (results.length === 0) {
+        await reply(ctx, summary.header);
+        return;
+      }
+
+      const runId = ctx.workflowIDToBeAssigned;
+      await cacheBulkDrawSummary(runId, summary);
+
+      const firstPage = renderBulkDrawSummaryPage(summary, 0);
+      const navRow = pageNavRow('girarall', runId, 0, firstPage.hasNext, firstPage.totalPages);
+      await reply(ctx, {
+        content: firstPage.content,
+        photoUrl: firstPage.photoUrl,
+        buttonRows: navRow.length ? [navRow] : undefined,
+      });
     } finally {
       await releaseGirar(authorId);
     }
+  }
+
+  @Page({ name: 'girarall', restricted: true })
+  static async girarAllPage(runId: string, page: number) {
+    const summary = await loadBulkDrawSummary(runId);
+    if (!summary) return null;
+    return renderBulkDrawSummaryPage(summary, page);
   }
 }

@@ -2,7 +2,7 @@ import { test, expect, describe, beforeAll, afterAll } from "bun:test";
 import { db } from "../../index";
 import { users } from "../../schemas/users";
 import { categories, subcategories, cards, cardSubcategories, rarities, userCards, cardDrawHistory } from "../../schemas/cards";
-import { eq, inArray } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { GachaLogic } from "../../gacha";
 
 describe("GachaLogic.runBulkDraws", () => {
@@ -138,6 +138,34 @@ describe("GachaLogic.runBulkDraws", () => {
     // this run, it drew normally - either way usedDraws only moves by results.length
     const after = await db.select({ usedDraws: users.usedDraws }).from(users).where(eq(users.id, userId)).then(r => r[0]!.usedDraws);
     expect(after - before).toBe(results.length);
+
+    await db.delete(cardDrawHistory).where(eq(cardDrawHistory.userId, userId));
+    await db.delete(userCards).where(eq(userCards.userId, userId));
+  });
+
+  test("a card drawn multiple times in one batch accumulates into a single userCards row (batched upsert)", async () => {
+    // only one favorite subcategory in play, and it's the sole candidate on every roll, so every
+    // one of these draws lands on favCardId - this exercises the same-card-twice-in-one-INSERT path.
+    const results = await GachaLogic.runBulkDraws(userId, Array(10).fill(categoryId), 100, new Set([favSubId]));
+    expect(results.every(r => r.card.id === favCardId)).toBe(true);
+
+    const row = await db.select({ count: userCards.count }).from(userCards)
+      .where(and(eq(userCards.userId, userId), eq(userCards.cardId, favCardId))).then(r => r[0]);
+    expect(row?.count).toBe(results.length);
+
+    await db.delete(cardDrawHistory).where(eq(cardDrawHistory.userId, userId));
+    await db.delete(userCards).where(eq(userCards.userId, userId));
+  });
+
+  test("handles a large batch (n=100) across multiple categories without per-draw queries blowing up", async () => {
+    const before = await db.select({ usedDraws: users.usedDraws }).from(users).where(eq(users.id, userId)).then(r => r[0]!.usedDraws);
+
+    const results = await GachaLogic.runBulkDraws(userId, Array(100).fill(categoryId), 100, new Set([favSubId, favSubBId]));
+    expect(results.length).toBe(100);
+    expect(results.every(r => r.subcategoryId === favSubId || r.subcategoryId === favSubBId)).toBe(true);
+
+    const after = await db.select({ usedDraws: users.usedDraws }).from(users).where(eq(users.id, userId)).then(r => r[0]!.usedDraws);
+    expect(after - before).toBe(100);
 
     await db.delete(cardDrawHistory).where(eq(cardDrawHistory.userId, userId));
     await db.delete(userCards).where(eq(userCards.userId, userId));
