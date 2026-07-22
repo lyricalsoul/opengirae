@@ -12,7 +12,8 @@
 		{ href: '/admin/items', label: 'Loja' },
 		{ href: '/admin/categories', label: 'Categorias' },
 		{ href: '/admin/subcategories', label: 'Subcategorias' },
-		{ href: '/admin/cards', label: 'Cartas' }
+		{ href: '/admin/cards', label: 'Cartas' },
+		{ href: '/admin/promo-codes', label: 'Códigos Promos' }
 	];
 </script>
 
