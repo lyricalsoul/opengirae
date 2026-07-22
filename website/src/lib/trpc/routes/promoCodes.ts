@@ -2,7 +2,7 @@ import { t } from '$lib/trpc/t';
 import { z } from 'zod';
 import { adminProcedure } from '$lib/trpc/middleware/auth';
 import { db } from '@girae/database';
-import { promoCodes, promoCodeRedemptions } from '@girae/database/schemas/promo';
+import { promoCodes, promoCodeRedemptions, PromoRewardType } from '@girae/database/schemas/promo';
 import { eq, sql } from 'drizzle-orm';
 
 function generateRandomCode(length: number = 6): string {
@@ -50,7 +50,7 @@ export const promoCodesRouter = t.router({
 
 	create: adminProcedure
 		.input(z.object({
-			rewards: z.record(z.string(), z.number()),
+			rewards: z.record(z.nativeEnum(PromoRewardType), z.number()),
 			expiresAt: z.string(),
 			maxUses: z.number().nullable().optional()
 		}))
@@ -69,7 +69,7 @@ export const promoCodesRouter = t.router({
 	update: adminProcedure
 		.input(z.object({
 			id: z.number(),
-			rewards: z.record(z.string(), z.number()),
+			rewards: z.record(z.nativeEnum(PromoRewardType), z.number()),
 			expiresAt: z.string(),
 			maxUses: z.number().nullable().optional()
 		}))

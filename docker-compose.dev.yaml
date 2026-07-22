@@ -6,7 +6,6 @@ services:
     volumes:
       - dragonfly-data:/data
     command: --cluster_mode=emulated --lock_on_hashtags
-    restart: unless-stopped
 
   postgres:
     image: postgres:18

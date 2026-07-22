@@ -8,10 +8,16 @@ import {
 } from "drizzle-orm/pg-core";
 import { users } from "./users";
 
+export enum PromoRewardType {
+  LUCK_MODIFIER = 'luckModifier',
+  COINS = 'coins',
+  USED_DRAWS = 'usedDraws'
+}
+
 export const promoCodes = pgTable("promo_codes", {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
   code: text().notNull().unique(),
-  rewards: jsonb().notNull().$type<Record<string, number>>(),
+  rewards: jsonb().notNull().$type<Partial<Record<PromoRewardType, number>>>(),
   maxUses: integer(),
   expiresAt: timestamp().notNull(),
   createdAt: timestamp().notNull().defaultNow(),

@@ -37,6 +37,22 @@ export class PromoDB {
       promoCodeId: code.id
     });
 
+    const updates: Record<string, any> = {};
+    for (const [key, value] of Object.entries(code.rewards)) {
+        const col = (users as any)[key];
+        if (!col) continue;
+
+        if (key === 'usedDraws') {
+             updates[key] = sql`${col} - ${value}`;
+        } else {
+             updates[key] = sql`${col} + ${value}`;
+        }
+    }
+
+    if (Object.keys(updates).length > 0) {
+        await client.update(users).set(updates).where(eq(users.id, userId));
+    }
+
     return code;
   })
 }

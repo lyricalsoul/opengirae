@@ -343,21 +343,4 @@ export class UsersDB {
     await client.delete(users).where(eq(users.id, secondaryUserId));
   })
 
-  static applyPromoRewards = maybeTransaction('applyPromoRewards', async (client, userId: number, rewards: Record<string, number>) => {
-    const updates: Record<string, any> = {};
-    for (const [key, value] of Object.entries(rewards)) {
-        const col = (users as any)[key];
-        if (!col) continue;
-
-        if (key === 'usedDraws') {
-             updates[key] = sql`${col} - ${value}`;
-        } else if (key !== 'maxDraws') {
-             updates[key] = sql`${col} + ${value}`;
-        }
-    }
-
-    if (Object.keys(updates).length > 0) {
-        await client.update(users).set(updates).where(eq(users.id, userId));
-    }
-  })
 }

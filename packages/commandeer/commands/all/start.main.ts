@@ -50,7 +50,6 @@ export default class StartCommand extends Command {
         if (!userLink) throw new Error("Usuário não encontrado.");
 
         const code = await PromoDB.consumeCode(payload, userLink.id);
-        await UsersDB.applyPromoRewards(userLink.id, code.rewards);
 
         let rewardText = "";
         if (code.rewards.coins) {

@@ -34,11 +34,11 @@
     "dev:all": "bun run --parallel 'dev:discord-inbounder' 'dev:telegram-inbound' 'dev:commandeer' 'dev:answerer'",
     "dev:telegram-all": "bun run --parallel 'dev:telegram-inbound' 'dev:commandeer' 'dev:answerer'",
     "dev:discord-all": "bun run --parallel 'dev:discord-inbounder' 'dev:commandeer' 'dev:answerer'",
-    "dev:discord-inbounder": "bun --watch packages/discord-inbounder/index.ts",
-    "dev:telegram-inbound": "bun --watch packages/telegram-inbound/index.ts",
-    "dev:commandeer": "bun --watch packages/commandeer/index.ts",
+    "dev:discord-inbounder": "PORT=8080 bun --watch packages/discord-inbounder/index.ts",
+    "dev:telegram-inbound": "PORT=8081 bun --watch packages/telegram-inbound/index.ts",
+    "dev:commandeer": "PORT=8082 bun --watch packages/commandeer/index.ts",
     "commands:sync": "bun packages/commandeer/scripts/setMyCommands.ts",
     "investigate": "bun packages/tests/scripts/investigate.ts",
-    "dev:answerer": "bun --watch packages/answerer/index.ts"
+    "dev:answerer": "PORT=8083 bun --watch packages/answerer/index.ts"
   }
 }
