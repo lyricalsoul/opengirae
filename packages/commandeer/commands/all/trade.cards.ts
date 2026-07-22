@@ -247,7 +247,12 @@ export default class TradeCommand extends Command {
       }
       if (inviteResult.data === 'decline') {
         const declinedByTarget = inviteResult.clickerUserId === targetTelegramId
-        await reply(ctx, { content: `A troca foi entre vocês foi ${declinedByTarget ? 'recusada' : 'cancelada'}. 😢`, editMessageId: inviteResult.messageId })
+        await reply(ctx, {
+          content: `A troca foi entre vocês foi ${declinedByTarget ? 'recusada' : 'cancelada'}. 😢`,
+          photoUrl: inviteImage.url,
+          editMessageId: inviteResult.messageId,
+          captionOnly: true,
+        })
         return
       }
 

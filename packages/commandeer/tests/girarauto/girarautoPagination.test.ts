@@ -72,16 +72,16 @@ describe("/girarauto pagination", () => {
     const after = await db.select({ usedDraws: users.usedDraws }).from(users).where(eq(users.id, userId)).then(r => r[0]!.usedDraws);
     expect(after).toBe(50);
 
-    // page 0 exists and reports more pages ahead (PAGE_SIZE=20, 50 results -> 3 pages)
+    // page 0 exists and reports more pages ahead (PAGE_SIZE=10, 50 results -> 5 pages)
     const page0 = await GirarAutoCommand.girarautoPage(workflowID, 0);
     expect(page0).not.toBeNull();
-    expect(page0!.totalPages).toBe(3);
+    expect(page0!.totalPages).toBe(5);
     expect(page0!.hasNext).toBe(true);
 
-    const page2 = await GirarAutoCommand.girarautoPage(workflowID, 2);
-    expect(page2).not.toBeNull();
-    expect(page2!.hasNext).toBe(false);
-    expect(page2!.content).toContain('Página `3` de **3**');
+    const page4 = await GirarAutoCommand.girarautoPage(workflowID, 4);
+    expect(page4).not.toBeNull();
+    expect(page4!.hasNext).toBe(false);
+    expect(page4!.content).toContain('Página `5` de **5**');
   });
 
   test("an unknown runId returns null (cache miss / expired)", async () => {

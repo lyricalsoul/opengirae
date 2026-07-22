@@ -78,7 +78,13 @@ async function editMessageMediaRaw(params: {
     }),
   })
   const json: any = await res.json()
-  if (!json.ok) throw new Error(`Bad Request: ${json.description}`)
+  if (!json.ok) {
+    // must carry .parameters/.code like telegramsjs's HTTPResponseError, or the rate-limit retry in answerer/index.ts never fires
+    const err = new Error(`Bad Request: ${json.description}`) as Error & { parameters?: unknown; code?: number }
+    err.parameters = json.parameters
+    err.code = json.error_code
+    throw err
+  }
   return String(json.result?.message_id ?? params.messageId)
 }
 
