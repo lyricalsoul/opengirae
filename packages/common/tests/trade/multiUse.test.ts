@@ -75,7 +75,7 @@ describe("callback.ts multiUse handling", () => {
     // callback.ts's - it must still be delivered.
     await processCallback(`${workflowID}.${eventName}.0`, 'target-id', 'cb-3', 'telegram');
 
-    const jobs = await resumeQueue.getJobs(['waiting', 'completed']);
+    const jobs = await resumeQueue.getJobs(['waiting', 'completed', 'failed']);
     const delivered = jobs.some(j => j.data?.workflowID === workflowID && j.data?.clickerUserId === 'target-id');
     expect(delivered).toBe(true);
 

@@ -85,6 +85,13 @@
       "when": 1784662044778,
       "tag": "0011_military_phantom_reporter",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784698581542,
+      "tag": "0012_faithful_phantom_reporter",
+      "breakpoints": true
     }
   ]
 }

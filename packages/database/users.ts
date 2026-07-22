@@ -5,7 +5,7 @@ import { auditLogs } from "./schemas/audit";
 import { maybeTransaction } from "./decorators";
 import { eq, sql, and, or, gte, ilike, desc } from "drizzle-orm";
 
-export type Platform = 'telegram' | 'discord';
+export type Platform = 'telegram' | 'discord' | 'none';
 
 type UserSortField = 'displayName' | 'coins' | 'usedDraws' | 'isBanned' | 'isAdmin';
 
@@ -268,7 +268,18 @@ export class UsersDB {
   static decrementUsedDraws = maybeTransaction('decrementUsedDraws', async (client, amount: number) => {
     await client
       .update(users)
-      .set({ usedDraws: sql`GREATEST(${users.usedDraws} - ${amount}, 0)` });
+      .set({ 
+        usedDraws: sql`CASE WHEN ${users.usedDraws} < 0 THEN ${users.usedDraws} ELSE GREATEST(${users.usedDraws} - ${amount}, 0) END` 
+      });
+  })
+
+  static giveTemporaryDraws = maybeTransaction('giveTemporaryDraws', async (client, userId: number, amount: number) => {
+    return await client
+      .update(users)
+      .set({ usedDraws: sql`${users.usedDraws} - ${amount}` })
+      .where(eq(users.id, userId))
+      .returning()
+      .then(rows => rows[0]);
   })
 
   static setMakeCardsTradeableByDefault = maybeTransaction('setMakeCardsTradeableByDefault', async (client, userId: number, value: boolean) => {
@@ -331,4 +342,5 @@ export class UsersDB {
     await client.delete(userProfiles).where(eq(userProfiles.userId, secondaryUserId));
     await client.delete(users).where(eq(users.id, secondaryUserId));
   })
+
 }

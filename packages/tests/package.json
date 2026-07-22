@@ -6,6 +6,7 @@
   "dependencies": {
     "@girae/answerer": "workspace:*",
     "@girae/commandeer": "workspace:*",
-    "@girae/common": "workspace:*"
+    "@girae/common": "workspace:*",
+    "@girae/database": "workspace:*"
   }
 }
