@@ -5,11 +5,12 @@ import { DrizzleDataSource } from "@dbos-inc/drizzle-datasource";
 import * as schema_cards from "./schemas/cards";
 import * as schema_users from "./schemas/users";
 import * as schema_audit from "./schemas/audit";
+import * as schema_promo from "./schemas/promo";
 
 export const config = { connectionString: process.env.DATABASE_URL! };
 const pool = new Pool(config);
 
-const schema = { ...schema_cards, ...schema_users, ...schema_audit };
+const schema = { ...schema_cards, ...schema_users, ...schema_audit, ...schema_promo };
 
 export const db = drizzle(pool, { schema });
 export const dataSource = new DrizzleDataSource<NodePgDatabase<typeof schema>>('app-db', config);
