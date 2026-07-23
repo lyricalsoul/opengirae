@@ -18,7 +18,8 @@ interface BaseCommandArgumentSpec<T = any> {
 }
 
 export type CommandArgumentSpec<T = any> =
-  | (BaseCommandArgumentSpec<T> & { type: CommandArgumentType.VANITY_ITEM; vanityType: 'background' | 'sticker' })
+  // showBasePrice: true for admin commands (editbg/delbg/etc.), which must see the raw catalog price
+  | (BaseCommandArgumentSpec<T> & { type: CommandArgumentType.VANITY_ITEM; vanityType: 'background' | 'sticker'; showBasePrice?: boolean })
   | (BaseCommandArgumentSpec<T> & { type: Exclude<CommandArgumentType, CommandArgumentType.VANITY_ITEM> });
 
 export function CommandArgument(specs: CommandArgumentSpec[]) {

@@ -15,7 +15,7 @@ export default class AddImageBackgroundCommand extends Command {
     aliases: ['setimagebg', 'setimgbg']
   }
 
-  @CommandArgument([{ name: 'item', type: CommandArgumentType.VANITY_ITEM, vanityType: 'background' }])
+  @CommandArgument([{ name: 'item', type: CommandArgumentType.VANITY_ITEM, vanityType: 'background', showBasePrice: true }])
   static override async execute(ctx: IncomingCommand, args: { item: NonNullable<Awaited<ReturnType<typeof VanitiesDB.getStoreItemById>>> }) {
     const item = args.item
     const photoUrl = ctx.message.photoUrl ?? ctx.message.replyTo?.photoUrl

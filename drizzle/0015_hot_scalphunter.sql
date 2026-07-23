@@ -1,0 +1,1 @@
+ALTER TABLE "economy" ALTER COLUMN "treasuryBalance" SET DATA TYPE bigint;

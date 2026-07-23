@@ -4,6 +4,7 @@ import { db } from "../../index";
 import { users } from "../../schemas/users";
 import { promoCodes, promoCodeRedemptions, PromoRewardType } from "../../schemas/promo";
 import { PromoDB } from "../../promo";
+import { EconomyDB } from "../../economy";
 import { eq } from "drizzle-orm";
 
 describe("PromoDB.consumeCode", () => {
@@ -39,8 +40,8 @@ describe("PromoDB.consumeCode", () => {
       expiresAt: expiration
     });
 
-    const code = await PromoDB.consumeCode("TESTCODE123", userId1);
-    expect(code).toBeDefined();
+    const result = await PromoDB.consumeCode("TESTCODE123", userId1);
+    expect(result.ok).toBe(true);
 
     // Verify rewards applied
     const [updatedUser] = await db.select().from(users).where(eq(users.id, userId1));
@@ -49,11 +50,61 @@ describe("PromoDB.consumeCode", () => {
     expect(updatedUser!.usedDraws).toBe(-3); // default 0 - 3
   });
 
-  test("should throw if user already redeemed", async () => {
-    await expect(PromoDB.consumeCode("TESTCODE123", userId1)).rejects.toThrow("Você já resgatou este código.");
+  test("returns already_redeemed instead of throwing when the user already redeemed", async () => {
+    const result = await PromoDB.consumeCode("TESTCODE123", userId1);
+    expect(result).toEqual({ ok: false, reason: 'already_redeemed' });
   });
 
-  test("should throw if maxUses reached", async () => {
-    await expect(PromoDB.consumeCode("TESTCODE123", userId2)).rejects.toThrow("O limite de resgates para este código foi atingido.");
+  test("returns max_uses instead of throwing when maxUses is reached", async () => {
+    const result = await PromoDB.consumeCode("TESTCODE123", userId2);
+    expect(result).toEqual({ ok: false, reason: 'max_uses' });
+  });
+
+  test("returns expired instead of throwing for an expired code", async () => {
+    await db.insert(promoCodes).values({
+      code: "EXPIREDTEST",
+      rewards: { [PromoRewardType.COINS]: 100 },
+      maxUses: null,
+      expiresAt: new Date(Date.now() - 1000),
+    });
+
+    try {
+      const result = await PromoDB.consumeCode("EXPIREDTEST", userId2);
+      expect(result).toEqual({ ok: false, reason: 'expired' });
+    } finally {
+      await db.delete(promoCodes).where(eq(promoCodes.code, "EXPIREDTEST"));
+    }
+  });
+
+  test("returns not_found instead of throwing for a nonexistent code", async () => {
+    const result = await PromoDB.consumeCode("NOPE404", userId2);
+    expect(result).toEqual({ ok: false, reason: 'not_found' });
+  });
+
+  test("the coins reward scales with incomeInflationRate, but luckModifier/usedDraws don't", async () => {
+    const originalIncomeInflationRate = await EconomyDB.getIncomeInflationRate();
+    await EconomyDB.setIncomeInflationRate(2);
+
+    const expiration = new Date();
+    expiration.setDate(expiration.getDate() + 1);
+    await db.insert(promoCodes).values({
+      code: "SCALETEST",
+      rewards: { [PromoRewardType.COINS]: 100, [PromoRewardType.LUCK_MODIFIER]: 5, [PromoRewardType.USED_DRAWS]: 3 },
+      maxUses: 1,
+      expiresAt: expiration,
+    });
+
+    try {
+      await PromoDB.consumeCode("SCALETEST", userId2);
+
+      const [user] = await db.select().from(users).where(eq(users.id, userId2));
+      expect(user!.coins).toBe(200); // 100 * incomeInflationRate(2), not 100
+      expect(user!.luckModifier).toBe(105); // unscaled: default 100 + 5
+      expect(user!.usedDraws).toBe(-3); // unscaled: default 0 - 3
+    } finally {
+      await EconomyDB.setIncomeInflationRate(originalIncomeInflationRate);
+      await db.delete(promoCodeRedemptions).where(eq(promoCodeRedemptions.userId, userId2));
+      await db.delete(promoCodes).where(eq(promoCodes.code, "SCALETEST"));
+    }
   });
 });

@@ -50,7 +50,7 @@ export const promoCodesRouter = t.router({
 
 	create: adminProcedure
 		.input(z.object({
-			rewards: z.record(z.nativeEnum(PromoRewardType), z.number()),
+			rewards: z.partialRecord(z.nativeEnum(PromoRewardType), z.number()),
 			expiresAt: z.string(),
 			maxUses: z.number().nullable().optional()
 		}))
@@ -69,7 +69,7 @@ export const promoCodesRouter = t.router({
 	update: adminProcedure
 		.input(z.object({
 			id: z.number(),
-			rewards: z.record(z.nativeEnum(PromoRewardType), z.number()),
+			rewards: z.partialRecord(z.nativeEnum(PromoRewardType), z.number()),
 			expiresAt: z.string(),
 			maxUses: z.number().nullable().optional()
 		}))

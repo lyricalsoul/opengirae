@@ -1,6 +1,7 @@
 import { maybeTransaction } from "./decorators";
 import { storeItems, boughtItems, type storeItemTypes } from "./schemas/vanities";
 import { users, userProfiles } from "./schemas/users";
+import { EconomyDB } from "./economy";
 import { and, desc, eq, gte, ilike, inArray, sql } from "drizzle-orm";
 
 type StoreItemType = (typeof storeItemTypes.enumValues)[number]
@@ -162,30 +163,27 @@ export class VanitiesDB {
   })
 
   static purchaseItem = maybeTransaction('purchaseItem', async (client, userId: number, itemId: number, price: number) => {
-    const [spendRow] = await client
-      .update(users)
-      .set({ coins: sql`${users.coins} - ${price}` })
-      .where(and(eq(users.id, userId), gte(users.coins, price)))
-      .returning();
-    if (!spendRow) return { ok: false as const, reason: 'insufficient_funds' as const };
+    const ok = await EconomyDB.deductCoinsToTreasury(client, userId, price);
+    if (!ok) return { ok: false as const, reason: 'insufficient_funds' as const };
 
     const item = await client.insert(boughtItems).values({ userId, itemId }).returning().then(a => a?.[0]);
     return { ok: true as const, item };
   })
 
   static buyItem = async (userId: number, itemId: number): Promise<
-    { ok: true } | { ok: false; reason: 'not_found' | 'insufficient_funds' | 'already_owned' }
+    { ok: true; chargedPrice: number } | { ok: false; reason: 'not_found' | 'insufficient_funds' | 'already_owned' }
   > => {
     const item = await VanitiesDB.getStoreItemById(itemId);
     if (!item || !item.isAvailable || item.type === 'profile') return { ok: false, reason: 'not_found' };
     if (await VanitiesDB.hasBought(userId, itemId)) return { ok: false, reason: 'already_owned' };
 
-    const result = await VanitiesDB.purchaseItem(userId, itemId, item.price).catch((e: any) => {
+    const chargedPrice = await EconomyDB.applyInflation(item.price);
+    const result = await VanitiesDB.purchaseItem(userId, itemId, chargedPrice).catch((e: any) => {
       if (e?.code === '23505') return { ok: false as const, reason: 'already_owned' as const };
       throw e;
     });
     if (!result.ok) return result;
-    return { ok: true };
+    return { ok: true, chargedPrice };
   }
 
   static equipItem = maybeTransaction('equipItem', async (client, userId: number, type: 'background' | 'sticker', itemId: number): Promise<

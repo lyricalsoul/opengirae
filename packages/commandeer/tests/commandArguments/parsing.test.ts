@@ -7,6 +7,7 @@ import { categories } from "@girae/database/schemas/cards";
 import { CardsDB } from "@girae/database/cards";
 import { eq } from "drizzle-orm";
 import { fakeCtx as buildFakeCtx, TestFixtures } from "@girae/tests";
+import { EconomyDB } from "@girae/database/economy";
 
 // 'none' is a genuine no-op platform in packages/answerer/handler.ts - safe to let the
 // real reply()/resolveCommandArguments path run end to end in these tests without
@@ -321,6 +322,47 @@ describe("parseCommandArguments - VANITY_ITEM not-found path", () => {
     const specs: CommandArgumentSpec[] = [{ name: 'item', type: CommandArgumentType.VANITY_ITEM, vanityType: 'sticker' }];
     const result = await parseCommandArguments(specs, ['zzzznonexistentitemnamezzzz'], fakeCtx([]));
     expect(result).toEqual({ ok: false, message: 'Não encontrei um sticker com esse nome.' });
+  });
+});
+
+// Closes a real gap: the disambiguation list showed the raw base price even for /bg and /sticker.
+describe("parseCommandArguments - VANITY_ITEM ambiguous-results price (showBasePrice)", () => {
+  const fx = new TestFixtures();
+  let originalInflationRate: number;
+  const sharedTitle = `Test Ambiguous Vanity ${Date.now()}`;
+
+  beforeAll(async () => {
+    originalInflationRate = await EconomyDB.getInflationRate();
+    await EconomyDB.setInflationRate(2);
+    await fx.storeItem({ title: `${sharedTitle} A`, type: 'background', price: 100 });
+    await fx.storeItem({ title: `${sharedTitle} B`, type: 'background', price: 200 });
+  });
+
+  afterAll(async () => {
+    await EconomyDB.setInflationRate(originalInflationRate);
+    await fx.cleanup();
+  });
+
+  test("user-facing resolution (no showBasePrice) shows inflation-adjusted prices in the disambiguation list", async () => {
+    const specs: CommandArgumentSpec[] = [{ name: 'item', type: CommandArgumentType.VANITY_ITEM, vanityType: 'background' }];
+    const result = await parseCommandArguments(specs, [sharedTitle], fakeCtx([]));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toContain('200 moedas');
+      expect(result.message).toContain('400 moedas');
+      expect(result.message).not.toContain('100 moedas');
+    }
+  });
+
+  test("admin resolution (showBasePrice: true) shows the raw catalog price, unaffected by inflationRate", async () => {
+    const specs: CommandArgumentSpec[] = [{ name: 'item', type: CommandArgumentType.VANITY_ITEM, vanityType: 'background', showBasePrice: true }];
+    const result = await parseCommandArguments(specs, [sharedTitle], fakeCtx([]));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toContain('100 moedas');
+      expect(result.message).toContain('200 moedas');
+      expect(result.message).not.toContain('400 moedas');
+    }
   });
 });
 

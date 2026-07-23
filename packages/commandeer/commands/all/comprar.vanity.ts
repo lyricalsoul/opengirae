@@ -3,6 +3,7 @@ import { DBOS } from '@dbos-inc/dbos-sdk'
 import { VanitiesDB } from '@girae/database/vanities'
 import { UsersDB } from '@girae/database/users'
 import { AuditDB } from '@girae/database/audit'
+import { EconomyDB } from '@girae/database/economy'
 import { reply, deleteMsg } from '@girae/common/dbos/messaging'
 import { buildProfileData } from '@girae/common/profileData'
 import { generateProfileImage } from '@girae/common/ditto'
@@ -40,9 +41,10 @@ export default class ComprarCommand extends Command {
     const overrides = item.type === 'background' ? { backgroundURL: item.itemURL } : { stickerURL: item.itemURL }
     const profileData = await buildProfileData(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id, overrides)
     const preview = profileData ? await generateProfileImage(profileData, ['preview']) : null
+    const confirmPrice = await EconomyDB.applyInflation(item.price)
 
     await reply(ctx, {
-      content: `**${escapeMarkdown(item.title)}** — ${escapeMarkdown(item.description)}\n💸 ${item.price} moedas\n\nConfirma a compra deste ${TYPE_LABEL[item.type]}?`,
+      content: `**${escapeMarkdown(item.title)}** — ${escapeMarkdown(item.description)}\n💸 ${confirmPrice} moedas\n\nConfirma a compra deste ${TYPE_LABEL[item.type]}?`,
       photoUrl: preview?.url ?? item.itemURL,
       eventName: CONFIRM_EVENT,
       restricted: 'author',
@@ -62,11 +64,11 @@ export default class ComprarCommand extends Command {
       return
     }
 
-    await AuditDB.log(user.id, 'vanity.purchase', { itemId: item.id, title: item.title, price: item.price, type: item.type })
+    await AuditDB.log(user.id, 'vanity.purchase', { itemId: item.id, title: item.title, price: result.chargedPrice, type: item.type })
 
     if (confirmSelection.messageId) await deleteMsg(ctx, confirmSelection.messageId)
     await reply(ctx, {
-      content: `🛍 Você comprou **${escapeMarkdown(item.title)}**!\n💸 -${item.price} moedas`,
+      content: `🛍 Você comprou **${escapeMarkdown(item.title)}**!\n💸 -${result.chargedPrice} moedas`,
       photoUrl: item.itemURL,
       buttons: [{ text: '✅ Equipar agora', quickView: { handler: 'equip', arg: `${item.type}:${item.id}` }, color: 'success' }],
     })

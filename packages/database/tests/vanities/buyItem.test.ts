@@ -5,6 +5,7 @@ import { users } from "../../schemas/users";
 import { boughtItems } from "../../schemas/vanities";
 import { eq } from "drizzle-orm";
 import { VanitiesDB } from "../../vanities";
+import { EconomyDB } from "../../economy";
 
 describe("VanitiesDB.buyItem", () => {
   const fx = new TestFixtures();
@@ -21,18 +22,31 @@ describe("VanitiesDB.buyItem", () => {
 
   beforeEach(async () => {
     await db.delete(boughtItems).where(eq(boughtItems.itemId, itemId));
-    await db.update(users).set({ coins: 1000 }).where(eq(users.id, userId));
+    await db.update(users).set({ coins: 1000, treasuryContributed: 0 }).where(eq(users.id, userId));
   });
 
   test("buys the item, deducts coins, and records ownership", async () => {
     const result = await VanitiesDB.buyItem(userId, itemId);
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, chargedPrice: 100 });
 
     const [user] = await db.select().from(users).where(eq(users.id, userId));
     expect(user!.coins).toBe(900);
 
     const owned = await db.select().from(boughtItems).where(eq(boughtItems.userId, userId));
     expect(owned).toHaveLength(1);
+  });
+
+  test("buying credits the treasury, the user's contribution counter, and returns chargedPrice", async () => {
+    const before = await EconomyDB.getState();
+
+    const result = await VanitiesDB.buyItem(userId, itemId);
+    expect(result).toEqual({ ok: true, chargedPrice: 100 });
+
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    expect(user!.treasuryContributed).toBe(100);
+
+    const after = await EconomyDB.getState();
+    expect(after.treasuryBalance - before.treasuryBalance).toBe(100);
   });
 
   test("fails with insufficient_funds and takes no coins if the price exceeds balance", async () => {
