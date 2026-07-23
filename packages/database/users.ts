@@ -181,7 +181,25 @@ export class UsersDB {
 
     await client
       .update(users)
-      .set({ hasGottenDaily: false });
+      .set({ hasGottenDaily: false, hasGivenRepToday: false });
+  })
+
+  static setRepGiven = maybeTransaction('setRepGiven', async (client, userId: number) => {
+    return await client
+      .update(users)
+      .set({ hasGivenRepToday: true })
+      .where(eq(users.id, userId))
+      .returning()
+      .then(rows => rows[0]);
+  })
+
+  static addReputation = maybeTransaction('addReputation', async (client, userId: number, amount: number) => {
+    return await client
+      .update(userProfiles)
+      .set({ reputation: sql`${userProfiles.reputation} + ${amount}` })
+      .where(eq(userProfiles.userId, userId))
+      .returning()
+      .then(rows => rows[0]);
   })
 
   static getUserProfileByPlatformAccount = maybeTransaction('getUserProfileByPlatformAccount', async (client, platform: Platform, platformId: string) => {

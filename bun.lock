@@ -56,6 +56,9 @@
     },
     "packages/database": {
       "name": "@girae/database",
+      "devDependencies": {
+        "@girae/tests": "workspace:*",
+      },
     },
     "packages/discord-inbounder": {
       "name": "@girae/discord-inbounder",

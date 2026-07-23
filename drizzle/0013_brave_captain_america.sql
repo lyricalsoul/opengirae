@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "hasGivenRepToday" boolean DEFAULT false NOT NULL;
