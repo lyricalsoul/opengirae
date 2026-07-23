@@ -8,7 +8,7 @@ const PAGE_SIZE = 10
 const SUMMARY_CACHE_TTL_SECONDS = 10 * 60
 
 const line = (r: BulkDrawResult) =>
-  `${r.isFromFavorite ? '⭐ ' : ''}${r.card.rarityEmoji} \`${r.card.id}\`. **${escapeMarkdown(r.card.name)}** — _${escapeMarkdown(r.subcategoryName)}_ ${r.categoryEmoji}`
+  `${r.isFromFavorite ? '⭐ ' : ''}${r.card.rarityEmoji} \`${r.card.id}\`. **${escapeMarkdown(r.card.name)}** _${escapeMarkdown(r.subcategoryName)}_${r.categoryEmoji ? ` ${r.categoryEmoji}` : ''}`
 
 export interface BulkDrawSummaryData {
   header: string
@@ -41,7 +41,7 @@ export async function buildBulkDrawSummary(
 export function renderBulkDrawSummaryPage(data: BulkDrawSummaryData, page: number) {
   const totalPages = Math.max(1, Math.ceil(data.ordered.length / PAGE_SIZE))
   const slice = data.ordered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-  const pageInfo = totalPages > 1 ? `\n${EMOJI.page} Página \`${page + 1}\` de **${totalPages}**` : ''
+  const pageInfo = totalPages > 1 ? `\n\n${EMOJI.page} Página \`${page + 1}\` de **${totalPages}**` : ''
   const content = data.ordered.length === 0
     ? data.header
     : `${data.header}\n\n${slice.map(line).join('\n')}${pageInfo}`
