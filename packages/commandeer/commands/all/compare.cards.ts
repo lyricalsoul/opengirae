@@ -43,7 +43,7 @@ export default class CompareCommand extends Command {
       ? `🎁 Você tem que ${m(targetTelegramId, target.displayName)} quer:\n\n${iHaveTheyWant.map(cardLine).join('\n')}`
       : `🎁 Você não tem nenhum card trocável que ${m(targetTelegramId, target.displayName)} quer.`
 
-    const theyHaveSection = target.privacyMode
+    const theyHaveSection = !UsersDB.isViewable(viewer.id, target)
       ? `🔒 ${m(targetTelegramId, target.displayName)} ativou o modo privado — não é possível ver o que ele(a) tem que você quer.`
       : theyHaveIWant.length > 0
         ? `🎁 ${m(targetTelegramId, target.displayName)} tem que você quer:\n\n${theyHaveIWant.map(cardLine).join('\n')}`

@@ -8,6 +8,7 @@ import { generateProfileImage } from '@girae/common/ditto'
 import { buildProfileData } from '@girae/common/profileData'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { tg } from '../../services/botInfo'
+import { togglePrivacyMode } from '../../services/privacyToggle'
 
 export default class ProfileCommand extends Command {
   static override info = {
@@ -28,6 +29,15 @@ export default class ProfileCommand extends Command {
     if (!user || !profile) {
       await reply(ctx, 'Não encontrei o perfil desse usuário. 😔\nEle já usou a bot?')
       return
+    }
+
+    if (targetTelegramId !== ctx.message.author.id) {
+      const viewer = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
+      if (!viewer) return
+      if (!UsersDB.isViewable(viewer.id, user)) {
+        await reply(ctx, 'Esse usuário ativou o modo privado e não é possível ver o perfil dele. 🔒')
+        return
+      }
     }
 
     const favoriteCard = user.favoriteCardId ? await CardsDB.getCardWithDetails(user.favoriteCardId) : null
@@ -74,6 +84,7 @@ export default class ProfileCommand extends Command {
 /troco - marca um card como trocável (exemplo: \`/troco Karol Conká\`)
 /naotroco - marca um card como não trocável (exemplo: \`/naotroco Karol Conká\`)
 /autotroca - alterna se cards novos são trocáveis por padrão
+/privacy - ativa ou desativa o modo privado (esconde seu perfil, cards e lista de desejos)
 `)
   }
 
@@ -86,5 +97,10 @@ export default class ProfileCommand extends Command {
     const hide = !args.enabled
     await UsersDB.updateUserProfile(user.id, { hideProfileEmojis: hide })
     await reply(ctx, hide ? 'Emojis escondidos com sucesso! 🎨' : 'Emojis ativados com sucesso! 🎨')
+  }
+
+  @Subcommand({ name: 'privacidade', description: 'Ativa ou desativa o modo privado', aliases: ['privacy'] })
+  static async togglePrivacy(ctx: IncomingCommand) {
+    await togglePrivacyMode(ctx)
   }
 }

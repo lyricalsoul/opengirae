@@ -39,11 +39,6 @@ ${pageInfo}${EMOJI.browse} Para adicionar um card, use \`/wish id ou nome\`.`
   return { content, photoUrl: image?.url, hasNext: page < totalPages - 1, totalPages }
 }
 
-function isViewable(viewerId: number, target: NonNullable<Awaited<ReturnType<typeof UsersDB.getUserByPlatformAccount>>>) {
-  if (target.id === viewerId) return true
-  return !target.privacyMode
-}
-
 export default class WishCommand extends Command {
   static override info = {
     name: 'wish',
@@ -64,7 +59,7 @@ export default class WishCommand extends Command {
         await reply(ctx, 'Esse usuário nunca usou a bot!')
         return
       }
-      if (!isViewable(viewer.id, target)) {
+      if (!UsersDB.isViewable(viewer.id, target)) {
         await reply(ctx, 'Esse usuário ativou o modo privado e não é possível ver a lista de desejos dele. 🔒')
         return
       }
@@ -163,7 +158,7 @@ export default class WishCommand extends Command {
 
     const viewer = await UsersDB.getUserByPlatformAccount(platform, authorId)
     if (!viewer) return null
-    if (!isViewable(viewer.id, target)) return null
+    if (!UsersDB.isViewable(viewer.id, target)) return null
 
     return renderPage(arg, page)
   }
