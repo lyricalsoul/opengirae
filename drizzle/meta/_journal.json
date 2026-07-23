@@ -113,6 +113,13 @@
       "when": 1784783754211,
       "tag": "0015_hot_scalphunter",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1784787028060,
+      "tag": "0016_red_crystal",
+      "breakpoints": true
     }
   ]
 }
