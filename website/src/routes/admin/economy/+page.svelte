@@ -99,6 +99,59 @@
 			savingTreasury = false;
 		}
 	}
+
+	// --- allocations ---
+
+	let allocations = $state(data.allocations);
+	let syncing = $state(false);
+
+	let allocationModalOpen = $state(false);
+	let editingAllocationId = $state<string | null>(null);
+	let editingAllocationName = $state('');
+	let editingAllocationPercentage = $state('');
+	let savingAllocation = $state(false);
+
+	function openAllocationEdit(allocation: (typeof allocations)[number]) {
+		editingAllocationId = allocation.allocationId;
+		editingAllocationName = allocation.name;
+		editingAllocationPercentage = String(allocation.percentage);
+		allocationModalOpen = true;
+	}
+
+	async function saveAllocation(e: SubmitEvent) {
+		e.preventDefault();
+		const percentage = Number(editingAllocationPercentage);
+		if (isNaN(percentage) || !editingAllocationId) {
+			toast.error('Valor inválido');
+			return;
+		}
+		savingAllocation = true;
+		try {
+			allocations = await trpc().economy.updateAllocation.mutate({
+				allocationId: editingAllocationId as any,
+				name: editingAllocationName,
+				percentage,
+			});
+			allocationModalOpen = false;
+			toast.success('Alocação atualizada');
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : 'Falha ao atualizar a alocação');
+		} finally {
+			savingAllocation = false;
+		}
+	}
+
+	async function forceSyncAllocations() {
+		syncing = true;
+		try {
+			allocations = await trpc().economy.syncAllocationsNow.mutate();
+			toast.success('Alocações sincronizadas');
+		} catch {
+			toast.error('Falha ao sincronizar alocações');
+		} finally {
+			syncing = false;
+		}
+	}
 </script>
 
 <h1 class="text-ink mb-6 text-2xl font-bold">Economia</h1>
@@ -181,6 +234,39 @@
 	</div>
 </div>
 
+<div class="border-line bg-panel mt-6 max-w-3xl rounded-xl border p-5">
+	<div class="mb-3 flex items-center justify-between">
+		<h2 class="text-ink text-sm font-semibold">Alocações do tesouro</h2>
+		<button class="btn btn-default" disabled={syncing} onclick={forceSyncAllocations}>Forçar sincronização</button>
+	</div>
+	<table class="w-full text-xs">
+		<thead>
+			<tr class="text-ink-dim text-left">
+				<th class="pb-1 font-normal">Nome</th>
+				<th class="pb-1 font-normal">%</th>
+				<th class="pb-1 font-normal">Fatia do tesouro</th>
+				<th class="pb-1 font-normal">Saldo atual</th>
+				<th class="pb-1 font-normal"></th>
+			</tr>
+		</thead>
+		<tbody>
+			{#each allocations as allocation (allocation.allocationId)}
+				<tr class="border-line border-t">
+					<td class="text-ink py-1">{allocation.name}</td>
+					<td class="text-ink-dim py-1">{allocation.percentage}%</td>
+					<td class="text-ink-dim py-1">{formatter.format(Math.round((allocation.percentage / 100) * treasuryBalance))} moedas</td>
+					<td class="text-ink py-1">{formatter.format(allocation.balance)} moedas</td>
+					<td class="py-1 text-right">
+						<button class="text-ink-dim hover:text-ink" aria-label="Editar alocação" onclick={() => openAllocationEdit(allocation)}>
+							<Pencil size={14} />
+						</button>
+					</td>
+				</tr>
+			{/each}
+		</tbody>
+	</table>
+</div>
+
 <Modal bind:open={treasuryModalOpen} title="Editar tesouro">
 	<form onsubmit={saveTreasuryBalance} class="flex flex-col gap-3">
 		<label class="text-ink-dim text-xs">
@@ -190,6 +276,23 @@
 		<div class="mt-2 flex justify-end gap-2">
 			<button type="button" class="btn btn-ghost" onclick={() => (treasuryModalOpen = false)}>Cancelar</button>
 			<button type="submit" class="btn btn-default" disabled={savingTreasury}>Salvar</button>
+		</div>
+	</form>
+</Modal>
+
+<Modal bind:open={allocationModalOpen} title="Editar alocação">
+	<form onsubmit={saveAllocation} class="flex flex-col gap-3">
+		<label class="text-ink-dim text-xs">
+			Nome
+			<input type="text" bind:value={editingAllocationName} class="field mt-1" required />
+		</label>
+		<label class="text-ink-dim text-xs">
+			Porcentagem
+			<input type="text" inputmode="decimal" bind:value={editingAllocationPercentage} class="field mt-1" required />
+		</label>
+		<div class="mt-2 flex justify-end gap-2">
+			<button type="button" class="btn btn-ghost" onclick={() => (allocationModalOpen = false)}>Cancelar</button>
+			<button type="submit" class="btn btn-default" disabled={savingAllocation}>Salvar</button>
 		</div>
 	</form>
 </Modal>
