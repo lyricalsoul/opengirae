@@ -407,10 +407,12 @@
 	<p class="text-ink-dim text-sm">
 		Tem certeza que deseja excluir <span class="text-ink font-medium">{deleteTarget?.name}</span>?
 	</p>
-	<div class="mt-4 flex justify-end gap-2">
-		<button type="button" class="btn btn-ghost" onclick={() => (deleteDialogOpen = false)}>Cancelar</button>
-		<button type="button" class="btn btn-danger" onclick={confirmDelete}>Excluir</button>
-	</div>
+	{#snippet footer()}
+		<div class="flex justify-end gap-2">
+			<button type="button" class="btn btn-ghost" onclick={() => (deleteDialogOpen = false)}>Cancelar</button>
+			<button type="button" class="btn btn-danger" onclick={confirmDelete}>Excluir</button>
+		</div>
+	{/snippet}
 </Modal>
 
 <Modal bind:open={forceDeleteDialogOpen} title="Forçar exclusão">
@@ -425,15 +427,17 @@
 		Digite <span class="text-ink font-medium">{forceDeleteTarget?.name}</span> para confirmar
 		<input bind:value={forceDeleteConfirmText} class="field mt-1" />
 	</label>
-	<div class="mt-4 flex justify-end gap-2">
-		<button type="button" class="btn btn-ghost" onclick={() => (forceDeleteDialogOpen = false)}>Cancelar</button>
-		<button
-			type="button"
-			class="btn btn-danger"
-			disabled={forceDeleteConfirmText !== forceDeleteTarget?.name}
-			onclick={confirmForceDelete}
-		>
-			Forçar exclusão
-		</button>
-	</div>
+	{#snippet footer()}
+		<div class="flex justify-end gap-2">
+			<button type="button" class="btn btn-ghost" onclick={() => (forceDeleteDialogOpen = false)}>Cancelar</button>
+			<button
+				type="button"
+				class="btn btn-danger"
+				disabled={forceDeleteConfirmText !== forceDeleteTarget?.name}
+				onclick={confirmForceDelete}
+			>
+				Forçar exclusão
+			</button>
+		</div>
+	{/snippet}
 </Modal>
