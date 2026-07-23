@@ -54,9 +54,22 @@ export class UsersDB {
       .then(rows => rows[0]);
   })
 
+  static setPrivacyMode = maybeTransaction('setPrivacyMode', async (client, userId: number, privacyMode: boolean) => {
+    return await client
+      .update(users)
+      .set({ privacyMode })
+      .where(eq(users.id, userId))
+      .returning()
+      .then(rows => rows[0]);
+  })
+
   static getUserById = maybeTransaction('getUserById', async (client, id: number) => {
     return await client.select().from(users).where(eq(users.id, id)).limit(1).then(a => a?.[0]);
   })
+
+  static isViewable(viewerId: number, target: { id: number; privacyMode: boolean }): boolean {
+    return target.id === viewerId || !target.privacyMode
+  }
 
   static getUserByPlatformAccount = maybeTransaction('getUserByPlatformAccount', async (client, platform: Platform, platformId: string) => {
     return await client

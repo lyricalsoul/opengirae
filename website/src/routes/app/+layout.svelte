@@ -1,7 +1,9 @@
 <script lang="ts">
 	import './app.css';
-	import { init, retrieveRawInitData, miniApp, useSignal } from '@tma.js/sdk-svelte';
+	import { init, retrieveRawInitData, retrieveLaunchParams, miniApp, useSignal } from '@tma.js/sdk-svelte';
 	import { App, Page as KonstaPage } from 'konsta/svelte';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 
 	let { children } = $props();
 
@@ -17,6 +19,19 @@
 			console.log('[theme] init() failed', e);
 		}
 		gateState = retrieveRawInitData() ? 'ready' : 'no-init-data';
+
+		if (gateState === 'ready' && !page.url.searchParams.has('id')) {
+			try {
+				const startParam = retrieveLaunchParams().tgWebAppStartParam;
+				if (startParam) {
+					const url = new URL(page.url);
+					url.searchParams.set('id', startParam);
+					goto(url, { replaceState: true, noScroll: true, keepFocus: true });
+				}
+			} catch (e) {
+				console.log('[startParam] retrieveLaunchParams() failed', e);
+			}
+		}
 
 		try {
 			miniApp.mount();

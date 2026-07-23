@@ -7,10 +7,12 @@
 
 	let {
 		card,
+		readOnly = false,
 		onClose,
 		onDiscarded,
 	}: {
 		card: Card | undefined;
+		readOnly?: boolean;
 		onClose: () => void;
 		onDiscarded: (cardId: number, coinsAwarded: number, remainingCount: number) => void;
 	} = $props();
@@ -24,7 +26,7 @@
 	let owned = $derived(!!card && card.ownedCount > 0);
 
 	$effect(() => {
-		if (card) {
+		if (card && !readOnly) {
 			telegramTrpc.telegram.cards.myFavoriteCardId.query().then((id) => (favoriteCardId = id));
 			telegramTrpc.telegram.cards.wishlistStatus.query({ cardId: card.id }).then((status) => (onWishlist = status));
 			if (card.ownedCount > 0) telegramTrpc.telegram.cards.tradableStatus.query({ cardId: card.id }).then((status) => (tradable = status));
@@ -86,17 +88,19 @@
 			{/if}
 		</ActionsLabel>
 		<ActionsButton onClick={copyId}>Copiar ID do card</ActionsButton>
-		<ActionsButton onClick={toggleWishlist}>
-			{onWishlist ? 'Remover da lista de desejos' : 'Adicionar à lista de desejos'}
-		</ActionsButton>
-		{#if owned}
-			<ActionsButton onClick={setFavorite}>
-				{card && card.id === favoriteCardId ? 'Carta favorita atual' : 'Marcar como favorita'}
+		{#if !readOnly}
+			<ActionsButton onClick={toggleWishlist}>
+				{onWishlist ? 'Remover da lista de desejos' : 'Adicionar à lista de desejos'}
 			</ActionsButton>
-			<ActionsButton onClick={toggleTradable}>
-				{tradable ? 'Marcar como não trocável' : 'Marcar como trocável'}
-			</ActionsButton>
-			<ActionsButton onClick={() => (confirmOpen = true)} colors={{ textIos: 'text-red-500', textMaterial: 'text-red-500' }}>Deletar card</ActionsButton>
+			{#if owned}
+				<ActionsButton onClick={setFavorite}>
+					{card && card.id === favoriteCardId ? 'Carta favorita atual' : 'Marcar como favorita'}
+				</ActionsButton>
+				<ActionsButton onClick={toggleTradable}>
+					{tradable ? 'Marcar como não trocável' : 'Marcar como trocável'}
+				</ActionsButton>
+				<ActionsButton onClick={() => (confirmOpen = true)} colors={{ textIos: 'text-red-500', textMaterial: 'text-red-500' }}>Deletar card</ActionsButton>
+			{/if}
 		{/if}
 	</ActionsGroup>
 	<ActionsGroup>

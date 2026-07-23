@@ -13,7 +13,7 @@ import {
   subcategoryGoals,
 } from "./schemas/cards";
 import { users } from "./schemas/users";
-import { eq, and, sql, ilike, desc, gte, inArray } from "drizzle-orm";
+import { eq, and, sql, ilike, desc, gte, gt, inArray } from "drizzle-orm";
 import { CARD_DISCARD_REWARDS } from "./constants";
 
 export class InsufficientCardError extends Error {
@@ -624,6 +624,48 @@ export class CardsDB {
     const where = query
       ? and(eq(userCards.userId, userId), ilike(cards.name, `%${query}%`))
       : eq(userCards.userId, userId);
+
+    const [rows, total] = await Promise.all([
+      client
+        .select({
+          id: cards.id,
+          name: cards.name,
+          imageUrl: cards.imageUrl,
+          rarityName: rarities.name,
+          rarityEmoji: rarities.emoji,
+          categoryEmoji: categories.emoji,
+          categoryName: categories.name,
+          subcategoryName: subcategories.name,
+          ownedCount: userCards.count,
+        })
+        .from(userCards)
+        .innerJoin(cards, eq(cards.id, userCards.cardId))
+        .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+        .leftJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.isMain, true)))
+        .leftJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
+        .leftJoin(categories, eq(categories.id, subcategories.categoryId))
+        .where(where)
+        .orderBy(desc(cards.rarityId), cards.id)
+        .limit(limit)
+        .offset(offset),
+      client
+        .select({ total: sql<number>`CAST(COUNT(*) AS INTEGER)` })
+        .from(userCards)
+        .innerJoin(cards, eq(cards.id, userCards.cardId))
+        .where(where)
+        .then(r => r[0]?.total ?? 0),
+    ]);
+
+    return { rows, total };
+  })
+
+  static getDuplicateCards = maybeTransaction('getDuplicateCards', async (
+    client, userId: number, opts: { query?: string; limit?: number; offset?: number } = {},
+  ) => {
+    const { query, limit = 20, offset = 0 } = opts;
+    const where = query
+      ? and(eq(userCards.userId, userId), gt(userCards.count, 1), ilike(cards.name, `%${query}%`))
+      : and(eq(userCards.userId, userId), gt(userCards.count, 1));
 
     const [rows, total] = await Promise.all([
       client

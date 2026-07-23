@@ -17,15 +17,26 @@
 	const PAGE_SIZE = 10;
 	const WISHLIST_PAGE_SIZE = 25;
 
+	let { viewingUserId }: { viewingUserId?: number } = $props();
+
+	let targetInfo = $state<{ displayName: string; isSelf: boolean; viewable: boolean } | undefined>(undefined);
+	$effect(() => {
+		if (viewingUserId === undefined) { targetInfo = undefined; return; }
+		telegramTrpc.telegram.cards.targetInfo.query({ targetUserId: viewingUserId }).then((info) => (targetInfo = info));
+	});
+	let readOnly = $derived(!!targetInfo && !targetInfo.isSelf);
+	let blocked = $derived(!!targetInfo && !targetInfo.viewable);
+	const targetUserIdForQuery = () => (targetInfo && !targetInfo.isSelf ? viewingUserId : undefined);
+
 	type ViewMode = 'cards' | 'wishlist';
 	let viewMode = $state<ViewMode>('cards');
 
 	let searchQuery = $state('');
 	const sections = createPaginatedList<Section, { rows: Section[]; total: number }>((offset) =>
-		telegramTrpc.telegram.cards.bySubcategory.query({ query: searchQuery || undefined, limit: PAGE_SIZE, offset }),
+		telegramTrpc.telegram.cards.bySubcategory.query({ query: searchQuery || undefined, limit: PAGE_SIZE, offset, targetUserId: targetUserIdForQuery() }),
 	);
 	const wishlist = createPaginatedList<WishlistCard, { rows: WishlistCard[]; total: number }>((offset) =>
-		telegramTrpc.telegram.cards.wishlist.query({ limit: WISHLIST_PAGE_SIZE, offset }),
+		telegramTrpc.telegram.cards.wishlist.query({ limit: WISHLIST_PAGE_SIZE, offset, targetUserId: targetUserIdForQuery() }),
 	);
 
 	let wishlistQuery = $state('');
@@ -41,21 +52,24 @@
 	let wishlistActionsCard = $state<WishlistCard | undefined>(undefined);
 	let detailSection = $state<{ subcategoryId: number; subcategoryName: string } | undefined>(undefined);
 
+	let targetReady = $derived(viewingUserId === undefined || !!targetInfo);
+
 	$effect(() => {
 		searchQuery;
-		sections.reset();
+		if (targetReady && !blocked) sections.reset();
 	});
 
 	$effect(() => {
-		if (viewMode === 'wishlist' && wishlist.items.length === 0) wishlist.reset();
+		if (targetReady && !blocked && viewMode === 'wishlist' && wishlist.items.length === 0) wishlist.reset();
 	});
 
 	$effect(() => {
 		wishlistQuery;
-		if (!browsingWishlist) catalogSearch.reset();
+		if (!readOnly && !browsingWishlist) catalogSearch.reset();
 	});
 
 	function onWishlistReorder(cardIds: number[]) {
+		if (readOnly) return;
 		telegramTrpc.telegram.cards.wishlistReorder.mutate({ cardIds });
 	}
 
@@ -123,7 +137,19 @@
 	}
 </script>
 
-{#if detailSection}
+{#if viewingUserId !== undefined && !targetReady}
+	<Page class="pb-safe-24">
+		<Navbar title="Cards" />
+		<div class="flex justify-center p-8"><Preloader /></div>
+	</Page>
+{:else if blocked}
+	<Page class="pb-safe-24">
+		<Navbar title="Cards" />
+		<div class="flex h-full flex-col items-center justify-center gap-2 p-4 text-center">
+			<p>esse usuario tem o modo de privacidade ativo e não é possível ver os cards dele. 🔒</p>
+		</div>
+	</Page>
+{:else if detailSection}
 	<SubcategoryDetailView
 		subcategoryId={detailSection.subcategoryId}
 		subcategoryName={detailSection.subcategoryName}
@@ -132,16 +158,16 @@
 	/>
 {:else}
 	<Page class="pb-safe-24">
-		<Navbar title="Cards">
+		<Navbar title={readOnly ? `Cards de ${targetInfo?.displayName}` : 'Cards'}>
 			{#snippet right()}
-				{#if viewMode === 'cards'}
+				{#if viewMode === 'cards' && !readOnly}
 					<Link onClick={toggleSelectionMode}>{selectionMode ? 'Cancelar' : 'Selecionar'}</Link>
 				{/if}
 			{/snippet}
 			{#snippet subnavbar()}
 				{#if viewMode === 'cards'}
 					<Searchbar value={searchQuery} onInput={(e: Event) => (searchQuery = (e.target as HTMLInputElement).value)} onClear={() => (searchQuery = '')} placeholder="Pesquisar..." />
-				{:else}
+				{:else if !readOnly}
 					<Searchbar value={wishlistQuery} onInput={(e: Event) => (wishlistQuery = (e.target as HTMLInputElement).value)} onClear={() => (wishlistQuery = '')} placeholder="Pesquisar qualquer card..." />
 				{/if}
 			{/snippet}
@@ -167,7 +193,7 @@
 					</BlockTitle>
 					<CardRows
 						cards={section.cards}
-						{selectionMode}
+						selectionMode={selectionMode && !readOnly}
 						{selectedIds}
 						{quantities}
 						onToggleSelect={toggleSelect}
@@ -181,7 +207,7 @@
 			{#if wishlist.resetLoading}
 				<div class="flex justify-center p-8"><Preloader /></div>
 			{:else}
-				<WishlistGrid bind:items={wishlist.items} reorderable onOpen={(c) => (wishlistActionsCard = c)} onReorder={onWishlistReorder} />
+				<WishlistGrid bind:items={wishlist.items} reorderable={!readOnly} onOpen={(c) => (wishlistActionsCard = c)} onReorder={onWishlistReorder} />
 				<InfiniteScrollSentinel disabled={wishlist.items.length >= wishlist.total} loading={wishlist.loading} onIntersect={wishlist.loadMore} />
 			{/if}
 		{:else if catalogSearch.resetLoading}
@@ -193,9 +219,11 @@
 	</Page>
 {/if}
 
-<CardActionsSheet card={actionsCard} onClose={() => (actionsCard = undefined)} onDiscarded={onSingleDiscarded} />
-<WishlistActionsSheet card={wishlistActionsCard} onClose={() => (wishlistActionsCard = undefined)} onChanged={onWishlistCardChanged} />
+<CardActionsSheet card={actionsCard} {readOnly} onClose={() => (actionsCard = undefined)} onDiscarded={onSingleDiscarded} />
+{#if !readOnly}
+	<WishlistActionsSheet card={wishlistActionsCard} onClose={() => (wishlistActionsCard = undefined)} onChanged={onWishlistCardChanged} />
+{/if}
 
-{#if selectionMode && selectedCards.length > 0}
+{#if !readOnly && selectionMode && selectedCards.length > 0}
 	<BulkDiscardBar selectedCards={selectedCards} {quantities} onDone={onBulkDone} />
 {/if}

@@ -11,10 +11,36 @@ const listInput = z.object({
 	offset: z.number().int().nonnegative().optional(),
 });
 
+const viewingInput = listInput.extend({ targetUserId: z.number().int().positive().optional() });
+
+async function resolveViewSubject(ctx: { tgUser: { id: number } }, targetUserId: number | undefined) {
+	const user = await requireUser(ctx.tgUser.id.toString());
+	if (!targetUserId || targetUserId === user.id) return user;
+
+	const target = await UsersDB.getUserById(targetUserId);
+	if (!target) throw new TRPCError({ code: 'NOT_FOUND' });
+	if (!UsersDB.isViewable(user.id, target)) throw new TRPCError({ code: 'FORBIDDEN' });
+	return target;
+}
+
 export const telegramCardsRouter = t.router({
-	bySubcategory: telegramProcedure.input(listInput).query(async ({ ctx, input }) => {
-		const user = await requireUser(ctx.tgUser.id.toString());
-		return CardsDB.getUserOwnedCardsBySubcategory(user.id, input);
+	targetInfo: telegramProcedure
+		.input(z.object({ targetUserId: z.number().int().positive() }))
+		.query(async ({ ctx, input }) => {
+			const user = await requireUser(ctx.tgUser.id.toString());
+			const target = await UsersDB.getUserById(input.targetUserId);
+			if (!target) throw new TRPCError({ code: 'NOT_FOUND' });
+			return {
+				displayName: target.displayName,
+				isSelf: target.id === user.id,
+				viewable: UsersDB.isViewable(user.id, target),
+			};
+		}),
+
+	bySubcategory: telegramProcedure.input(viewingInput).query(async ({ ctx, input }) => {
+		const { targetUserId, ...opts } = input;
+		const subject = await resolveViewSubject(ctx, targetUserId);
+		return CardsDB.getUserOwnedCardsBySubcategory(subject.id, opts);
 	}),
 
 	overview: telegramProcedure
@@ -79,9 +105,10 @@ export const telegramCardsRouter = t.router({
 			return CardsDB.getCardsInSubcategoryForUserPaginated(subcategoryId, user.id, opts);
 		}),
 
-	wishlist: telegramProcedure.input(listInput).query(async ({ ctx, input }) => {
-		const user = await requireUser(ctx.tgUser.id.toString());
-		return CardsDB.getWishlist(user.id, input);
+	wishlist: telegramProcedure.input(viewingInput).query(async ({ ctx, input }) => {
+		const { targetUserId, ...opts } = input;
+		const subject = await resolveViewSubject(ctx, targetUserId);
+		return CardsDB.getWishlist(subject.id, opts);
 	}),
 
 	cardSearch: telegramProcedure.input(listInput).query(async ({ input }) => {

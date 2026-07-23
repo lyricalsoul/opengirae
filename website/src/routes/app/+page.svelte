@@ -7,17 +7,20 @@
 	import LojaTab from '$lib/components/app/LojaTab.svelte';
 	import InventarioTab from '$lib/components/app/InventarioTab.svelte';
 
-	type Tab = 'cards' | 'colecoes' | 'loja' | 'inventario';
+	type Tab = 'cards' | 'card' | 'colecoes' | 'loja' | 'inventario';
 	const TABS: Tab[] = ['cards', 'colecoes', 'loja', 'inventario'];
 
 	const requestedTab = page.url.searchParams.get('tab');
 	const initialTab = TABS.includes(requestedTab as Tab) ? (requestedTab as Tab) : 'cards';
 
 	let activeTab = $state<Tab>(initialTab);
+
+	let idParam = $derived(page.url.searchParams.get('id'));
+	let viewingUserId = $derived(idParam && /^\d+$/.test(idParam) ? parseInt(idParam, 10) : undefined);
 </script>
 
-{#if activeTab === 'cards'}
-	<CardsTab />
+{#if activeTab === 'cards' || activeTab === 'card'}
+	<CardsTab {viewingUserId} />
 {:else if activeTab === 'colecoes'}
 	<ColecoesTab />
 {:else if activeTab === 'loja'}
