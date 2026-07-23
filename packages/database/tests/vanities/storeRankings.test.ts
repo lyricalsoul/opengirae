@@ -1,35 +1,26 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
+import { TestFixtures } from "@girae/tests";
 import { db } from "../../index";
-import { users } from "../../schemas/users";
-import { storeItems, boughtItems } from "../../schemas/vanities";
-import { eq, inArray } from "drizzle-orm";
+import { boughtItems } from "../../schemas/vanities";
 import { VanitiesDB } from "../../vanities";
 
 describe("VanitiesDB store ranking queries", () => {
+  const fx = new TestFixtures();
   let popularItemId: number, unpopularItemId: number;
-  let buyerId: number;
 
   beforeAll(async () => {
-    const [popular, unpopular] = await db.insert(storeItems).values([
-      { title: `Ranking Popular ${Date.now()}`, description: "d", type: "sticker", price: 10, itemURL: "https://example.com/a.png" },
-      { title: `Ranking Unpopular ${Date.now()}`, description: "d", type: "sticker", price: 10, itemURL: "https://example.com/b.png" },
-    ]).returning();
-    popularItemId = popular!.id;
-    unpopularItemId = unpopular!.id;
-
-    const [buyer] = await db.insert(users).values({
-      displayName: "Buyer", avatarUrl: "",
-    }).returning();
-    buyerId = buyer!.id;
+    // registration order matters for cleanup: the buyer must be registered (and thus
+    // torn down) *after* the store items, since boughtItems.itemId cascade-deletes on
+    // the item but boughtItems.userId does not cascade on the user - deleting the user
+    // first would FK-violate on a still-existing boughtItems row.
+    const buyerId = (await fx.user({ displayName: "Buyer" })).id;
+    popularItemId = (await fx.storeItem({ title: `Ranking Popular ${Date.now()}`, type: 'sticker', price: 10, itemURL: "https://example.com/a.png" })).id;
+    unpopularItemId = (await fx.storeItem({ title: `Ranking Unpopular ${Date.now()}`, type: 'sticker', price: 10, itemURL: "https://example.com/b.png" })).id;
 
     await db.insert(boughtItems).values({ userId: buyerId, itemId: popularItemId });
   });
 
-  afterAll(async () => {
-    await db.delete(boughtItems).where(eq(boughtItems.userId, buyerId));
-    await db.delete(storeItems).where(inArray(storeItems.id, [popularItemId, unpopularItemId]));
-    await db.delete(users).where(eq(users.id, buyerId));
-  });
+  afterAll(() => fx.cleanup());
 
   test("listStoreItemsByPopularity orders the purchased item first", async () => {
     const result = await VanitiesDB.listStoreItemsByPopularity('sticker', { limit: 50 });

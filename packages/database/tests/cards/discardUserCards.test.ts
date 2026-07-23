@@ -1,42 +1,30 @@
 import { test, expect, describe, beforeAll, afterAll, beforeEach } from "bun:test";
+import { TestFixtures } from "@girae/tests";
 import { db } from "../../index";
 import { users } from "../../schemas/users";
-import { cards, userCards, rarities } from "../../schemas/cards";
-import { eq, inArray } from "drizzle-orm";
+import { userCards, rarities } from "../../schemas/cards";
+import { eq } from "drizzle-orm";
 import { CardsDB } from "../../cards";
 import { CARD_DISCARD_REWARDS } from "../../constants";
 
 describe("CardsDB.discardUserCards", () => {
+  const fx = new TestFixtures();
   let userId: number;
-  let comumRarityId: number, raroRarityId: number;
   let ownedCardAId: number, ownedCardBId: number, unownedCardId: number;
 
   beforeAll(async () => {
     const [comum] = await db.select().from(rarities).where(eq(rarities.name, "Comum")).limit(1);
     const [raro] = await db.select().from(rarities).where(eq(rarities.name, "Raro")).limit(1);
-    comumRarityId = comum!.id;
-    raroRarityId = raro!.id;
 
-    const [user] = await db.insert(users).values({
-      displayName: "Test Bulk Discard", avatarUrl: "", coins: 0,
-    }).returning();
-    userId = user!.id;
+    userId = (await fx.user({ displayName: "Test Bulk Discard" })).id;
+    ownedCardAId = (await fx.card({ name: "Test Bulk A", rarityId: comum!.id })).id;
+    ownedCardBId = (await fx.card({ name: "Test Bulk B", rarityId: raro!.id })).id;
+    unownedCardId = (await fx.card({ name: "Test Bulk Unowned", rarityId: comum!.id })).id;
 
-    const [a, b, c] = await db.insert(cards).values([
-      { name: "Test Bulk A", rarityId: comumRarityId },
-      { name: "Test Bulk B", rarityId: raroRarityId },
-      { name: "Test Bulk Unowned", rarityId: comumRarityId },
-    ]).returning();
-    ownedCardAId = a!.id;
-    ownedCardBId = b!.id;
-    unownedCardId = c!.id;
+    fx.onCleanup(async () => { await db.delete(userCards).where(eq(userCards.userId, userId)); });
   });
 
-  afterAll(async () => {
-    await db.delete(userCards).where(eq(userCards.userId, userId));
-    await db.delete(cards).where(inArray(cards.id, [ownedCardAId, ownedCardBId, unownedCardId]));
-    await db.delete(users).where(eq(users.id, userId));
-  });
+  afterAll(() => fx.cleanup());
 
   beforeEach(async () => {
     await db.delete(userCards).where(eq(userCards.userId, userId));

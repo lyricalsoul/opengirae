@@ -1,51 +1,45 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram, bootstrapCommandeerWorkers } from "@girae/tests";
+import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures } from "@girae/tests";
 import { db } from "@girae/database/index";
-import { users, linkedAccounts } from "@girae/database/schemas/users";
-import { categories, subcategories, cards, cardSubcategories, rarities } from "@girae/database/schemas/cards";
+import { users } from "@girae/database/schemas/users";
+import { categories } from "@girae/database/schemas/cards";
 import { eq } from "drizzle-orm";
 import { rawClient, commandQueue } from "@girae/common/queue";
 import { processCallback } from "@girae/common/inbound/callback";
-import type { IncomingCommand } from "@girae/common/commands/types";
 
 // Must run at module scope, not inside beforeAll - mock.module only affects imports that happen afterward.
 const { sentMessages } = mockTelegram();
 
 describe("girar concurrency (real workers, TOCTOU coverage)", () => {
+  const fx = new TestFixtures();
   let userId: number;
   let telegramId: string;
-  let rarityId: number;
-  let categoryId: number, subcategoryId: number, cardId: number;
 
   beforeAll(async () => {
     await bootstrapCommandeerWorkers();
 
     telegramId = `test-girar-concurrency-${Date.now()}`;
-    rarityId = await db.select({ id: rarities.id }).from(rarities).limit(1).then(r => r[0]!.id);
+    userId = (await fx.user({ displayName: "Test Girar Concurrency", platform: 'telegram', platformId: telegramId })).id;
 
-    const [user] = await db.insert(users).values({ displayName: "Test Girar Concurrency", avatarUrl: "" }).returning();
-    userId = user!.id;
-    await db.insert(linkedAccounts).values({ userId, platform: 'telegram', platformId: telegramId });
+    const categoryId = (await fx.category({ name: "Test Concurrency Category", emoji: "🧪" })).id;
+    await db.update(categories).set({ subcategoriesOnDraw: 1 }).where(eq(categories.id, categoryId));
 
-    const [category] = await db.insert(categories).values({ name: "Test Concurrency Category", emoji: "🧪", subcategoriesOnDraw: 1 }).returning();
-    categoryId = category!.id;
-
-    const [subcategory] = await db.insert(subcategories).values({ categoryId, name: "Test Concurrency Sub" }).returning();
-    subcategoryId = subcategory!.id;
-
-    const [card] = await db.insert(cards).values({ name: "Test Concurrency Card", rarityId }).returning();
-    cardId = card!.id;
-    await db.insert(cardSubcategories).values({ cardId, subcategoryId, isMain: true });
+    const subcategoryId = (await fx.subcategory({ categoryId, name: "Test Concurrency Sub" })).id;
+    await fx.card({ name: "Test Concurrency Card", subcategoryId });
   });
 
   afterAll(async () => {
     await rawClient.del(`girar:active:${telegramId}`);
-    await db.delete(cardSubcategories).where(eq(cardSubcategories.cardId, cardId));
-    await db.delete(cards).where(eq(cards.id, cardId));
-    await db.delete(subcategories).where(eq(subcategories.id, subcategoryId));
-    await db.delete(categories).where(eq(categories.id, categoryId));
-    await db.delete(linkedAccounts).where(eq(linkedAccounts.userId, userId));
-    await db.delete(users).where(eq(users.id, userId));
+    await fx.cleanup();
+  });
+
+  const chatId = () => `chat-${telegramId}`;
+  const makeCommand = () => fakeCtx({
+    name: 'girar',
+    authorId: telegramId,
+    platform: 'telegram',
+    chatId: chatId(),
+    workflowID: `wf-${Date.now()}-${Math.floor(Math.random() * 1e9)}`,
   });
 
   test("two concurrent /girar invocations for the same user: only one claims the flow", async () => {
@@ -60,20 +54,6 @@ describe("girar concurrency (real workers, TOCTOU coverage)", () => {
   test("firing two /girar commands at once: exactly one interactive flow proceeds, the other gets a resend or block, no double draw", async () => {
     await rawClient.del(`girar:active:${telegramId}`);
     const before = await db.select({ usedDraws: users.usedDraws }).from(users).where(eq(users.id, userId)).then(r => r[0]!.usedDraws);
-
-    const makeCommand = (): IncomingCommand => ({
-      name: 'girar',
-      args: [],
-      message: {
-        id: `msg-${Math.random()}`,
-        author: { id: telegramId, name: 'Test User', avatarUrl: '' },
-        chat: { id: `chat-${telegramId}`, title: 'Test Chat' },
-        content: '/girar',
-        timestamp: new Date(),
-        platform: 'telegram',
-      },
-      workflowIDToBeAssigned: `wf-${Date.now()}-${Math.floor(Math.random() * 1e9)}`,
-    });
 
     await Promise.all([
       commandQueue.add('executeCommand', makeCommand()),
@@ -97,21 +77,6 @@ describe("girar concurrency (real workers, TOCTOU coverage)", () => {
   test("clicking the RESENT category button resumes the original still-running workflow (not a dead/duplicate one)", async () => {
     await rawClient.del(`girar:active:${telegramId}`);
     const startIndex = sentMessages.length;
-    const chatId = `chat-${telegramId}`;
-
-    const makeCommand = (): IncomingCommand => ({
-      name: 'girar',
-      args: [],
-      message: {
-        id: `msg-${Math.random()}`,
-        author: { id: telegramId, name: 'Test User', avatarUrl: '' },
-        chat: { id: chatId, title: 'Test Chat' },
-        content: '/girar',
-        timestamp: new Date(),
-        platform: 'telegram',
-      },
-      workflowIDToBeAssigned: `wf-${Date.now()}-${Math.floor(Math.random() * 1e9)}`,
-    });
 
     // First invocation: starts the real workflow, which parks at DBOS.recv() waiting for a click.
     await commandQueue.add('executeCommand', makeCommand());
@@ -136,7 +101,7 @@ describe("girar concurrency (real workers, TOCTOU coverage)", () => {
 
     const before = await db.select({ usedDraws: users.usedDraws }).from(users).where(eq(users.id, userId)).then(r => r[0]!.usedDraws);
 
-    await processCallback(callbackData!, telegramId, `test-click-${Date.now()}`, 'telegram', chatId, 'resent-msg-id');
+    await processCallback(callbackData!, telegramId, `test-click-${Date.now()}`, 'telegram', chatId(), 'resent-msg-id');
     await new Promise(resolve => setTimeout(resolve, 1500));
 
     // proves the click reached the real, still-running workflow, not a dead/expired one.

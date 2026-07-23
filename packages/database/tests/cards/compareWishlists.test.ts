@@ -1,41 +1,32 @@
 import { test, expect, describe, beforeAll, afterAll, beforeEach } from "bun:test";
+import { TestFixtures } from "@girae/tests";
 import { db } from "../../index";
-import { users } from "../../schemas/users";
-import { cards, rarities, userCards, wishlist } from "../../schemas/cards";
-import { eq, inArray } from "drizzle-orm";
+import { userCards, wishlist } from "../../schemas/cards";
+import { inArray } from "drizzle-orm";
 import { CardsDB } from "../../cards";
 
 describe("CardsDB.compareWishlists", () => {
+  const fx = new TestFixtures();
   let userAId: number, userBId: number;
-  let rarityId: number;
   let cardWantedByBId: number, cardWantedByAId: number, cardNotTradableId: number;
 
   beforeAll(async () => {
-    rarityId = await db.select().from(rarities).limit(1).then(r => r[0]!.id);
+    userAId = (await fx.user({ displayName: "Test Compare A" })).id;
+    userBId = (await fx.user({ displayName: "Test Compare B" })).id;
 
-    const [a, b] = await db.insert(users).values([
-      { displayName: "Test Compare A", avatarUrl: "" },
-      { displayName: "Test Compare B", avatarUrl: "" },
-    ]).returning();
-    userAId = a!.id;
-    userBId = b!.id;
+    cardWantedByBId = (await fx.card({ name: "Test Compare Card wanted-by-B" })).id;
+    cardWantedByAId = (await fx.card({ name: "Test Compare Card wanted-by-A" })).id;
+    cardNotTradableId = (await fx.card({ name: "Test Compare Card not-tradable" })).id;
 
-    const [c1, c2, c3] = await db.insert(cards).values([
-      { name: "Test Compare Card wanted-by-B", rarityId },
-      { name: "Test Compare Card wanted-by-A", rarityId },
-      { name: "Test Compare Card not-tradable", rarityId },
-    ]).returning();
-    cardWantedByBId = c1!.id;
-    cardWantedByAId = c2!.id;
-    cardNotTradableId = c3!.id;
+    // safety net: the last test leaves wishlist/userCards rows behind (beforeEach only
+    // clears *before* each test) - this must run before fx.cleanup() deletes the cards/users.
+    fx.onCleanup(async () => {
+      await db.delete(wishlist).where(inArray(wishlist.userId, [userAId, userBId]));
+      await db.delete(userCards).where(inArray(userCards.userId, [userAId, userBId]));
+    });
   });
 
-  afterAll(async () => {
-    await db.delete(wishlist).where(inArray(wishlist.userId, [userAId, userBId]));
-    await db.delete(userCards).where(inArray(userCards.userId, [userAId, userBId]));
-    await db.delete(cards).where(inArray(cards.id, [cardWantedByBId, cardWantedByAId, cardNotTradableId]));
-    await db.delete(users).where(inArray(users.id, [userAId, userBId]));
-  });
+  afterAll(() => fx.cleanup());
 
   beforeEach(async () => {
     await db.delete(wishlist).where(inArray(wishlist.userId, [userAId, userBId]));

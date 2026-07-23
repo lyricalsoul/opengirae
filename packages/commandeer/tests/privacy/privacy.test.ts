@@ -1,74 +1,47 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram, bootstrapCommandeerWorkers } from "@girae/tests";
-import { db } from "@girae/database/index";
-import { users, linkedAccounts, userProfiles } from "@girae/database/schemas/users";
+import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures } from "@girae/tests";
 import { UsersDB } from "@girae/database/users";
-import { eq } from "drizzle-orm";
-import type { IncomingCommand } from "@girae/common/commands/types";
 import PrivacyCommand from "../../commands/all/privacy.users";
 import ProfileCommand from "../../commands/all/profile.users";
 
 mockTelegram();
 
 describe("/privacy toggles privacyMode, and gates viewing other users' profiles", () => {
+  const fx = new TestFixtures();
   let viewerId: number;
   let targetId: number;
+  const viewerPlatformId = 'test-privacy-viewer';
+  const targetPlatformId = 'test-privacy-target';
 
   beforeAll(async () => {
     process.env.PORT = '0';
     await bootstrapCommandeerWorkers(); // needed so PrivacyCommand's reply() has a worker to complete against
 
-    const [viewer] = await db.insert(users).values({ displayName: "Test Privacy Viewer", avatarUrl: "" }).returning();
-    viewerId = viewer!.id;
-    await db.insert(linkedAccounts).values({ userId: viewerId, platform: 'none', platformId: 'test-privacy-viewer' });
-    await db.insert(userProfiles).values({ userId: viewerId });
-
-    const [target] = await db.insert(users).values({ displayName: "Test Privacy Target", avatarUrl: "" }).returning();
-    targetId = target!.id;
-    await db.insert(linkedAccounts).values({ userId: targetId, platform: 'none', platformId: 'test-privacy-target' });
-    await db.insert(userProfiles).values({ userId: targetId });
+    viewerId = (await fx.user({ displayName: "Test Privacy Viewer", platformId: viewerPlatformId })).id;
+    targetId = (await fx.user({ displayName: "Test Privacy Target", platformId: targetPlatformId })).id;
   });
 
-  afterAll(async () => {
-    await db.delete(userProfiles).where(eq(userProfiles.userId, viewerId));
-    await db.delete(userProfiles).where(eq(userProfiles.userId, targetId));
-    await db.delete(linkedAccounts).where(eq(linkedAccounts.userId, viewerId));
-    await db.delete(linkedAccounts).where(eq(linkedAccounts.userId, targetId));
-    await db.delete(users).where(eq(users.id, viewerId));
-    await db.delete(users).where(eq(users.id, targetId));
-  });
+  afterAll(() => fx.cleanup());
 
-  function ctx(authorId: string): IncomingCommand {
-    return {
-      name: 'privacy',
-      args: [],
-      workflowIDToBeAssigned: `test-privacy-${Date.now()}-${Math.random()}`,
-      message: {
-        id: 'msg-1',
-        author: { id: authorId, name: 'Tester', avatarUrl: '' },
-        chat: { id: 'chat-1', title: 'test' },
-        content: '/privacy',
-        timestamp: new Date(),
-        platform: 'none',
-      },
-    };
+  function ctx(authorId: string, args: { target?: string } = {}) {
+    return fakeCtx({ name: 'privacy', authorId, args: args.target ? [args.target] : [] });
   }
 
   test("/privacy flips privacyMode off -> on -> off", async () => {
     const before = await UsersDB.getUserById(viewerId);
     expect(before!.privacyMode).toBe(false);
 
-    await PrivacyCommand.execute(ctx('test-privacy-viewer'));
+    await PrivacyCommand.execute(ctx(viewerPlatformId));
     expect((await UsersDB.getUserById(viewerId))!.privacyMode).toBe(true);
 
-    await PrivacyCommand.execute(ctx('test-privacy-viewer'));
+    await PrivacyCommand.execute(ctx(viewerPlatformId));
     expect((await UsersDB.getUserById(viewerId))!.privacyMode).toBe(false);
   });
 
   test("/profile privacidade subcommand toggles the same flag", async () => {
-    await (ProfileCommand as any).togglePrivacy(ctx('test-privacy-viewer'));
+    await (ProfileCommand as any).togglePrivacy(ctx(viewerPlatformId));
     expect((await UsersDB.getUserById(viewerId))!.privacyMode).toBe(true);
-    await (ProfileCommand as any).togglePrivacy(ctx('test-privacy-viewer'));
+    await (ProfileCommand as any).togglePrivacy(ctx(viewerPlatformId));
     expect((await UsersDB.getUserById(viewerId))!.privacyMode).toBe(false);
   });
 
@@ -94,7 +67,7 @@ describe("/privacy toggles privacyMode, and gates viewing other users' profiles"
 
   test("ProfileCommand.execute's privacy check reaches the block branch for a private target (no throw, resolves)", async () => {
     await UsersDB.setPrivacyMode(targetId, true);
-    await expect(ProfileCommand.execute(ctx('test-privacy-viewer'), { target: 'test-privacy-target' })).resolves.toBeUndefined();
+    await expect(ProfileCommand.execute(ctx(viewerPlatformId), { target: targetPlatformId })).resolves.toBeUndefined();
     await UsersDB.setPrivacyMode(targetId, false);
   });
 });

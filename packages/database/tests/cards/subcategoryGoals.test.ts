@@ -1,40 +1,26 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
+import { TestFixtures } from "@girae/tests";
 import { db } from "../../index";
-import { users } from "../../schemas/users";
-import { categories, subcategories, subcategoryGoals } from "../../schemas/cards";
-import { eq, inArray } from "drizzle-orm";
+import { subcategoryGoals } from "../../schemas/cards";
+import { eq } from "drizzle-orm";
 import { CardsDB } from "../../cards";
 
 describe("CardsDB goal (favorite collection) methods", () => {
+  const fx = new TestFixtures();
   let userId: number;
   let categoryId: number;
   let subA: number, subB: number;
 
   beforeAll(async () => {
-    const [user] = await db.insert(users).values({
-      displayName: "Test Goals", avatarUrl: "",
-    }).returning();
-    userId = user!.id;
+    userId = (await fx.user({ displayName: "Test Goals" })).id;
+    categoryId = (await fx.category({ name: "Test Goals Category" })).id;
+    subA = (await fx.subcategory({ categoryId, name: "Test Goals Sub A" })).id;
+    subB = (await fx.subcategory({ categoryId, name: "Test Goals Sub B" })).id;
 
-    const [category] = await db.insert(categories).values({
-      name: "Test Goals Category", emoji: "🧪",
-    }).returning();
-    categoryId = category!.id;
-
-    const [a, b] = await db.insert(subcategories).values([
-      { categoryId, name: "Test Goals Sub A" },
-      { categoryId, name: "Test Goals Sub B" },
-    ]).returning();
-    subA = a!.id;
-    subB = b!.id;
+    fx.onCleanup(async () => { await db.delete(subcategoryGoals).where(eq(subcategoryGoals.userId, userId)); });
   });
 
-  afterAll(async () => {
-    await db.delete(subcategoryGoals).where(eq(subcategoryGoals.userId, userId));
-    await db.delete(subcategories).where(inArray(subcategories.id, [subA, subB]));
-    await db.delete(categories).where(eq(categories.id, categoryId));
-    await db.delete(users).where(eq(users.id, userId));
-  });
+  afterAll(() => fx.cleanup());
 
   test("isOnGoals is false before anything is added", async () => {
     expect(await CardsDB.isOnGoals(userId, subA)).toBe(false);

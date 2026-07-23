@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
+import { TestFixtures } from "@girae/tests";
 import { db } from "../../index";
-import { users } from "../../schemas/users";
-import { cards, cardSubcategories, cardDrawHistory, chocolateFactoryCorrections, categories, subcategories, rarities } from "../../schemas/cards";
+import { cardSubcategories, cardDrawHistory, chocolateFactoryCorrections, subcategories } from "../../schemas/cards";
 import { eq, inArray } from "drizzle-orm";
 import { CardsDB } from "../../cards";
 
@@ -12,26 +12,21 @@ import { CardsDB } from "../../cards";
 // still deletable, and the FK cascade must actually clean those rows up rather than
 // erroring out.
 describe("CardsDB.deleteSubcategory", () => {
-  let rarityId: number;
+  const fx = new TestFixtures();
   let categoryId: number;
   let userId: number;
   let cardId: number;
 
   beforeAll(async () => {
-    rarityId = await db.select().from(rarities).limit(1).then(r => r[0]!.id);
-    categoryId = await db.insert(categories).values({ name: `Test Category ${Date.now()}`, emoji: "🏷️" }).returning().then(r => r[0]!.id);
-    userId = await db.insert(users).values({ displayName: "Test", avatarUrl: "" }).returning().then(r => r[0]!.id);
-    cardId = await db.insert(cards).values({ name: "Test Delsub Card", rarityId }).returning().then(r => r[0]!.id);
+    categoryId = (await fx.category({ name: `Test Category ${Date.now()}` })).id;
+    userId = (await fx.user({ displayName: "Test" })).id;
+    cardId = (await fx.card({ name: "Test Delsub Card" })).id;
   });
 
-  afterAll(async () => {
-    await db.delete(cards).where(eq(cards.id, cardId));
-    await db.delete(users).where(eq(users.id, userId));
-    await db.delete(categories).where(eq(categories.id, categoryId));
-  });
+  afterAll(() => fx.cleanup());
 
   async function makeSubcategory(name: string): Promise<number> {
-    return db.insert(subcategories).values({ name, categoryId }).returning().then(r => r[0]!.id);
+    return (await CardsDB.createSubcategory(name, categoryId))!.id;
   }
 
   test("refuses to delete a subcategory that still has cards", async () => {

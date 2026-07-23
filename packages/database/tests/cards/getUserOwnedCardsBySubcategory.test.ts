@@ -1,52 +1,28 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
+import { TestFixtures } from "@girae/tests";
 import { db } from "../../index";
-import { users } from "../../schemas/users";
-import { cards, userCards, rarities, categories, subcategories, cardSubcategories } from "../../schemas/cards";
-import { eq, inArray } from "drizzle-orm";
+import { userCards } from "../../schemas/cards";
+import { eq } from "drizzle-orm";
 import { CardsDB } from "../../cards";
 
 describe("CardsDB.getUserOwnedCardsBySubcategory", () => {
+  const fx = new TestFixtures();
   let userId: number;
-  let rarityId: number;
-  let categoryId: number;
   let subcategoryId: number;
-  let cardIds: number[];
 
   beforeAll(async () => {
-    rarityId = await db.select().from(rarities).limit(1).then(r => r[0]!.id);
+    userId = (await fx.user({ displayName: "Test Owned By Subcat" })).id;
+    const categoryId = (await fx.category({ name: `Test Subcat Group Category ${Date.now()}` })).id;
+    subcategoryId = (await fx.subcategory({ categoryId, name: "Test Subcat Group Subcategory" })).id;
 
-    const [user] = await db.insert(users).values({
-      displayName: "Test Owned By Subcat", avatarUrl: "",
-    }).returning();
-    userId = user!.id;
+    const cardIds: number[] = [];
+    for (let i = 0; i < 12; i++) cardIds.push((await fx.card({ name: `Subcat Group Card ${i}`, subcategoryId })).id);
 
-    const [category] = await db.insert(categories).values({
-      name: `Test Subcat Group Category ${Date.now()}`, emoji: "🧪",
-    }).returning();
-    categoryId = category!.id;
-
-    const [subcategory] = await db.insert(subcategories).values({
-      categoryId, name: "Test Subcat Group Subcategory",
-    }).returning();
-    subcategoryId = subcategory!.id;
-
-    const inserted = await db.insert(cards).values(
-      Array.from({ length: 12 }, (_, i) => ({ name: `Subcat Group Card ${i}`, rarityId })),
-    ).returning();
-    cardIds = inserted.map(c => c.id);
-
-    await db.insert(cardSubcategories).values(cardIds.map(cardId => ({ cardId, subcategoryId, isMain: true })));
     await db.insert(userCards).values(cardIds.map(cardId => ({ userId, cardId, count: 1 })));
+    fx.onCleanup(async () => { await db.delete(userCards).where(eq(userCards.userId, userId)); });
   });
 
-  afterAll(async () => {
-    await db.delete(userCards).where(eq(userCards.userId, userId));
-    await db.delete(cardSubcategories).where(inArray(cardSubcategories.cardId, cardIds));
-    await db.delete(cards).where(inArray(cards.id, cardIds));
-    await db.delete(subcategories).where(eq(subcategories.id, subcategoryId));
-    await db.delete(categories).where(eq(categories.id, categoryId));
-    await db.delete(users).where(eq(users.id, userId));
-  });
+  afterAll(() => fx.cleanup());
 
   test("caps the preview at 10 cards even though 12 are owned, but reports the real total", async () => {
     const result = await CardsDB.getUserOwnedCardsBySubcategory(userId, { query: "Subcat Group Card" });

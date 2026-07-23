@@ -1,37 +1,26 @@
 import { test, expect, describe, beforeAll, afterAll, beforeEach } from "bun:test";
+import { TestFixtures } from "@girae/tests";
 import { db } from "../../index";
 import { users } from "../../schemas/users";
-import { cards, rarities, userCards } from "../../schemas/cards";
-import { eq, inArray } from "drizzle-orm";
+import { userCards } from "../../schemas/cards";
+import { eq } from "drizzle-orm";
 import { CardsDB } from "../../cards";
 import { UsersDB } from "../../users";
 
 describe("tradable flag: default preference + explicit override", () => {
+  const fx = new TestFixtures();
   let userId: number;
-  let rarityId: number;
   let cardAId: number, cardBId: number;
 
   beforeAll(async () => {
-    rarityId = await db.select().from(rarities).limit(1).then(r => r[0]!.id);
+    userId = (await fx.user({ displayName: "Test Tradable" })).id;
+    cardAId = (await fx.card({ name: "Test Tradable Card A" })).id;
+    cardBId = (await fx.card({ name: "Test Tradable Card B" })).id;
 
-    const [user] = await db.insert(users).values({
-      displayName: "Test Tradable", avatarUrl: "",
-    }).returning();
-    userId = user!.id;
-
-    const [a, b] = await db.insert(cards).values([
-      { name: "Test Tradable Card A", rarityId },
-      { name: "Test Tradable Card B", rarityId },
-    ]).returning();
-    cardAId = a!.id;
-    cardBId = b!.id;
+    fx.onCleanup(async () => { await db.delete(userCards).where(eq(userCards.userId, userId)); });
   });
 
-  afterAll(async () => {
-    await db.delete(userCards).where(eq(userCards.userId, userId));
-    await db.delete(cards).where(inArray(cards.id, [cardAId, cardBId]));
-    await db.delete(users).where(eq(users.id, userId));
-  });
+  afterAll(() => fx.cleanup());
 
   beforeEach(async () => {
     await db.delete(userCards).where(eq(userCards.userId, userId));

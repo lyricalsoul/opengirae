@@ -1,72 +1,56 @@
 import { test, expect, describe, afterAll } from "bun:test";
+import { TestFixtures } from "@girae/tests";
 import { db } from "../../index";
-import { users, userProfiles, linkedAccounts } from "../../schemas/users";
+import { linkedAccounts } from "../../schemas/users";
 import { eq } from "drizzle-orm";
 import { UsersDB } from "../../users";
 
 describe("UsersDB platform-account methods", () => {
-  const cleanupUserIds: number[] = [];
+  const fx = new TestFixtures();
 
-  afterAll(async () => {
-    for (const userId of cleanupUserIds) {
-      await db.delete(linkedAccounts).where(eq(linkedAccounts.userId, userId));
-      await db.delete(userProfiles).where(eq(userProfiles.userId, userId));
-      await db.delete(users).where(eq(users.id, userId));
-    }
-  });
+  afterAll(() => fx.cleanup());
 
   test("ensureUser creates a new user + profile + linked_account on first call", async () => {
-    const platformId = `test-ensure-${Date.now()}`;
-    const user = await UsersDB.ensureUser({ platform: 'telegram', platformId, displayName: "Test User", avatarUrl: "" });
-    expect(user).not.toBeNull();
-    cleanupUserIds.push(user!.id);
+    const { id, platformId } = await fx.user({ displayName: "Test User", platform: 'telegram' });
 
-    const links = await db.select().from(linkedAccounts).where(eq(linkedAccounts.userId, user!.id));
+    const links = await db.select().from(linkedAccounts).where(eq(linkedAccounts.userId, id));
     expect(links).toHaveLength(1);
     expect(links[0]!.platform).toBe('telegram');
     expect(links[0]!.platformId).toBe(platformId);
 
-    const profile = await db.select().from(userProfiles).where(eq(userProfiles.userId, user!.id));
-    expect(profile).toHaveLength(1);
+    const profile = await UsersDB.getUserProfileByPlatformAccount('telegram', platformId);
+    expect(profile).toBeDefined();
   });
 
   test("ensureUser is idempotent for the same platform account", async () => {
-    const platformId = `test-ensure-idem-${Date.now()}`;
-    const first = await UsersDB.ensureUser({ platform: 'discord', platformId, displayName: "A", avatarUrl: "" });
-    cleanupUserIds.push(first!.id);
-    const second = await UsersDB.ensureUser({ platform: 'discord', platformId, displayName: "A", avatarUrl: "" });
+    const { id, platform, platformId } = await fx.user({ displayName: "A", platform: 'discord' });
+    const second = await UsersDB.ensureUser({ platform, platformId, displayName: "A", avatarUrl: "" });
 
-    expect(second!.id).toBe(first!.id);
-    const links = await db.select().from(linkedAccounts).where(eq(linkedAccounts.userId, first!.id));
+    expect(second!.id).toBe(id);
+    const links = await db.select().from(linkedAccounts).where(eq(linkedAccounts.userId, id));
     expect(links).toHaveLength(1);
   });
 
   test("getUserByPlatformAccount resolves through linked_accounts", async () => {
-    const platformId = `test-lookup-${Date.now()}`;
-    const created = await UsersDB.ensureUser({ platform: 'telegram', platformId, displayName: "Lookup", avatarUrl: "" });
-    cleanupUserIds.push(created!.id);
+    const { id, platformId } = await fx.user({ displayName: "Lookup", platform: 'telegram' });
 
     const found = await UsersDB.getUserByPlatformAccount('telegram', platformId);
-    expect(found?.id).toBe(created!.id);
+    expect(found?.id).toBe(id);
 
     const wrongPlatform = await UsersDB.getUserByPlatformAccount('discord', platformId);
     expect(wrongPlatform).toBeUndefined();
   });
 
   test("getUserProfileByPlatformAccount joins user + profile", async () => {
-    const platformId = `test-profile-${Date.now()}`;
-    const created = await UsersDB.ensureUser({ platform: 'telegram', platformId, displayName: "Profile", avatarUrl: "" });
-    cleanupUserIds.push(created!.id);
+    const { id, platformId } = await fx.user({ displayName: "Profile", platform: 'telegram' });
 
     const row = await UsersDB.getUserProfileByPlatformAccount('telegram', platformId);
-    expect(row?.users.id).toBe(created!.id);
-    expect(row?.user_profiles.userId).toBe(created!.id);
+    expect(row?.users.id).toBe(id);
+    expect(row?.user_profiles.userId).toBe(id);
   });
 
   test("touchUsername updates displayName only when changed, scoped by platform", async () => {
-    const platformId = `test-touch-${Date.now()}`;
-    const created = await UsersDB.ensureUser({ platform: 'telegram', platformId, displayName: "Old Name", avatarUrl: "" });
-    cleanupUserIds.push(created!.id);
+    const { platformId } = await fx.user({ displayName: "Old Name", platform: 'telegram' });
 
     await UsersDB.touchUsername('telegram', platformId, undefined, "New Name");
     const updated = await UsersDB.getUserByPlatformAccount('telegram', platformId);

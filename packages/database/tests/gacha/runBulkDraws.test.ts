@@ -1,64 +1,37 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
+import { TestFixtures } from "@girae/tests";
 import { db } from "../../index";
 import { users } from "../../schemas/users";
-import { categories, subcategories, cards, cardSubcategories, rarities, userCards, cardDrawHistory } from "../../schemas/cards";
-import { eq, and, inArray } from "drizzle-orm";
+import { userCards, cardDrawHistory } from "../../schemas/cards";
+import { eq, and } from "drizzle-orm";
 import { GachaLogic } from "../../gacha";
 
 describe("GachaLogic.runBulkDraws", () => {
+  const fx = new TestFixtures();
   let userId: number;
-  let rarityId: number;
   let categoryId: number;
-  let favSubId: number, favSubBId: number, otherSubId: number, emptySubId: number;
-  let favCardId: number, favCardBId: number, otherCardId: number;
+  let favSubId: number, favSubBId: number, emptySubId: number, favCardId: number;
 
   beforeAll(async () => {
-    rarityId = await db.select().from(rarities).limit(1).then(r => r[0]!.id);
+    userId = (await fx.user({ displayName: "Test Bulk Draw" })).id;
+    categoryId = (await fx.category({ name: "Test Bulk Category", emoji: "🧪" })).id;
 
-    const [user] = await db.insert(users).values({ displayName: "Test Bulk Draw", avatarUrl: "" }).returning();
-    userId = user!.id;
+    favSubId = (await fx.subcategory({ categoryId, name: "Test Bulk Fav Sub" })).id;
+    favSubBId = (await fx.subcategory({ categoryId, name: "Test Bulk Fav Sub B" })).id;
+    const otherSubId = (await fx.subcategory({ categoryId, name: "Test Bulk Other Sub" })).id;
+    emptySubId = (await fx.subcategory({ categoryId, name: "Test Bulk Empty Sub" })).id; // no cards linked - forces the empty-card-pool skip
 
-    const [category] = await db.insert(categories).values({
-      name: "Test Bulk Category", emoji: "🧪", subcategoriesOnDraw: 4,
-    }).returning();
-    categoryId = category!.id;
+    favCardId = (await fx.card({ name: "Test Bulk Fav Card", subcategoryId: favSubId })).id;
+    await fx.card({ name: "Test Bulk Fav Card B", subcategoryId: favSubBId });
+    await fx.card({ name: "Test Bulk Other Card", subcategoryId: otherSubId });
 
-    const [fav, favB, other, empty] = await db.insert(subcategories).values([
-      { categoryId, name: "Test Bulk Fav Sub" },
-      { categoryId, name: "Test Bulk Fav Sub B" },
-      { categoryId, name: "Test Bulk Other Sub" },
-      { categoryId, name: "Test Bulk Empty Sub" }, // no cards linked - forces the empty-card-pool skip
-    ]).returning();
-    favSubId = fav!.id;
-    favSubBId = favB!.id;
-    otherSubId = other!.id;
-    emptySubId = empty!.id;
-
-    const [favCard, favCardB, otherCard] = await db.insert(cards).values([
-      { name: "Test Bulk Fav Card", rarityId },
-      { name: "Test Bulk Fav Card B", rarityId },
-      { name: "Test Bulk Other Card", rarityId },
-    ]).returning();
-    favCardId = favCard!.id;
-    favCardBId = favCardB!.id;
-    otherCardId = otherCard!.id;
-
-    await db.insert(cardSubcategories).values([
-      { cardId: favCardId, subcategoryId: favSubId, isMain: true },
-      { cardId: favCardBId, subcategoryId: favSubBId, isMain: true },
-      { cardId: otherCardId, subcategoryId: otherSubId, isMain: true },
-    ]);
+    fx.onCleanup(async () => {
+      await db.delete(cardDrawHistory).where(eq(cardDrawHistory.userId, userId));
+      await db.delete(userCards).where(eq(userCards.userId, userId));
+    });
   });
 
-  afterAll(async () => {
-    await db.delete(cardDrawHistory).where(eq(cardDrawHistory.userId, userId));
-    await db.delete(userCards).where(eq(userCards.userId, userId));
-    await db.delete(cardSubcategories).where(inArray(cardSubcategories.cardId, [favCardId, favCardBId, otherCardId]));
-    await db.delete(cards).where(inArray(cards.id, [favCardId, favCardBId, otherCardId]));
-    await db.delete(subcategories).where(inArray(subcategories.id, [favSubId, favSubBId, otherSubId, emptySubId]));
-    await db.delete(categories).where(eq(categories.id, categoryId));
-    await db.delete(users).where(eq(users.id, userId));
-  });
+  afterAll(() => fx.cleanup());
 
   test("with a favorite subcategory rolled, always draws from it (isFromFavorite: true)", async () => {
     const before = await db.select({ usedDraws: users.usedDraws }).from(users).where(eq(users.id, userId)).then(r => r[0]!.usedDraws);

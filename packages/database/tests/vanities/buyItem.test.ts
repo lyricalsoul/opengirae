@@ -1,31 +1,23 @@
 import { test, expect, describe, beforeAll, afterAll, beforeEach } from "bun:test";
+import { TestFixtures } from "@girae/tests";
 import { db } from "../../index";
 import { users } from "../../schemas/users";
-import { storeItems, boughtItems } from "../../schemas/vanities";
+import { boughtItems } from "../../schemas/vanities";
 import { eq } from "drizzle-orm";
 import { VanitiesDB } from "../../vanities";
 
 describe("VanitiesDB.buyItem", () => {
+  const fx = new TestFixtures();
   let userId: number;
   let itemId: number;
 
   beforeAll(async () => {
-    const [user] = await db.insert(users).values({
-      displayName: "Test Buy", avatarUrl: "", coins: 1000,
-    }).returning();
-    userId = user!.id;
-
-    const [item] = await db.insert(storeItems).values({
-      title: `Test Buy Item ${Date.now()}`, description: "test", type: "background", price: 100, itemURL: "https://example.com/x.png",
-    }).returning();
-    itemId = item!.id;
+    userId = (await fx.user({ displayName: "Test Buy" })).id;
+    await db.update(users).set({ coins: 1000 }).where(eq(users.id, userId));
+    itemId = (await fx.storeItem({ title: `Test Buy Item ${Date.now()}`, type: 'background', price: 100 })).id;
   });
 
-  afterAll(async () => {
-    await db.delete(boughtItems).where(eq(boughtItems.itemId, itemId));
-    await db.delete(storeItems).where(eq(storeItems.id, itemId));
-    await db.delete(users).where(eq(users.id, userId));
-  });
+  afterAll(() => fx.cleanup());
 
   beforeEach(async () => {
     await db.delete(boughtItems).where(eq(boughtItems.itemId, itemId));

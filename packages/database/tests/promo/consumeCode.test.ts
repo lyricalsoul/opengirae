@@ -1,4 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
+import { TestFixtures } from "@girae/tests";
 import { db } from "../../index";
 import { users } from "../../schemas/users";
 import { promoCodes, promoCodeRedemptions, PromoRewardType } from "../../schemas/promo";
@@ -6,24 +7,21 @@ import { PromoDB } from "../../promo";
 import { eq } from "drizzle-orm";
 
 describe("PromoDB.consumeCode", () => {
+  const fx = new TestFixtures();
   let userId1: number;
   let userId2: number;
 
   beforeAll(async () => {
-    const [u1, u2] = await db.insert(users).values([
-      { displayName: "Promo Test User 1", avatarUrl: "" },
-      { displayName: "Promo Test User 2", avatarUrl: "" }
-    ]).returning();
-    userId1 = u1!.id;
-    userId2 = u2!.id;
+    userId1 = (await fx.user({ displayName: "Promo Test User 1" })).id;
+    userId2 = (await fx.user({ displayName: "Promo Test User 2" })).id;
+
+    fx.onCleanup(async () => {
+      await db.delete(promoCodeRedemptions);
+      await db.delete(promoCodes).where(eq(promoCodes.code, "TESTCODE123"));
+    });
   });
 
-  afterAll(async () => {
-    await db.delete(promoCodeRedemptions);
-    await db.delete(promoCodes).where(eq(promoCodes.code, "TESTCODE123"));
-    await db.delete(users).where(eq(users.id, userId1));
-    await db.delete(users).where(eq(users.id, userId2));
-  });
+  afterAll(() => fx.cleanup());
 
   test("should successfully redeem a code and apply rewards", async () => {
     // Create a code with maxUses = 1

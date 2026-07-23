@@ -1,36 +1,26 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
+import { TestFixtures } from "@girae/tests";
 import { db } from "../../index";
-import { users } from "../../schemas/users";
-import { cards, rarities, wishlist } from "../../schemas/cards";
-import { eq, inArray } from "drizzle-orm";
+import { wishlist } from "../../schemas/cards";
+import { eq } from "drizzle-orm";
 import { CardsDB } from "../../cards";
 
 describe("CardsDB wishlist methods", () => {
+  const fx = new TestFixtures();
   let userId: number;
-  let rarityId: number;
   let cardAId: number, cardBId: number;
 
   beforeAll(async () => {
-    rarityId = await db.select().from(rarities).limit(1).then(r => r[0]!.id);
+    userId = (await fx.user({ displayName: "Test Wishlist" })).id;
+    cardAId = (await fx.card({ name: "Test Wishlist Card A" })).id;
+    cardBId = (await fx.card({ name: "Test Wishlist Card B" })).id;
 
-    const [user] = await db.insert(users).values({
-      displayName: "Test Wishlist", avatarUrl: "",
-    }).returning();
-    userId = user!.id;
-
-    const [a, b] = await db.insert(cards).values([
-      { name: "Test Wishlist Card A", rarityId },
-      { name: "Test Wishlist Card B", rarityId },
-    ]).returning();
-    cardAId = a!.id;
-    cardBId = b!.id;
+    // safety net: each test below removes what it adds, but if one throws mid-test,
+    // this still lets cards/user get deleted without an FK violation.
+    fx.onCleanup(async () => { await db.delete(wishlist).where(eq(wishlist.userId, userId)); });
   });
 
-  afterAll(async () => {
-    await db.delete(wishlist).where(eq(wishlist.userId, userId));
-    await db.delete(cards).where(inArray(cards.id, [cardAId, cardBId]));
-    await db.delete(users).where(eq(users.id, userId));
-  });
+  afterAll(() => fx.cleanup());
 
   test("isOnWishlist is false before anything is added", async () => {
     expect(await CardsDB.isOnWishlist(userId, cardAId)).toBe(false);
@@ -41,8 +31,8 @@ describe("CardsDB wishlist methods", () => {
     expect(await CardsDB.isOnWishlist(userId, cardAId)).toBe(true);
 
     await CardsDB.addToWishlist(userId, cardAId);
-    const rows = await db.select().from(wishlist).where(eq(wishlist.userId, userId));
-    expect(rows.filter(r => r.cardId === cardAId)).toHaveLength(1);
+    const { rows } = await CardsDB.getWishlist(userId, {});
+    expect(rows.filter(r => r.id === cardAId)).toHaveLength(1);
   });
 
   test("removeFromWishlist removes it", async () => {

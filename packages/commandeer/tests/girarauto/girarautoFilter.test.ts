@@ -1,67 +1,40 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram } from "@girae/tests";
+import { mockTelegram, fakeCtx, TestFixtures } from "@girae/tests";
 import { db } from "@girae/database/index";
-import { users, linkedAccounts } from "@girae/database/schemas/users";
-import { categories, subcategories, cards, cardSubcategories, rarities, userCards, cardDrawHistory } from "@girae/database/schemas/cards";
-import { eq, inArray } from "drizzle-orm";
-import type { IncomingCommand } from "@girae/common/commands/types";
+import { users } from "@girae/database/schemas/users";
+import { categories, userCards, cardDrawHistory } from "@girae/database/schemas/cards";
+import { eq } from "drizzle-orm";
 import GirarAutoCommand from "../../commands/all/girarauto.cards";
 
 mockTelegram();
 
 // /girarauto <qtd> <categoria> focus mode must work standalone (no /quero favorites needed).
 describe("/girarauto category filter", () => {
+  const fx = new TestFixtures();
   let userId: number;
-  let rarityId: number;
   let categoryId: number;
-  let subcategoryId: number;
   let cardId: number;
+  const authorId = 'test-girarauto-filter-author';
 
   beforeAll(async () => {
     await import("@girae/answerer/index");
 
-    rarityId = await db.select({ id: rarities.id }).from(rarities).limit(1).then(r => r[0]!.id);
+    userId = (await fx.user({ displayName: "Test Girarauto Filter", platformId: authorId })).id;
+    categoryId = (await fx.category({ name: "Zzzyx Filter Category", emoji: "🧪" })).id;
+    await db.update(categories).set({ subcategoriesOnDraw: 1 }).where(eq(categories.id, categoryId));
+    const subcategoryId = (await fx.subcategory({ categoryId, name: "Zzzyx Filter Sub" })).id;
+    cardId = (await fx.card({ name: "Zzzyx Filter Card", subcategoryId })).id;
 
-    const [user] = await db.insert(users).values({ displayName: "Test Girarauto Filter", avatarUrl: "" }).returning();
-    userId = user!.id;
-    await db.insert(linkedAccounts).values({ userId, platform: 'none', platformId: 'test-girarauto-filter-author' });
-
-    const [category] = await db.insert(categories).values({ name: "Zzzyx Filter Category", emoji: "🧪", subcategoriesOnDraw: 1 }).returning();
-    categoryId = category!.id;
-
-    const [subcategory] = await db.insert(subcategories).values({ categoryId, name: "Zzzyx Filter Sub" }).returning();
-    subcategoryId = subcategory!.id;
-
-    const [card] = await db.insert(cards).values({ name: "Zzzyx Filter Card", rarityId }).returning();
-    cardId = card!.id;
-    await db.insert(cardSubcategories).values({ cardId, subcategoryId, isMain: true });
+    fx.onCleanup(async () => {
+      await db.delete(cardDrawHistory).where(eq(cardDrawHistory.userId, userId));
+      await db.delete(userCards).where(eq(userCards.userId, userId));
+    });
   });
 
-  afterAll(async () => {
-    await db.delete(cardDrawHistory).where(eq(cardDrawHistory.userId, userId));
-    await db.delete(userCards).where(eq(userCards.userId, userId));
-    await db.delete(cardSubcategories).where(eq(cardSubcategories.cardId, cardId));
-    await db.delete(cards).where(eq(cards.id, cardId));
-    await db.delete(subcategories).where(eq(subcategories.id, subcategoryId));
-    await db.delete(categories).where(eq(categories.id, categoryId));
-    await db.delete(linkedAccounts).where(eq(linkedAccounts.userId, userId));
-    await db.delete(users).where(eq(users.id, userId));
-  });
+  afterAll(() => fx.cleanup());
 
-  function ctxFor(args: string[]): IncomingCommand {
-    return {
-      name: 'girarauto',
-      args,
-      workflowIDToBeAssigned: `test-girarauto-filter-${Date.now()}`,
-      message: {
-        id: 'msg-1',
-        author: { id: 'test-girarauto-filter-author', name: 'Tester', avatarUrl: '' },
-        chat: { id: 'chat-1', title: 'test' },
-        content: `/girarauto ${args.join(' ')}`,
-        timestamp: new Date(),
-        platform: 'none',
-      },
-    };
+  function ctxFor(args: string[]) {
+    return fakeCtx({ name: 'girarauto', authorId, args });
   }
 
   test("works standalone with no /quero favorites, drawing within the named category", async () => {

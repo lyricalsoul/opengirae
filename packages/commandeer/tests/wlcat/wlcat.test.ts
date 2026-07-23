@@ -1,11 +1,9 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram } from "@girae/tests";
+import { mockTelegram, fakeCtx, TestFixtures } from "@girae/tests";
 import { db } from "@girae/database/index";
-import { users, linkedAccounts } from "@girae/database/schemas/users";
-import { categories, subcategories, cards, cardSubcategories, rarities, wishlist } from "@girae/database/schemas/cards";
+import { wishlist } from "@girae/database/schemas/cards";
+import { eq } from "drizzle-orm";
 import { CardsDB } from "@girae/database/cards";
-import { eq, inArray } from "drizzle-orm";
-import type { IncomingCommand } from "@girae/common/commands/types";
 import type { CommandArgumentSpec } from "@girae/common/commands";
 import { resolveCommandArguments } from "../../services/commandArguments";
 import WlcatCommand from "../../commands/all/wlcat.cards";
@@ -13,66 +11,34 @@ import WlcatCommand from "../../commands/all/wlcat.cards";
 mockTelegram();
 
 describe("/wlcat adds a whole subcategory to the wishlist, add-only", () => {
+  const fx = new TestFixtures();
   let userId: number;
-  let rarityId: number;
-  let categoryId: number;
   let subcategoryId: number;
   let alreadyOnListCardId: number, notOnListCardId: number;
+  const authorId = 'test-wlcat-author';
 
   beforeAll(async () => {
     await import("@girae/answerer/index");
 
-    rarityId = await db.select().from(rarities).limit(1).then(r => r[0]!.id);
+    userId = (await fx.user({ displayName: "Test Wlcat", platformId: authorId })).id;
+    const categoryId = (await fx.category({ name: "Test Wlcat Category" })).id;
+    subcategoryId = (await fx.subcategory({ categoryId, name: "Test Wlcat Subcategory" })).id;
 
-    const [user] = await db.insert(users).values({ displayName: "Test Wlcat", avatarUrl: "" }).returning();
-    userId = user!.id;
-    await db.insert(linkedAccounts).values({ userId, platform: 'none', platformId: 'test-wlcat-author' });
-
-    const [category] = await db.insert(categories).values({ name: "Test Wlcat Category", emoji: "🧪" }).returning();
-    categoryId = category!.id;
-    const [subcategory] = await db.insert(subcategories).values({ categoryId, name: "Test Wlcat Subcategory" }).returning();
-    subcategoryId = subcategory!.id;
-
-    const [a, b] = await db.insert(cards).values([
-      { name: "Wlcat Already Listed", rarityId },
-      { name: "Wlcat Not Listed", rarityId },
-    ]).returning();
-    alreadyOnListCardId = a!.id;
-    notOnListCardId = b!.id;
-
-    await db.insert(cardSubcategories).values([
-      { cardId: alreadyOnListCardId, subcategoryId, isMain: true },
-      { cardId: notOnListCardId, subcategoryId, isMain: true },
-    ]);
+    alreadyOnListCardId = (await fx.card({ name: "Wlcat Already Listed", subcategoryId })).id;
+    notOnListCardId = (await fx.card({ name: "Wlcat Not Listed", subcategoryId })).id;
 
     await CardsDB.addToWishlist(userId, alreadyOnListCardId);
     await CardsDB.addSubcategoryAlias(subcategoryId, 'wlcattestalias');
+
+    // safety net: must run before fx.cleanup() deletes the cards - registered last so
+    // it runs first in LIFO cleanup order.
+    fx.onCleanup(async () => { await db.delete(wishlist).where(eq(wishlist.userId, userId)); });
   });
 
-  afterAll(async () => {
-    await db.delete(wishlist).where(eq(wishlist.userId, userId));
-    await db.delete(cardSubcategories).where(inArray(cardSubcategories.cardId, [alreadyOnListCardId, notOnListCardId]));
-    await db.delete(cards).where(inArray(cards.id, [alreadyOnListCardId, notOnListCardId]));
-    await db.delete(subcategories).where(eq(subcategories.id, subcategoryId));
-    await db.delete(categories).where(eq(categories.id, categoryId));
-    await db.delete(linkedAccounts).where(eq(linkedAccounts.userId, userId));
-    await db.delete(users).where(eq(users.id, userId));
-  });
+  afterAll(() => fx.cleanup());
 
-  function ctx(args: string[] = [String(subcategoryId)]): IncomingCommand {
-    return {
-      name: 'wlcat',
-      args,
-      workflowIDToBeAssigned: `test-wlcat-${Date.now()}`,
-      message: {
-        id: 'msg-1',
-        author: { id: 'test-wlcat-author', name: 'Tester', avatarUrl: '' },
-        chat: { id: 'chat-1', title: 'test' },
-        content: `/wlcat ${args.join(' ')}`,
-        timestamp: new Date(),
-        platform: 'none',
-      },
-    };
+  function ctx(args: string[] = [String(subcategoryId)]) {
+    return fakeCtx({ name: 'wlcat', args, authorId });
   }
 
   test("adds cards missing from the wishlist and leaves already-listed ones alone", async () => {

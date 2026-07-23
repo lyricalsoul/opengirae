@@ -3,35 +3,16 @@ import { CommandArgumentType, type CommandArgumentSpec } from "@girae/common/com
 import type { IncomingCommand } from "@girae/common/commands/types";
 import { splitPositionalTokens, parseCommandArguments, resolveCommandArguments, resolveSubcategoryByIdOrName, resolveCategoryByIdOrName } from "../../services/commandArguments";
 import { db } from "@girae/database/index";
-import { categories, subcategories } from "@girae/database/schemas/cards";
+import { categories } from "@girae/database/schemas/cards";
 import { CardsDB } from "@girae/database/cards";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import { fakeCtx as buildFakeCtx, TestFixtures } from "@girae/tests";
 
+// 'none' is a genuine no-op platform in packages/answerer/handler.ts - safe to let the
+// real reply()/resolveCommandArguments path run end to end in these tests without
+// touching Telegram or requiring any mocking.
 function fakeCtx(args: string[], opts: { replyToAuthorId?: string } = {}): IncomingCommand {
-  return {
-    name: 'test',
-    args,
-    workflowIDToBeAssigned: `test-${Date.now()}-${Math.random()}`,
-    message: {
-      id: 'msg-1',
-      author: { id: 'author-1', name: 'Tester', avatarUrl: '' },
-      chat: { id: 'chat-1', title: 'test' },
-      content: `/test ${args.join(' ')}`,
-      timestamp: new Date(),
-      // 'none' is a genuine no-op in packages/answerer/handler.ts - safe to let the
-      // real reply()/resolveCommandArguments path run end to end in these tests
-      // without touching Telegram or requiring any mocking.
-      platform: 'none',
-      replyTo: opts.replyToAuthorId ? {
-        id: 'reply-msg-1',
-        author: { id: opts.replyToAuthorId, name: 'Replied', avatarUrl: '' },
-        chat: { id: 'chat-1', title: 'test' },
-        content: '',
-        timestamp: new Date(),
-        platform: 'none',
-      } : undefined,
-    },
-  };
+  return buildFakeCtx({ name: 'test', authorId: 'author-1', args, platform: 'none', replyToAuthorId: opts.replyToAuthorId });
 }
 
 describe("splitPositionalTokens", () => {
@@ -354,19 +335,16 @@ describe("parseCommandArguments - CATEGORY fuzzy search (fixed gap: previously e
 
 // Closes a real gap: CommandArgumentType.CATEGORY must resolve "musica" to "Música", not just exact spelling.
 describe("resolveCategoryByIdOrName - accent-insensitive name resolution", () => {
-  let categoryId: number;
+  const fx = new TestFixtures();
   const suffix = Date.now();
   const categoryName = `Música Teste ${suffix}`;
   const unaccentedQuery = `musica teste ${suffix}`;
 
   beforeAll(async () => {
-    const [category] = await db.insert(categories).values({ name: categoryName, emoji: '🎸' }).returning();
-    categoryId = category!.id;
+    await fx.category({ name: categoryName, emoji: '🎸' });
   });
 
-  afterAll(async () => {
-    await db.delete(categories).where(eq(categories.id, categoryId));
-  });
+  afterAll(() => fx.cleanup());
 
   test("an unaccented query resolves an accented category name", async () => {
     const outcome = await resolveCategoryByIdOrName(unaccentedQuery);
@@ -389,33 +367,21 @@ describe("resolveCategoryByIdOrName - accent-insensitive name resolution", () =>
 
 // Closes a real gap: only the not-found-by-id path had coverage; /quero's actual UX (alias, name, disambiguation) didn't.
 describe("SUBCATEGORY resolution success paths (parseSubcategory, via resolveSubcategoryByIdOrName)", () => {
-  let categoryId: number;
+  const fx = new TestFixtures();
   let uniqueId: number, dupAId: number, dupBId: number, aliasedId: number;
 
   beforeAll(async () => {
-    const [category] = await db.insert(categories).values({
-      name: `Test Parsing Category ${Date.now()}`, emoji: "🧪",
-    }).returning();
-    categoryId = category!.id;
+    const categoryId = (await fx.category({ name: `Test Parsing Category ${Date.now()}` })).id;
 
-    const [unique, dupA, dupB, aliased] = await db.insert(subcategories).values([
-      { categoryId, name: `Test Parsing Unique ${Date.now()}` },
-      { categoryId, name: "Test Parsing Duplicate A" },
-      { categoryId, name: "Test Parsing Duplicate B" },
-      { categoryId, name: `Test Parsing Aliased ${Date.now()}` },
-    ]).returning();
-    uniqueId = unique!.id;
-    dupAId = dupA!.id;
-    dupBId = dupB!.id;
-    aliasedId = aliased!.id;
+    uniqueId = (await fx.subcategory({ categoryId, name: `Test Parsing Unique ${Date.now()}` })).id;
+    dupAId = (await fx.subcategory({ categoryId, name: "Test Parsing Duplicate A" })).id;
+    dupBId = (await fx.subcategory({ categoryId, name: "Test Parsing Duplicate B" })).id;
+    aliasedId = (await fx.subcategory({ categoryId, name: `Test Parsing Aliased ${Date.now()}` })).id;
 
     await CardsDB.addSubcategoryAlias(aliasedId, 'tpsalias');
   });
 
-  afterAll(async () => {
-    await db.delete(subcategories).where(inArray(subcategories.id, [uniqueId, dupAId, dupBId, aliasedId]));
-    await db.delete(categories).where(eq(categories.id, categoryId));
-  });
+  afterAll(() => fx.cleanup());
 
   test("resolves by exact numeric ID", async () => {
     const result = await resolveSubcategoryByIdOrName(String(uniqueId));

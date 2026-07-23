@@ -1,3 +1,7 @@
 export { mockTelegram } from "./telegramMock"
 export type { SentMessage } from "./telegramMock"
 export { bootstrapCommandeerWorkers } from "./bootstrapWorkers"
+export { TestFixtures, anyRarityId } from "./fixtures"
+export type { TestUser } from "./fixtures"
+export { fakeCtx } from "./fakeCtx"
+export type { FakeCtxOptions } from "./fakeCtx"

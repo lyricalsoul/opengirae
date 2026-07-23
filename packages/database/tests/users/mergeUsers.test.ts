@@ -1,63 +1,48 @@
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
+import { TestFixtures, anyRarityId } from "@girae/tests";
 import { db } from "../../index";
 import { users, userProfiles, linkedAccounts } from "../../schemas/users";
-import { cards, rarities, userCards, wishlist } from "../../schemas/cards";
-import { storeItems, boughtItems } from "../../schemas/vanities";
+import { userCards, wishlist } from "../../schemas/cards";
+import { boughtItems } from "../../schemas/vanities";
 import { eq } from "drizzle-orm";
 import { UsersDB } from "../../users";
 
 describe("UsersDB.mergeUsers", () => {
+  // a fresh TestFixtures per test (not one shared across the whole describe) since
+  // mergeUsers mutates/deletes its own fixtures - each test needs a clean pair.
+  let fx: TestFixtures;
   let mainId: number, secondaryId: number;
-  let rarityId: number;
   let cardAId: number, cardBId: number;
   let itemId: number;
 
   beforeEach(async () => {
-    const [rarity] = await db.select().from(rarities).limit(1);
-    rarityId = rarity!.id;
+    fx = new TestFixtures();
+    const rarityId = await anyRarityId();
 
-    const [main] = await db.insert(users).values({ displayName: "Main", avatarUrl: "", coins: 100 }).returning();
-    const [secondary] = await db.insert(users).values({ displayName: "Secondary", avatarUrl: "", coins: 50 }).returning();
-    mainId = main!.id;
-    secondaryId = secondary!.id;
+    mainId = (await fx.user({ displayName: "Main" })).id;
+    secondaryId = (await fx.user({ displayName: "Secondary", platform: 'discord' })).id;
+    await db.update(users).set({ coins: 100 }).where(eq(users.id, mainId));
+    await db.update(users).set({ coins: 50 }).where(eq(users.id, secondaryId));
+    await db.update(userProfiles).set({ reputation: 10 }).where(eq(userProfiles.userId, mainId));
+    await db.update(userProfiles).set({ reputation: 5 }).where(eq(userProfiles.userId, secondaryId));
 
-    await db.insert(userProfiles).values([{ userId: mainId, reputation: 10 }, { userId: secondaryId, reputation: 5 }]);
-    await db.insert(linkedAccounts).values([
-      { userId: mainId, platform: 'telegram', platformId: `merge-main-${Date.now()}` },
-      { userId: secondaryId, platform: 'discord', platformId: `merge-secondary-${Date.now()}` },
-    ]);
+    cardAId = (await fx.card({ name: "Merge Card A", rarityId })).id;
+    cardBId = (await fx.card({ name: "Merge Card B", rarityId })).id;
+    itemId = (await fx.storeItem({ title: `Merge Item ${Date.now()}`, type: 'background', price: 0 })).id;
 
-    const [a, b] = await db.insert(cards).values([
-      { name: "Merge Card A", rarityId },
-      { name: "Merge Card B", rarityId },
-    ]).returning();
-    cardAId = a!.id;
-    cardBId = b!.id;
-
-    const [item] = await db.insert(storeItems).values({
-      title: `Merge Item ${Date.now()}`, description: "t", type: "background", price: 0, itemURL: "https://example.com/x.png",
-    }).returning();
-    itemId = item!.id;
+    fx.onCleanup(async () => {
+      // secondary's row is normally gone already after a successful merge - deletes
+      // below are no-ops in that case, and a defensive cleanup if a test throws first.
+      await db.delete(userCards).where(eq(userCards.userId, mainId));
+      await db.delete(wishlist).where(eq(wishlist.userId, mainId));
+      await db.delete(boughtItems).where(eq(boughtItems.userId, mainId));
+      await db.delete(userCards).where(eq(userCards.userId, secondaryId));
+      await db.delete(wishlist).where(eq(wishlist.userId, secondaryId));
+      await db.delete(boughtItems).where(eq(boughtItems.userId, secondaryId));
+    });
   });
 
-  afterEach(async () => {
-    await db.delete(userCards).where(eq(userCards.userId, mainId));
-    await db.delete(wishlist).where(eq(wishlist.userId, mainId));
-    await db.delete(boughtItems).where(eq(boughtItems.userId, mainId));
-    await db.delete(linkedAccounts).where(eq(linkedAccounts.userId, mainId));
-    await db.delete(userProfiles).where(eq(userProfiles.userId, mainId));
-    await db.delete(users).where(eq(users.id, mainId));
-    await db.delete(storeItems).where(eq(storeItems.id, itemId));
-    await db.delete(cards).where(eq(cards.id, cardAId));
-    await db.delete(cards).where(eq(cards.id, cardBId));
-    // secondary user row should be gone already after a successful merge; delete defensively for failed-test cleanup
-    await db.delete(userCards).where(eq(userCards.userId, secondaryId));
-    await db.delete(wishlist).where(eq(wishlist.userId, secondaryId));
-    await db.delete(boughtItems).where(eq(boughtItems.userId, secondaryId));
-    await db.delete(linkedAccounts).where(eq(linkedAccounts.userId, secondaryId));
-    await db.delete(userProfiles).where(eq(userProfiles.userId, secondaryId));
-    await db.delete(users).where(eq(users.id, secondaryId));
-  });
+  afterEach(() => fx.cleanup());
 
   test("sums coins and reputation into main", async () => {
     await UsersDB.mergeUsers(mainId, secondaryId);
@@ -70,7 +55,7 @@ describe("UsersDB.mergeUsers", () => {
   test("reassigns linked_accounts to main and deletes secondary user row", async () => {
     await UsersDB.mergeUsers(mainId, secondaryId);
     const links = await db.select().from(linkedAccounts).where(eq(linkedAccounts.userId, mainId));
-    expect(links.map(l => l.platform).sort()).toEqual(['discord', 'telegram']);
+    expect(links.map(l => l.platform).sort()).toEqual(['discord', 'none']);
 
     const secondaryRow = await db.select().from(users).where(eq(users.id, secondaryId));
     expect(secondaryRow).toHaveLength(0);
@@ -110,21 +95,18 @@ describe("UsersDB.mergeUsers", () => {
   });
 
   test("dissolves marriage if secondary was married", async () => {
-    const [partner] = await db.insert(users).values({ displayName: "Partner", avatarUrl: "" }).returning();
-    await db.insert(userProfiles).values({ userId: partner!.id, isMarried: true, partnerId: secondaryId });
-    await db.update(userProfiles).set({ isMarried: true, partnerId: partner!.id }).where(eq(userProfiles.userId, secondaryId));
+    const partnerId = (await fx.user({ displayName: "Partner" })).id;
+    await db.update(userProfiles).set({ isMarried: true, partnerId: secondaryId }).where(eq(userProfiles.userId, partnerId));
+    await db.update(userProfiles).set({ isMarried: true, partnerId }).where(eq(userProfiles.userId, secondaryId));
 
     await UsersDB.mergeUsers(mainId, secondaryId);
 
-    const [partnerProfile] = await db.select().from(userProfiles).where(eq(userProfiles.userId, partner!.id));
+    const [partnerProfile] = await db.select().from(userProfiles).where(eq(userProfiles.userId, partnerId));
     expect(partnerProfile!.isMarried).toBe(false);
     expect(partnerProfile!.partnerId).toBeNull();
 
     const [mainProfile] = await db.select().from(userProfiles).where(eq(userProfiles.userId, mainId));
     expect(mainProfile!.isMarried).toBe(false);
-
-    await db.delete(userProfiles).where(eq(userProfiles.userId, partner!.id));
-    await db.delete(users).where(eq(users.id, partner!.id));
   });
 
   test("dissolves marriage if main and secondary were married to each other", async () => {

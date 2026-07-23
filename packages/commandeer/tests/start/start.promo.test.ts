@@ -1,16 +1,16 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram, bootstrapCommandeerWorkers } from "@girae/tests";
+import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures } from "@girae/tests";
 import { db } from "@girae/database/index";
-import { users, linkedAccounts } from "@girae/database/schemas/users";
+import { users } from "@girae/database/schemas/users";
 import { promoCodes, promoCodeRedemptions } from "@girae/database/schemas/promo";
 import { eq } from "drizzle-orm";
-import type { IncomingCommand } from "@girae/common/commands/types";
 import StartCommand from "../../commands/all/start.main";
 
 // Initialize the telegram mock at the module level before any imports that use it.
 const { sentMessages } = mockTelegram();
 
 describe("/start promo code E2E", () => {
+    const fx = new TestFixtures();
     let testUserId: number;
     let testPlatformId: string;
     let codeStr: string;
@@ -22,20 +22,8 @@ describe("/start promo code E2E", () => {
         await bootstrapCommandeerWorkers();
 
         testPlatformId = `test-start-promo-${Date.now()}`;
-        
-        const [user] = await db.insert(users).values({
-            username: `testuser-${Date.now()}`,
-            displayName: 'Test User',
-            avatarUrl: 'https://example.com/avatar.png',
-            coins: 10
-        }).returning({ id: users.id });
-        testUserId = user!.id;
-
-        await db.insert(linkedAccounts).values({
-            userId: testUserId,
-            platform: 'telegram',
-            platformId: testPlatformId
-        });
+        testUserId = (await fx.user({ displayName: "Test User", platform: 'telegram', platformId: testPlatformId })).id;
+        await db.update(users).set({ coins: 10 }).where(eq(users.id, testUserId));
 
         codeStr = 'T' + Math.random().toString(36).substring(2, 7).toUpperCase();
         const [inserted] = await db.insert(promoCodes).values({
@@ -45,31 +33,19 @@ describe("/start promo code E2E", () => {
             maxUses: 10
         }).returning({ id: promoCodes.id });
         promoCodeId = inserted!.id;
+
+        fx.onCleanup(async () => {
+            await db.delete(promoCodeRedemptions).where(eq(promoCodeRedemptions.promoCodeId, promoCodeId));
+            await db.delete(promoCodes).where(eq(promoCodes.code, codeStr));
+        });
     });
 
-    afterAll(async () => {
-        await db.delete(promoCodeRedemptions).where(eq(promoCodeRedemptions.promoCodeId, promoCodeId));
-        await db.delete(promoCodes).where(eq(promoCodes.code, codeStr));
-        await db.delete(linkedAccounts).where(eq(linkedAccounts.userId, testUserId));
-        await db.delete(users).where(eq(users.id, testUserId));
-    });
+    afterAll(() => fx.cleanup());
 
     test("should redeem a promo code and give rewards, formatting the message correctly", async () => {
         sentMessages.length = 0; // reset sentMessages array
-        
-        const ctx: IncomingCommand = {
-            name: 'start',
-            args: [],
-            workflowIDToBeAssigned: `test-start-wf-${Date.now()}`,
-            message: {
-                id: 'msg-1',
-                author: { id: testPlatformId, name: 'Test User', avatarUrl: '' },
-                chat: { id: 'chat-1', title: 'Test Chat' },
-                content: `/start ${codeStr}`,
-                timestamp: new Date(),
-                platform: 'telegram'
-            }
-        };
+
+        const ctx = fakeCtx({ name: 'start', authorId: testPlatformId, platform: 'telegram', chatId: 'chat-1' });
 
         // Call the command execute directly
         await StartCommand.execute(ctx, { payload: codeStr });
@@ -85,7 +61,7 @@ describe("/start promo code E2E", () => {
 
         expect(sentMessages.length).toBeGreaterThanOrEqual(1);
         const lastMessage = sentMessages[sentMessages.length - 1]!;
-        // the mock puts the raw message content in `text` or `content` or via parameters depending on how `telegramsjs` maps it. 
+        // the mock puts the raw message content in `text` or `content` or via parameters depending on how `telegramsjs` maps it.
         // usually it's passed as `text` for sendMessage
         const contentStr = lastMessage.text || lastMessage.content || lastMessage.caption || '';
         expect(contentStr).toInclude('Como você usou nosso código de resgate');

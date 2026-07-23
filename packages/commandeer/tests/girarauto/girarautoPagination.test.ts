@@ -1,10 +1,9 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram } from "@girae/tests";
+import { mockTelegram, fakeCtx, TestFixtures } from "@girae/tests";
 import { db } from "@girae/database/index";
-import { users, linkedAccounts } from "@girae/database/schemas/users";
-import { categories, subcategories, cards, cardSubcategories, rarities, userCards, cardDrawHistory } from "@girae/database/schemas/cards";
+import { users } from "@girae/database/schemas/users";
+import { categories, userCards, cardDrawHistory } from "@girae/database/schemas/cards";
 import { eq } from "drizzle-orm";
-import type { IncomingCommand } from "@girae/common/commands/types";
 import GirarAutoCommand from "../../commands/all/girarauto.cards";
 
 mockTelegram();
@@ -12,57 +11,32 @@ mockTelegram();
 // /girarauto <n> with n large enough to span multiple pages must not dump every card into one
 // message - it caches the batch and paginates through the @Page handler instead.
 describe("/girarauto pagination", () => {
+  const fx = new TestFixtures();
   let userId: number;
-  let rarityId: number;
-  let categoryId: number;
-  let subcategoryId: number;
-  let cardId: number;
+  const authorId = 'test-girarauto-pagination-author';
 
   beforeAll(async () => {
     await import("@girae/answerer/index");
 
-    rarityId = await db.select({ id: rarities.id }).from(rarities).limit(1).then(r => r[0]!.id);
+    userId = (await fx.user({ displayName: "Test Girarauto Pagination", platformId: authorId })).id;
+    await db.update(users).set({ maxDraws: 200 }).where(eq(users.id, userId));
 
-    const [user] = await db.insert(users).values({ displayName: "Test Girarauto Pagination", avatarUrl: "", maxDraws: 200 }).returning();
-    userId = user!.id;
-    await db.insert(linkedAccounts).values({ userId, platform: 'none', platformId: 'test-girarauto-pagination-author' });
+    const categoryId = (await fx.category({ name: "Zzzyx Pagination Category", emoji: "🧪" })).id;
+    await db.update(categories).set({ subcategoriesOnDraw: 1 }).where(eq(categories.id, categoryId));
 
-    const [category] = await db.insert(categories).values({ name: "Zzzyx Pagination Category", emoji: "🧪", subcategoriesOnDraw: 1 }).returning();
-    categoryId = category!.id;
+    const subcategoryId = (await fx.subcategory({ categoryId, name: "Zzzyx Pagination Sub" })).id;
+    await fx.card({ name: "Zzzyx Pagination Card", subcategoryId });
 
-    const [subcategory] = await db.insert(subcategories).values({ categoryId, name: "Zzzyx Pagination Sub" }).returning();
-    subcategoryId = subcategory!.id;
-
-    const [card] = await db.insert(cards).values({ name: "Zzzyx Pagination Card", rarityId }).returning();
-    cardId = card!.id;
-    await db.insert(cardSubcategories).values({ cardId, subcategoryId, isMain: true });
+    fx.onCleanup(async () => {
+      await db.delete(cardDrawHistory).where(eq(cardDrawHistory.userId, userId));
+      await db.delete(userCards).where(eq(userCards.userId, userId));
+    });
   });
 
-  afterAll(async () => {
-    await db.delete(cardDrawHistory).where(eq(cardDrawHistory.userId, userId));
-    await db.delete(userCards).where(eq(userCards.userId, userId));
-    await db.delete(cardSubcategories).where(eq(cardSubcategories.cardId, cardId));
-    await db.delete(cards).where(eq(cards.id, cardId));
-    await db.delete(subcategories).where(eq(subcategories.id, subcategoryId));
-    await db.delete(categories).where(eq(categories.id, categoryId));
-    await db.delete(linkedAccounts).where(eq(linkedAccounts.userId, userId));
-    await db.delete(users).where(eq(users.id, userId));
-  });
+  afterAll(() => fx.cleanup());
 
-  function ctxFor(args: string[], workflowID: string): IncomingCommand {
-    return {
-      name: 'girarauto',
-      args,
-      workflowIDToBeAssigned: workflowID,
-      message: {
-        id: 'msg-1',
-        author: { id: 'test-girarauto-pagination-author', name: 'Tester', avatarUrl: '' },
-        chat: { id: 'chat-1', title: 'test' },
-        content: `/girarauto ${args.join(' ')}`,
-        timestamp: new Date(),
-        platform: 'none',
-      },
-    };
+  function ctxFor(args: string[], workflowID: string) {
+    return fakeCtx({ name: 'girarauto', authorId, args, workflowID });
   }
 
   test("a 50-draw batch caches results and the @Page handler serves page 2 correctly", async () => {

@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
+import { TestFixtures } from "@girae/tests";
 import { db } from "../../index";
-import { users } from "../../schemas/users";
-import { cards, userCards, trades, rarities } from "../../schemas/cards";
+import { userCards, trades } from "../../schemas/cards";
 import { eq, inArray } from "drizzle-orm";
 import { CardsDB, InsufficientCardError } from "../../cards";
 
@@ -9,36 +9,25 @@ import { CardsDB, InsufficientCardError } from "../../cards";
 // input-shape guards that stand between a caller bug and a corrupted trade. Real DB,
 // real transactions, cleans up everything it creates.
 describe("CardsDB.executeTrade", () => {
-  let rarityId: number;
+  const fx = new TestFixtures();
   let userAId: number, userBId: number;
   let cardXId: number, cardYId: number, cardZId: number;
 
   beforeAll(async () => {
-    rarityId = await db.select().from(rarities).limit(1).then(r => r[0]!.id);
+    userAId = (await fx.user({ displayName: "Test A" })).id;
+    userBId = (await fx.user({ displayName: "Test B" })).id;
 
-    const [a, b] = await db.insert(users).values([
-      { displayName: "Test A", avatarUrl: "" },
-      { displayName: "Test B", avatarUrl: "" },
-    ]).returning();
-    userAId = a!.id;
-    userBId = b!.id;
+    cardXId = (await fx.card({ name: "Test Card X" })).id;
+    cardYId = (await fx.card({ name: "Test Card Y" })).id;
+    cardZId = (await fx.card({ name: "Test Card Z" })).id;
 
-    const [x, y, z] = await db.insert(cards).values([
-      { name: "Test Card X", rarityId },
-      { name: "Test Card Y", rarityId },
-      { name: "Test Card Z", rarityId },
-    ]).returning();
-    cardXId = x!.id;
-    cardYId = y!.id;
-    cardZId = z!.id;
+    fx.onCleanup(async () => {
+      await db.delete(trades).where(inArray(trades.user1Id, [userAId, userBId]));
+      await db.delete(userCards).where(inArray(userCards.userId, [userAId, userBId]));
+    });
   });
 
-  afterAll(async () => {
-    await db.delete(trades).where(inArray(trades.user1Id, [userAId, userBId]));
-    await db.delete(userCards).where(inArray(userCards.userId, [userAId, userBId]));
-    await db.delete(cards).where(inArray(cards.id, [cardXId, cardYId, cardZId]));
-    await db.delete(users).where(inArray(users.id, [userAId, userBId]));
-  });
+  afterAll(() => fx.cleanup());
 
   async function resetOwnership() {
     await db.delete(userCards).where(inArray(userCards.userId, [userAId, userBId]));

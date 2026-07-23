@@ -1,41 +1,28 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
+import { TestFixtures } from "@girae/tests";
 import { db } from "../../index";
-import { users } from "../../schemas/users";
-import { cards, userCards, rarities } from "../../schemas/cards";
-import { eq, inArray } from "drizzle-orm";
+import { userCards } from "../../schemas/cards";
+import { eq } from "drizzle-orm";
 import { CardsDB } from "../../cards";
 
 describe("CardsDB.getUserOwnedCards", () => {
+  const fx = new TestFixtures();
   let userId: number;
-  let rarityId: number;
   let cardAId: number, cardBId: number;
 
   beforeAll(async () => {
-    rarityId = await db.select().from(rarities).limit(1).then(r => r[0]!.id);
-
-    const [user] = await db.insert(users).values({
-      displayName: "Test Owned", avatarUrl: "",
-    }).returning();
-    userId = user!.id;
-
-    const [a, b] = await db.insert(cards).values([
-      { name: "Owned Cards Zebra", rarityId },
-      { name: "Owned Cards Apple", rarityId },
-    ]).returning();
-    cardAId = a!.id;
-    cardBId = b!.id;
+    userId = (await fx.user({ displayName: "Test Owned" })).id;
+    cardAId = (await fx.card({ name: "Owned Cards Zebra" })).id;
+    cardBId = (await fx.card({ name: "Owned Cards Apple" })).id;
 
     await db.insert(userCards).values([
       { userId, cardId: cardAId, count: 1 },
       { userId, cardId: cardBId, count: 2 },
     ]);
+    fx.onCleanup(async () => { await db.delete(userCards).where(eq(userCards.userId, userId)); });
   });
 
-  afterAll(async () => {
-    await db.delete(userCards).where(eq(userCards.userId, userId));
-    await db.delete(cards).where(inArray(cards.id, [cardAId, cardBId]));
-    await db.delete(users).where(eq(users.id, userId));
-  });
+  afterAll(() => fx.cleanup());
 
   test("getUserOwnedCards (bare array) is unchanged - backward compatible with /cts", async () => {
     const result = await CardsDB.getUserOwnedCards(userId);
