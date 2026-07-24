@@ -5,7 +5,7 @@ import { AuditDB } from '@girae/database/audit'
 import { DBOS } from '@dbos-inc/dbos-sdk'
 import { reply, deleteMsg } from '@girae/common/dbos/messaging'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
-import { uploadCardImage } from '../../services/cards/cardImage'
+import { uploadCardImage, isAnimatedCardMedia } from '../../services/cards/cardImage'
 import { uploadFromUrl } from '@girae/common/utilities/storage'
 import { inferCardData, resolveAmbiguousCategory, inferRarityOnly } from '../../services/cards/cardInference'
 import { parseCardListing, parseSubcategoryListing, parseCardNameAndSubcategoryHint, parseCardHeader, extractCardName } from '../../services/cards/cardListingParser'
@@ -27,7 +27,7 @@ export default class AddCardCommand extends Command {
     const sourceText = args.content || ctx.message.replyTo?.content
     const photoUrl = ctx.message.photoUrl ?? ctx.message.replyTo?.photoUrl
 
-    const isAnimated = ctx.message.photoUrl ? ctx.message.isAnimatedPhoto : ctx.message.replyTo?.isAnimatedPhoto
+    const isAnimated = isAnimatedCardMedia(ctx)
 
     if (!sourceText) {
       await reply(ctx, 'Descreva o card nos argumentos (ex: `/addcard Winter da aespa, era Armageddon`) ou responda a uma mensagem com essa descrição.')

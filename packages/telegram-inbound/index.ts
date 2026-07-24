@@ -43,19 +43,21 @@ const isLocalDevelopment = !!process.env.LOCAL_DEVELOPMENT
 tg.on('message', async (msg) => {
   let content = msg.content ?? msg.caption
 
-  // msg.threadId/msg.inTopic, not msg.chat.threadId/msg.chat.inTopic (telegramsjs caches those per chat id).
+  // a gif is msg.animation, not msg.photo - must count here too
+  const hasMedia = !!msg.photo?.length || !!msg.animation
+
   const matchingChat = ADDCARD_CHAT_IDS.find(([chatId, threadId]) => String(msg.chat?.id) === chatId && String(msg.threadId) === threadId)
-  if (matchingChat && msg.inTopic && msg.photo?.length && !isLocalDevelopment) {
+  if (matchingChat && msg.inTopic && hasMedia && !isLocalDevelopment) {
     content = `/addcard ${content ?? ''}`.trim()
   }
 
   const matchingBg = ADDBG_CHAT_ID.find(([chatId, threadId]) => String(msg.chat?.id) === chatId && String(msg.threadId) === threadId)
-  if (matchingBg && msg.inTopic && msg.photo?.length && !isLocalDevelopment) {
+  if (matchingBg && msg.inTopic && hasMedia && !isLocalDevelopment) {
     content = `/addbg ${content ?? ''}`.trim()
   }
 
   const matchingCardImgCaption = CARDIMG_FROM_CAPTION_CHAT_IDS.find(([chatId, threadId]) => String(msg.chat?.id) === chatId && String(msg.threadId) === threadId)
-  if (matchingCardImgCaption && msg.inTopic && msg.photo?.length) {
+  if (matchingCardImgCaption && msg.inTopic && hasMedia) {
     content = `/cardimgfromcaption ${content ?? ''}`.trim()
   }
 

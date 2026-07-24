@@ -1,5 +1,12 @@
 import sharp from "sharp"
 import { uploadBytes } from "@girae/common/utilities/storage"
+import type { IncomingCommand } from "@girae/common/commands/types"
+
+// sharp can't decode a gif-as-video/real video - route those through uploadFromUrl instead
+export function isAnimatedCardMedia(ctx: IncomingCommand): boolean {
+  const source = ctx.message.photoUrl ? ctx.message : ctx.message.replyTo
+  return !!(source?.isAnimatedPhoto || source?.isVideo)
+}
 
 export const CARD_WIDTH = 900
 export const CARD_HEIGHT = 1260

@@ -3,7 +3,7 @@ import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { AuditDB } from '@girae/database/audit'
 import { reply } from '@girae/common/dbos/messaging'
-import { uploadCardImage } from '../../services/cards/cardImage'
+import { uploadCardImage, isAnimatedCardMedia } from '../../services/cards/cardImage'
 import { uploadFromUrl } from '@girae/common/utilities/storage'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
@@ -20,7 +20,7 @@ export default class AddImageCardCommand extends Command {
   static override async execute(ctx: IncomingCommand, args: { card: NonNullable<Awaited<ReturnType<typeof CardsDB.getCardWithDetails>>> }) {
     const card = args.card
     const photoUrl = ctx.message.photoUrl ?? ctx.message.replyTo?.photoUrl
-    const isAnimated = ctx.message.photoUrl ? ctx.message.isAnimatedPhoto : ctx.message.replyTo?.isAnimatedPhoto
+    const isAnimated = isAnimatedCardMedia(ctx)
 
     if (!photoUrl) {
       await reply(ctx, 'Não encontrei nenhuma foto na mensagem ou na resposta.')

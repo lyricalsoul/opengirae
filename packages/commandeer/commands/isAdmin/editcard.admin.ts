@@ -2,7 +2,7 @@ import { Command, CommandArgument, CommandArgumentType } from '@girae/common/com
 import { CardsDB } from '@girae/database/cards'
 import { DBOS } from '@dbos-inc/dbos-sdk'
 import { reply } from '@girae/common/dbos/messaging'
-import { uploadCardImage } from '../../services/cards/cardImage'
+import { uploadCardImage, isAnimatedCardMedia } from '../../services/cards/cardImage'
 import { uploadFromUrl } from '@girae/common/utilities/storage'
 import { runCardWizard } from '../../services/cards/cardWizard'
 import type { IncomingCommand } from '@girae/common/commands/types'
@@ -27,7 +27,7 @@ export default class EditCardCommand extends Command {
     const tags = await CardsDB.getSecondarySubcategoryNames(args.card.id)
 
     const newPhotoUrl = ctx.message.photoUrl ?? ctx.message.replyTo?.photoUrl
-    const isAnimated = ctx.message.photoUrl ? ctx.message.isAnimatedPhoto : ctx.message.replyTo?.isAnimatedPhoto
+    const isAnimated = isAnimatedCardMedia(ctx)
 
     const photoUrl = newPhotoUrl
       ? (isAnimated ? await uploadFromUrl(newPhotoUrl, 'cards') : await uploadCardImage(newPhotoUrl))
