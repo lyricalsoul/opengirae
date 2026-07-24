@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
 import { TestFixtures } from "@girae/tests";
 import { EconomyDB } from "@girae/database/economy";
-import { renderVanityBrowsePage } from "../../services/vanityBrowser";
+import { renderVanityBrowsePage } from "../../services/vanity/vanityBrowser";
 
 describe("renderVanityBrowsePage shows inflation-adjusted prices", () => {
   const fx = new TestFixtures();

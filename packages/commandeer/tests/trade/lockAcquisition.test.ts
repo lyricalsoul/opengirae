@@ -1,6 +1,6 @@
 import { test, expect, describe, afterAll } from "bun:test";
 import { rawClient } from "@girae/common/queue";
-import { tryAcquireLock, lockKey } from "../../services/tradeLock";
+import { tryAcquireLock, lockKey } from "../../services/cards/tradeLock";
 
 // exercises the real tradeLock.ts (SET NX, not GET-then-SET) trade.cards.ts uses to guard "already in a trade"
 describe("trade lock acquisition race", () => {

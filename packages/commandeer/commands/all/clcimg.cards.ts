@@ -5,7 +5,7 @@ import type { IncomingCommand } from '@girae/common/commands/types'
 import { EMOJI, cativeiroEmoji } from '../../constants'
 import { buildFilterArg, filterAdviceText, filterButtonsRow } from '@girae/common/utilities/pageFilters'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
-import { FILTERS, loadSubcategoryCollection } from '../../services/subcategoryCollection'
+import { FILTERS, loadSubcategoryCollection } from '../../services/cards/subcategoryCollection'
 import { FALLBACK_IMAGE } from './card.cards'
 
 async function renderPage(rawArg: string, page: number, viewerTelegramId: string, platform: 'telegram' | 'discord') {

@@ -6,14 +6,14 @@ import { reply, deleteMsg, awaitMultiPartyChoice } from '@girae/common/dbos/mess
 import { generateTradeImage } from '@girae/common/ditto'
 import { DEFAULT_AVATAR_URL } from '@girae/database/constants'
 import { getBotUsername, tg } from '../../services/botInfo'
-import { lockKey, tryAcquireLock } from '../../services/tradeLock'
+import { lockKey, tryAcquireLock } from '../../services/cards/tradeLock'
 import { rawClient } from '@girae/common/queue'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { mention } from '@girae/common/utilities/mention'
 import { error } from '@girae/common/logger'
 import { sideCtx } from '../../services/syntheticCtx'
-import { emitCardsNew } from '../../hookLoader'
+import { emitCardsNew } from '../../loaders/hooks'
 
 const LOCK_TTL_SECONDS = 60 * 60
 const INACTIVITY_TIMEOUT_SECONDS = 30 * 60

@@ -10,7 +10,7 @@ packages/commandeer/commands/<guards>/<name>.<category>.ts
   `+` into guard names (`all` = no guard, `isAdmin` = staff-only). `<name>`
   becomes the registered command name; `<category>` is free-form metadata
   only (`cards`, `users`, `vanity`, `admin`, `main`, `misc`) — doesn't affect
-  routing. See `packages/commandeer/loader.ts`.
+  routing. See `packages/commandeer/loaders/commands.ts`.
 - Every command file `export default class X extends Command` (from
   `@girae/common/commands`), with:
   ```ts
@@ -344,7 +344,7 @@ exactly, don't default to a generic/corporate tone:
    `action` as `'{noun}.{verb}'` (`card.create`, `category.imageUpdate`).
 8. Does your command grant the user a card (a new draw mode, an admin gift
    command, ...)? Emit `cards:new` via `emitCardsNew`/`emitHook`
-   (`packages/commandeer/hookLoader.ts`) right after the `*DB` call that
+   (`packages/commandeer/loaders/hooks.ts`) right after the `*DB` call that
    incremented `userCards.count`, the same way `/girar`/`/girarauto`/`/trade`
    do — see `02-architecture.md`'s "Hooks" section. Don't hand-roll the
    cativeiro-threshold check inline; the existing hook already does it.

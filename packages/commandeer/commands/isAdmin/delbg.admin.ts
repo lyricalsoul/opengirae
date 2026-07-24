@@ -1,6 +1,6 @@
 import { Command, CommandArgument, CommandArgumentType } from '@girae/common/commands'
 import { DBOS } from '@dbos-inc/dbos-sdk'
-import { deleteVanityItem } from '../../services/vanityWizard'
+import { deleteVanityItem } from '../../services/vanity/vanityWizard'
 import { VanitiesDB } from '@girae/database/vanities'
 import type { IncomingCommand } from '@girae/common/commands/types'
 

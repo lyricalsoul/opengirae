@@ -1,7 +1,7 @@
 import { Command } from '@girae/common/commands'
 import { reply } from '@girae/common/dbos/messaging'
 import { UsersDB } from '@girae/database/users'
-import { listCommands } from '../../loader'
+import { listCommands } from '../../loaders/commands'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 

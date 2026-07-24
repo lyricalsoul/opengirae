@@ -1,6 +1,6 @@
 import { Command } from '@girae/common/commands'
 import type { IncomingCommand } from '@girae/common/commands/types'
-import { togglePrivacyMode } from '../../services/privacyToggle'
+import { togglePrivacyMode } from '../../services/users/privacyToggle'
 
 export default class PrivacyCommand extends Command {
   static override info = {

@@ -5,7 +5,7 @@ import { DBOS } from '@dbos-inc/dbos-sdk'
 import { reply, deleteMsg, awaitTextReply } from '@girae/common/dbos/messaging'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import type { IncomingCommand } from '@girae/common/commands/types'
-import { EMOJI } from '../constants'
+import { EMOJI } from '../../constants'
 
 export interface CardData {
   name: string

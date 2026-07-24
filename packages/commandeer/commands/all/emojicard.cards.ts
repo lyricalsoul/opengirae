@@ -4,7 +4,7 @@ import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
-import { cativeiroEligibilityGuard, validateCustomEmoji } from '../../services/cativeiro'
+import { cativeiroEligibilityGuard, validateCustomEmoji } from '../../services/cards/cativeiro'
 
 type CardDetails = NonNullable<Awaited<ReturnType<typeof CardsDB.getCardWithDetails>>>
 

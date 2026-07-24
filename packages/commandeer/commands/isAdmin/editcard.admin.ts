@@ -2,9 +2,9 @@ import { Command, CommandArgument, CommandArgumentType } from '@girae/common/com
 import { CardsDB } from '@girae/database/cards'
 import { DBOS } from '@dbos-inc/dbos-sdk'
 import { reply } from '@girae/common/dbos/messaging'
-import { uploadCardImage } from '../../services/cardImage'
+import { uploadCardImage } from '../../services/cards/cardImage'
 import { uploadFromUrl } from '@girae/common/utilities/storage'
-import { runCardWizard } from '../../services/cardWizard'
+import { runCardWizard } from '../../services/cards/cardWizard'
 import type { IncomingCommand } from '@girae/common/commands/types'
 
 export default class EditCardCommand extends Command {

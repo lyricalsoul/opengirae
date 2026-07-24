@@ -4,7 +4,7 @@ import { COMMAND_QUEUE_NAME, RESUME_QUEUE_NAME, QUICKVIEW_QUEUE_NAME, PAGE_QUEUE
 import { executeCommand } from './services/commands'
 import { DBOS } from '@girae/common/dbos'
 import { info, error } from '@girae/common/logger'
-import { findQuickView, findPage } from './loader'
+import { findQuickView, findPage } from './loaders/commands'
 import type { PendingResponse } from '@girae/common/commands/types'
 import { pageNavSteps } from '@girae/common/dbos/messaging'
 

@@ -1,6 +1,6 @@
 import { test, expect, describe, afterEach } from "bun:test";
 import { rawClient } from "@girae/common/queue";
-import { claimGirar, getGirarActive, updateGirarStep, releaseGirar } from "../../services/girarClaim";
+import { claimGirar, getGirarActive, updateGirarStep, releaseGirar } from "../../services/gacha/girarClaim";
 
 describe("girarClaim (resumable claim key)", () => {
   const authorId = `test-girar-claim-${Date.now()}`;

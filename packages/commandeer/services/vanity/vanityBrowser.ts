@@ -1,7 +1,7 @@
 import { VanitiesDB } from '@girae/database/vanities'
 import { UsersDB } from '@girae/database/users'
 import { EconomyDB } from '@girae/database/economy'
-import { EMOJI } from '../constants'
+import { EMOJI } from '../../constants'
 import { applyFilters, filterAdviceText, filterButtonsRow, parseFilterArg, type FilterDef } from '@girae/common/utilities/pageFilters'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 

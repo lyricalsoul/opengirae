@@ -2,7 +2,7 @@ import type { BulkDrawResult } from '@girae/database/gacha'
 import { generateWishlistImage } from '@girae/common/ditto'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { rawClient } from '@girae/common/queue'
-import { EMOJI } from '../constants'
+import { EMOJI } from '../../constants'
 
 const PAGE_SIZE = 10
 const SUMMARY_CACHE_TTL_SECONDS = 10 * 60

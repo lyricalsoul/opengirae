@@ -5,7 +5,7 @@ import { UsersDB } from '@girae/database/users'
 import { EconomyDB } from '@girae/database/economy'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { buildFilterArg } from '@girae/common/utilities/pageFilters'
-import { renderVanityBrowsePage } from '../../services/vanityBrowser'
+import { renderVanityBrowsePage } from '../../services/vanity/vanityBrowser'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 
 type VanityItem = NonNullable<Awaited<ReturnType<typeof VanitiesDB.getStoreItemById>>>

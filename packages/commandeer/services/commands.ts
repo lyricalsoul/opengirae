@@ -1,5 +1,5 @@
 import { DBOS } from "@girae/common/dbos";
-import { findCommand } from "../loader";
+import { findCommand } from "../loaders/commands";
 import type { IncomingCommand } from "@girae/common/commands/types";
 import type { CommandArgumentSpec } from "@girae/common/commands";
 import { info, error } from "@girae/common/logger";

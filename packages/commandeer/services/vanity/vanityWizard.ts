@@ -9,7 +9,7 @@ import { buildProfileData } from '@girae/common/profileData'
 import { inferVanityData } from './vanityInference'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
-import { EMOJI } from '../constants'
+import { EMOJI } from '../../constants'
 
 export type VanityType = 'background' | 'sticker'
 

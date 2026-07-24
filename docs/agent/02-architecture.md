@@ -57,11 +57,14 @@ DBOS workflow via `DBOS.send` instead of being dropped.
 For behavior that should fire whenever something happens (not whenever a
 specific command runs — a card gain happens from `/girar`, `/girar *`,
 `/girarauto`, *and* `/trade`), `packages/commandeer/hooks/*.ts` holds
-listeners, loaded dynamically at startup by `packages/commandeer/hookLoader.ts`
-the same way `loader.ts` loads `commands/{all,isAdmin}/*.ts` — one
-`readdirSync` + dynamic `import()` per file, aggregated into a name → handler
-map. A hook file is a plain class with one or more `@Hook(eventName)` static
-methods (decorator from `@girae/common/hooks`):
+listeners, loaded dynamically at startup by `packages/commandeer/loaders/hooks.ts`'s
+`HooksLoader`. Command/hook loading both go through
+`packages/commandeer/loaders/`: `base.ts`'s `Loadable` class owns the shared
+"`readdirSync` a directory, dynamic `import()` each file" primitive,
+`commands.ts`'s `CommandsLoader` uses it for `commands/{all,isAdmin}/*.ts`,
+`hooks.ts`'s `HooksLoader` uses it for `hooks/*.ts`, aggregated into a name →
+handler map. A hook file is a plain class with one or more `@Hook(eventName)`
+static methods (decorator from `@girae/common/hooks`):
 
 ```ts
 import { Hook } from '@girae/common/hooks'
@@ -83,7 +86,7 @@ export default class MyHook {
 - **Emit from the command layer, never from `@girae/database`** — the same
   layering rule as messaging: `@girae/database` doesn't know about
   `@girae/commandeer` or DBOS. `girar.main.ts`/`girarauto.cards.ts` call
-  `emitHook`/`emitCardsNew` (from `../../hookLoader`) right after the
+  `emitHook`/`emitCardsNew` (from `../../loaders/hooks`) right after the
   `*DB`/`GachaLogic` call that actually granted the card, using the
   `previousCount`/`newCount` those methods already return.
 - **A throwing listener doesn't break the emitting command** — `emitHook`
@@ -95,6 +98,18 @@ export default class MyHook {
   doesn't inspect what it did). If the *command* itself needs to react to an
   outcome, that's normal command logic, not a hook.
 
+## `services/` layout
+
+`packages/commandeer/services/` is split by domain: `cards/`, `vanity/`,
+`gacha/`, `users/` hold logic specific to that domain (e.g.
+`services/cards/cativeiro.ts`, `services/vanity/vanityWizard.ts`,
+`services/gacha/girarClaim.ts`). Framework-core files that every domain
+depends on — `commandArguments.ts`, `commands.ts`, `guards.ts`,
+`syntheticCtx.ts`, `botInfo.ts`, `supportChannel.ts` — stay flat at
+`services/` root rather than being forced into one domain folder. When adding
+a new service, put it under the matching domain subfolder; only add a new
+subfolder for a genuinely new domain, not a one-off file.
+
 ## Redis / DragonflyDB usage
 
 Not just a BullMQ backend — also used directly for:
@@ -105,7 +120,8 @@ Not just a BullMQ backend — also used directly for:
   a single workflow's closure (e.g. `/trade`'s `trade:state:{workflowID}`)
 - Short-lived one-time codes (`/link`'s account-merge code)
 - Locks (`girar:active:{telegramId}:{chatId}` — prevents double-`/girar`
-  races; see `packages/commandeer/services/girarClaim.ts`/`tradeLock.ts`)
+  races; see `packages/commandeer/services/gacha/girarClaim.ts`/
+  `services/cards/tradeLock.ts`)
 
 ## Storage & third-party services (all optional locally, all fail safe)
 

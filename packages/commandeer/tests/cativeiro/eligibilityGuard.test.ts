@@ -2,7 +2,7 @@ import { test, expect, describe, beforeAll, afterAll } from "bun:test";
 import { TestFixtures, fakeCtx } from "@girae/tests";
 import { CommandArgumentType, type CommandArgumentSpec } from "@girae/common/commands";
 import { parseCommandArguments } from "../../services/commandArguments";
-import { cativeiroEligibilityGuard } from "../../services/cativeiro";
+import { cativeiroEligibilityGuard } from "../../services/cards/cativeiro";
 
 describe("cativeiroEligibilityGuard (via the CARD @CommandArgument spec)", () => {
   const fx = new TestFixtures();

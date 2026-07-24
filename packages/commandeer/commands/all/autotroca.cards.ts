@@ -3,7 +3,7 @@ import { reply } from '@girae/common/dbos/messaging'
 import { UsersDB } from '@girae/database/users'
 import { CardsDB } from '@girae/database/cards'
 import type { IncomingCommand } from '@girae/common/commands/types'
-import { AUTOTROCA_BULK_QUICKVIEW, autotrocaContent, autotrocaBulkButton } from '../../services/autotroca'
+import { AUTOTROCA_BULK_QUICKVIEW, autotrocaContent, autotrocaBulkButton } from '../../services/cards/autotroca'
 
 export default class AutotrocaCommand extends Command {
   static override info = {

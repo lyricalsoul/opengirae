@@ -1,13 +1,13 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
 import { mockTelegram, TestFixtures } from "@girae/tests";
-import { emitHook, emitCardsNew } from "../../hookLoader";
+import { emitHook, emitCardsNew } from "../../loaders/hooks";
 
 mockTelegram();
 
 // Proves the dynamic hooks/*.ts loader actually found and wired up the real
 // cativeiroNotify hook for 'cards:new' - emitHook resolving without throwing is the
 // signal the dispatch (readdirSync -> import -> registered handler) worked end to end.
-describe("hookLoader", () => {
+describe("HooksLoader", () => {
   const fx = new TestFixtures();
   let cardId: number;
 

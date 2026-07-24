@@ -1,4 +1,4 @@
-import { listCommands } from '../loader'
+import { listCommands } from '../loaders/commands'
 
 const token = process.env.TELEGRAM_TOKEN
 if (!token) throw new Error('TELEGRAM_TOKEN is not set')

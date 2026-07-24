@@ -9,9 +9,9 @@ import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { mention } from '@girae/common/utilities/mention'
 import { addHours, formatDistanceToNow, startOfHour } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { claimGirar, getGirarActive, updateGirarStep, releaseGirar } from '../../services/girarClaim'
-import { buildBulkDrawSummary, renderBulkDrawSummaryPage, cacheBulkDrawSummary, loadBulkDrawSummary } from '../../services/bulkDrawSummary'
-import { emitCardsNew } from '../../hookLoader'
+import { claimGirar, getGirarActive, updateGirarStep, releaseGirar } from '../../services/gacha/girarClaim'
+import { buildBulkDrawSummary, renderBulkDrawSummaryPage, cacheBulkDrawSummary, loadBulkDrawSummary } from '../../services/gacha/bulkDrawSummary'
+import { emitCardsNew } from '../../loaders/hooks'
 
 function outOfDrawsMessage(): string {
   const nextRegen = startOfHour(addHours(new Date(), 1));

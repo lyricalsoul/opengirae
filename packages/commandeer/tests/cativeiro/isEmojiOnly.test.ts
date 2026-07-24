@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { isEmojiOnly, containsRarityEmoji, validateCustomEmoji } from "../../services/cativeiro";
+import { isEmojiOnly, containsRarityEmoji, validateCustomEmoji } from "../../services/cards/cativeiro";
 
 describe("isEmojiOnly", () => {
   test.each(['🎉', '😅', '🥺', '👨‍👩‍👧'])("%s is accepted", (emoji) => {

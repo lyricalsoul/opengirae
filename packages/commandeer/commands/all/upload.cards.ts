@@ -8,7 +8,7 @@ import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { mention } from '@girae/common/utilities/mention'
 import { buildCtx } from '../../services/syntheticCtx'
-import { cativeiroEligibilityGuard, MAX_UPLOAD_BYTES } from '../../services/cativeiro'
+import { cativeiroEligibilityGuard, MAX_UPLOAD_BYTES } from '../../services/cards/cativeiro'
 import type { cardCustomizationSubmissions } from '@girae/database/schemas/cards'
 
 type CardDetails = NonNullable<Awaited<ReturnType<typeof CardsDB.getCardWithDetails>>>

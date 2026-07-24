@@ -241,13 +241,14 @@ it's itself holding open.
 
 ## Shared wizards: when two commands need (almost) the same workflow
 
-Extract the loop into a plain function in `packages/commandeer/services/`,
-parameterized by a `mode` (and whatever else differs), rather than
+Extract the loop into a plain function under `packages/commandeer/services/`
+in the matching domain subfolder (see `02-architecture.md`'s "`services/`
+layout"), parameterized by a `mode` (and whatever else differs), rather than
 duplicating the loop or cramming both flows into one file — e.g.
-`cardWizard.ts`'s `runCardWizard(ctx, { cardData, photoUrl, mode: 'create' |
-'edit', existingCardId? })`, shared by `/addcard`/`/editcard`. Only the
-commit step branches on `mode`; each command file becomes "resolve my
-mode-specific inputs, then call the shared wizard."
+`services/cards/cardWizard.ts`'s `runCardWizard(ctx, { cardData, photoUrl,
+mode: 'create' | 'edit', existingCardId? })`, shared by `/addcard`/`/editcard`.
+Only the commit step branches on `mode`; each command file becomes "resolve
+my mode-specific inputs, then call the shared wizard."
 
 ## Common gotchas
 

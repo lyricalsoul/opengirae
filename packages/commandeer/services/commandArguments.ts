@@ -7,7 +7,7 @@ import { VanitiesDB } from '@girae/database/vanities'
 import { EconomyDB } from '@girae/database/economy'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { normalizeText } from '@girae/common/utilities/normalizeText'
-import { TYPE_LABEL } from './vanityBrowser'
+import { TYPE_LABEL } from './vanity/vanityBrowser'
 
 const GREEDY_TYPES = new Set([
   CommandArgumentType.STRING,

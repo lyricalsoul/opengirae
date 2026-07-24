@@ -10,7 +10,6 @@ export const guards: Record<string, Guard> = {
 
     const user = await UsersDB.getUserByPlatformAccount(cmd.message.platform as 'telegram' | 'discord', cmd.message.author.id)
     if (!user?.isAdmin) {
-      await reply(cmd, 'Este comando é restrito a administradores. 🚫')
       return false
     }
     return true
