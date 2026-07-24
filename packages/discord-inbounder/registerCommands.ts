@@ -1,4 +1,4 @@
-import { listCommands, findCommand } from '@girae/commandeer/loader'
+import { listCommands, findCommand } from '@girae/commandeer/loaders/commands'
 import { CommandArgumentType, type CommandArgumentSpec } from '@girae/common/commands'
 import { ApplicationCommandOptionTypes, DiscordApplicationIntegrationType, DiscordInteractionContextType } from 'discordeno'
 import type { CreateApplicationCommand } from 'discordeno'

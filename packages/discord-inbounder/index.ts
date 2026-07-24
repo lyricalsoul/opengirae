@@ -6,7 +6,7 @@ import { info, error } from '@girae/common/logger'
 import { startHealthServer } from '@girae/common/health'
 import { buildApplicationCommands, findArgumentSpec, searchChoicesFor } from './registerCommands'
 import { UsersDB } from '@girae/database/users'
-import { findCommand } from '@girae/commandeer/loader'
+import { findCommand } from '@girae/commandeer/loaders/commands'
 
 startHealthServer(parseInt(process.env.PORT ?? '8080', 10))
 
