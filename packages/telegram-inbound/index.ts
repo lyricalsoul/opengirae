@@ -43,18 +43,19 @@ const isLocalDevelopment = !!process.env.LOCAL_DEVELOPMENT
 tg.on('message', async (msg) => {
   let content = msg.content ?? msg.caption
 
-  const matchingChat = ADDCARD_CHAT_IDS.find(([chatId, threadId]) => String(msg.chat?.id) === chatId && String(msg.chat?.threadId) === threadId)
-  if (matchingChat && msg.chat?.inTopic && msg.photo?.length && !isLocalDevelopment) {
+  // msg.threadId/msg.inTopic, not msg.chat.threadId/msg.chat.inTopic (telegramsjs caches those per chat id).
+  const matchingChat = ADDCARD_CHAT_IDS.find(([chatId, threadId]) => String(msg.chat?.id) === chatId && String(msg.threadId) === threadId)
+  if (matchingChat && msg.inTopic && msg.photo?.length && !isLocalDevelopment) {
     content = `/addcard ${content ?? ''}`.trim()
   }
 
-  const matchingBg = ADDBG_CHAT_ID.find(([chatId, threadId]) => String(msg.chat?.id) === chatId && String(msg.chat?.threadId) === threadId)
-  if (matchingBg && msg.chat?.inTopic && msg.photo?.length && !isLocalDevelopment) {
+  const matchingBg = ADDBG_CHAT_ID.find(([chatId, threadId]) => String(msg.chat?.id) === chatId && String(msg.threadId) === threadId)
+  if (matchingBg && msg.inTopic && msg.photo?.length && !isLocalDevelopment) {
     content = `/addbg ${content ?? ''}`.trim()
   }
 
-  const matchingCardImgCaption = CARDIMG_FROM_CAPTION_CHAT_IDS.find(([chatId, threadId]) => String(msg.chat?.id) === chatId && String(msg.chat?.threadId) === threadId)
-  if (matchingCardImgCaption && msg.chat?.inTopic && msg.photo?.length ) {
+  const matchingCardImgCaption = CARDIMG_FROM_CAPTION_CHAT_IDS.find(([chatId, threadId]) => String(msg.chat?.id) === chatId && String(msg.threadId) === threadId)
+  if (matchingCardImgCaption && msg.inTopic && msg.photo?.length) {
     content = `/cardimgfromcaption ${content ?? ''}`.trim()
   }
 
@@ -69,7 +70,7 @@ tg.on('message', async (msg) => {
   const chat: MessageChat = {
     id: String(msg.chat!.id),
     title: msg.chat!.title || 'DM',
-    threadId: msg.chat?.threadId ? String(msg.chat.threadId) : undefined,
+    threadId: msg.threadId ? String(msg.threadId) : undefined,
   }
 
   const replyTo = await buildReplyTo(msg, chat)
@@ -98,7 +99,7 @@ tg.on('message', async (msg) => {
 tg.on('callbackQuery', async (data) => {
   if (!data.data) return
   await refreshAvatarIfStale(data.author.id.toString(), data.author.firstName)
- 
+
   await processCallback(
     data.data,
     data.author.id.toString(),

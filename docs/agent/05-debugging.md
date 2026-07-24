@@ -85,6 +85,18 @@ cause; don't leave speculative logging behind "just in case."
   3x with exponential backoff. Don't bypass this by calling
   `responseQueue.add` directly without job options — transient network
   blips used to silently drop replies with zero retry before this existed.
+- **`msg.threadId`/`msg.inTopic`, never `msg.chat.threadId`/`msg.chat.inTopic`** —
+  telegramsjs's `Chat` object is patched with topic data per-update, but chat
+  objects appear to be cached/reused by chat id, so reading the topic off
+  `msg.chat` in a busy multi-topic supergroup can reflect whichever topic
+  most recently touched that same chat object, not the current message's
+  own topic — messages ended up replied-to (or auto-detected as an
+  `/addcard`-style self-service topic) in the wrong/random topic before this
+  was caught. `Message` carries its own `threadId`/`inTopic` directly (the
+  actual per-message `message_thread_id`/topic flag from the Bot API) — read
+  those instead, both in `telegram-inbound/index.ts`'s topic-matching logic
+  and when building the normalized `Message.chat.threadId` the rest of the
+  bot relies on.
 
 ## Test-suite pollution: stale rows from a crashed run
 

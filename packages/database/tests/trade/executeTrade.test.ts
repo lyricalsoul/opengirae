@@ -1,8 +1,8 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
 import { TestFixtures } from "@girae/tests";
 import { db } from "../../index";
-import { userCards, trades } from "../../schemas/cards";
-import { eq, inArray } from "drizzle-orm";
+import { userCards, trades, cards, rarities } from "../../schemas/cards";
+import { eq, inArray, and } from "drizzle-orm";
 import { CardsDB, InsufficientCardError } from "../../cards";
 
 // Correctness of the money-path swap: atomicity, commit-time re-validation, and the
@@ -127,5 +127,53 @@ describe("CardsDB.executeTrade", () => {
     await expect(
       CardsDB.executeTrade(userAId, [{ cardId: cardXId, count: 0 }], userBId, [{ cardId: cardYId, count: 1 }])
     ).rejects.toThrow('must be positive');
+  });
+
+  test("reports previous/new count crossings for the receiving side of each offer", async () => {
+    await resetOwnership();
+    await db.insert(userCards).values({ userId: userAId, cardId: cardXId, count: 1 });
+    await db.insert(userCards).values({ userId: userBId, cardId: cardYId, count: 1 });
+    await db.insert(userCards).values({ userId: userBId, cardId: cardXId, count: 3 }); // B already owns 3 X's
+
+    const { crossings } = await CardsDB.executeTrade(
+      userAId, [{ cardId: cardXId, count: 1 }],
+      userBId, [{ cardId: cardYId, count: 1 }],
+    );
+
+    // B receives X: previousCount 3 -> newCount 4
+    expect(crossings).toContainEqual({ userId: userBId, cardId: cardXId, previousCount: 3, newCount: 4 });
+    // A receives Y for the first time: previousCount 0 -> newCount 1
+    expect(crossings).toContainEqual({ userId: userAId, cardId: cardYId, previousCount: 0, newCount: 1 });
+  });
+
+  test("trading away cards that drop below the rarity's cativeiro threshold clears customization", async () => {
+    const [{ rarityId, previousThreshold }] = await db
+      .select({ rarityId: cards.rarityId, previousThreshold: rarities.cativeiroThreshold })
+      .from(cards).innerJoin(rarities, eq(rarities.id, cards.rarityId))
+      .where(eq(cards.id, cardXId)).limit(1);
+    await db.update(rarities).set({ cativeiroThreshold: 5 }).where(eq(rarities.id, rarityId));
+
+    try {
+      await resetOwnership();
+      await db.insert(userCards).values({
+        userId: userAId, cardId: cardXId, count: 5,
+        customEmoji: '💎', customMediaUrl: 'https://example.com/x.jpg', customMediaType: 'photo',
+      });
+      await db.insert(userCards).values({ userId: userBId, cardId: cardYId, count: 1 });
+
+      await CardsDB.executeTrade(
+        userAId, [{ cardId: cardXId, count: 2 }],
+        userBId, [{ cardId: cardYId, count: 1 }],
+      );
+
+      const [remaining] = await db.select().from(userCards)
+        .where(and(eq(userCards.userId, userAId), eq(userCards.cardId, cardXId)));
+      expect(remaining!.count).toBe(3);
+      expect(remaining!.customEmoji).toBeNull();
+      expect(remaining!.customMediaUrl).toBeNull();
+      expect(remaining!.customMediaType).toBeNull();
+    } finally {
+      await db.update(rarities).set({ cativeiroThreshold: previousThreshold }).where(eq(rarities.id, rarityId));
+    }
   });
 });

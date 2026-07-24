@@ -308,6 +308,10 @@ exactly, don't default to a generic/corporate tone:
   block, 😅/😔 a soft/friendly error, ✅/❌ confirm/cancel, 🎲 a count, 📃 a
   page indicator. Reuse `EMOJI` (`packages/commandeer/constants.ts`) and
   `cativeiroEmoji(count)` rather than inventing new ad-hoc icons per command.
+  Note: `cativeiroEmoji()` is a purely cosmetic tier badge (🏆/👑/.../✨) shown
+  next to a duplicate-count, unrelated to the *cativeiro* customization
+  feature (`/cativeiros`, `/upload`, `/emojicard`, `rarities.cativeiroThreshold`)
+  described below — the two share a name but not a mechanism.
 - **Errors are gentle, never terse.** "Não encontrei..." + a clarifying
   question ("Ele já usou a bot?", "Talvez você marcou a pessoa errada?"),
   not a bare "not found." A blocked action explains *why*, in the same
@@ -338,4 +342,35 @@ exactly, don't default to a generic/corporate tone:
    above. Don't treat this as optional.
 7. Staff mutation? Call `AuditDB.log(userId, action, metadata)`,
    `action` as `'{noun}.{verb}'` (`card.create`, `category.imageUpdate`).
-8. `bun test` clean, `bun run check` (in `website/`, if touched) clean.
+8. Does your command grant the user a card (a new draw mode, an admin gift
+   command, ...)? Emit `cards:new` via `emitCardsNew`/`emitHook`
+   (`packages/commandeer/hookLoader.ts`) right after the `*DB` call that
+   incremented `userCards.count`, the same way `/girar`/`/girarauto`/`/trade`
+   do — see `02-architecture.md`'s "Hooks" section. Don't hand-roll the
+   cativeiro-threshold check inline; the existing hook already does it.
+9. Does your command take cards away (a new discard mode, an admin removal
+   command, ...)? Decrement `userCards.count` inside the same DB transaction
+   that reads/writes the row, and if the row survives (`count > 0`) but drops
+   below the card's rarity's `cativeiroThreshold`, null out
+   `customEmoji`/`customMediaUrl`/`customMediaType` in that same transaction
+   — see `CardsDB.discardUserCardsTx`/`executeTrade`'s `decrement()` for the
+   pattern. This is deliberately *not* done via the `cards:new`-style hook
+   system: it's an ownership invariant ("you can't keep a customization for
+   a card you're no longer eligible for"), not a notification, so it belongs
+   in the same atomic write as the decrement rather than a best-effort
+   post-commit listener.
+10. The same invariant cuts the other way too: any write that *grants* a
+    customization (`setUserCardCustomEmoji`, `approveCativeiroSubmission`)
+    must re-check `count >= cativeiroThreshold` at write time, inside the
+    same atomic UPDATE — not just at guard/argument-resolution time. The
+    gap between a `@CommandArgument` guard resolving and the write actually
+    happening is real (a `/upload` review can sit pending for hours/days;
+    even `/emojicard`'s guard→execute gap is a real, if small, window), and
+    a concurrent discard/trade can land in it. Fold `userCards.count >=
+    (threshold subquery)` straight into the `UPDATE ... WHERE` — see
+    `CardsDB.setUserCardCustomEmoji`/`approveCativeiroSubmission` — so a
+    stale write can't resurrect a customization the decrement path already
+    correctly cleared. Return a distinct `not_eligible` reason (as opposed
+    to `not_pending`/etc.) so the caller can message the user/reviewer
+    accordingly instead of silently no-oping.
+11. `bun test` clean, `bun run check` (in `website/`, if touched) clean.

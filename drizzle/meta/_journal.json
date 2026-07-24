@@ -120,6 +120,13 @@
       "when": 1784787028060,
       "tag": "0016_red_crystal",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784855414029,
+      "tag": "0017_rare_legion",
+      "breakpoints": true
     }
   ]
 }

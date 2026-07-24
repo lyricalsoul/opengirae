@@ -14,7 +14,7 @@ that another process needs to see.
 | `@girae/database` | One `*DB` class per domain (`CardsDB`, `UsersDB`, `VanitiesDB`, `AuditDB`, `PromoDB`) in `packages/database/{name}.ts`, plus Drizzle schemas in `packages/database/schemas/`. See `03-commands.md`'s database conventions section. |
 | `@girae/telegram-inbound` | Long-polls (or webhooks) Telegram via `telegramsjs`, normalizes an incoming Telegram message into the platform-agnostic `Message` shape, and pushes it onto `commandQueue`. Also handles Telegram-only quirks (topic/thread reply detection, `@othertbot` mention stripping, avatar refresh throttling). |
 | `@girae/discord-inbounder` | Same job for Discord, via `discordeno`. Discord commands are real slash commands (registered via `bun run commands:sync`), not free-text `/name` parsing — see `registerCommands.ts`. |
-| `@girae/commandeer` | The actual command engine: loads every file under `commands/{all,isAdmin}/`, resolves `@CommandArgument`s, runs guards, dispatches to the matching `Command`/`@Subcommand`/`@QuickView`/`@Page` handler, and (for `useWorkflow: true` commands) launches a DBOS workflow. Pushes replies onto `responseQueue`. |
+| `@girae/commandeer` | The actual command engine: loads every file under `commands/{all,isAdmin}/`, resolves `@CommandArgument`s, runs guards, dispatches to the matching `Command`/`@Subcommand`/`@QuickView`/`@Page` handler, and (for `useWorkflow: true` commands) launches a DBOS workflow. Pushes replies onto `responseQueue`. Also loads `hooks/*.ts` the same way (see "Hooks" below) and emits domain events (`cards:new`) from inside command bodies. |
 | `@girae/answerer` | Consumes `responseQueue`, does platform-specific formatting (Markdown→Telegram, Markdown→Discord embed) and rate-limit-aware sending, retries on transient failure. |
 | `website` | SvelteKit app, two independent surfaces: a Telegram Mini App (`/app` routes — cards/collections/store/inventory, authenticated via `@tma.js` init-data) and an admin panel (`/admin` routes — cards/categories/users/promo-codes CRUD, `better-auth` + OIDC login). Talks to `@girae/database` directly via tRPC routers (`website/src/lib/trpc/routes/`), not through the bot's queues. |
 | `@girae/tests` | Shared test helpers: `mockTelegram()` (replaces `telegramsjs` with an in-memory stub that records sent messages), `bootstrapCommandeerWorkers()` (spins up DBOS + the commandeer/answerer workers for tests that need a real reply round-trip). Also owns `scripts/investigate.ts` — see `05-debugging.md`. |
@@ -51,6 +51,49 @@ and when to reach for each.
 `awaitTextReply` registration (`pendingText:{chatId}:{authorId}` in Redis) by
 `packages/common/inbound/handler.ts`, and if one exists, resumes the waiting
 DBOS workflow via `DBOS.send` instead of being dropped.
+
+## Hooks: reacting to a domain event without coupling the DB layer to messaging
+
+For behavior that should fire whenever something happens (not whenever a
+specific command runs — a card gain happens from `/girar`, `/girar *`,
+`/girarauto`, *and* `/trade`), `packages/commandeer/hooks/*.ts` holds
+listeners, loaded dynamically at startup by `packages/commandeer/hookLoader.ts`
+the same way `loader.ts` loads `commands/{all,isAdmin}/*.ts` — one
+`readdirSync` + dynamic `import()` per file, aggregated into a name → handler
+map. A hook file is a plain class with one or more `@Hook(eventName)` static
+methods (decorator from `@girae/common/hooks`):
+
+```ts
+import { Hook } from '@girae/common/hooks'
+import type { CardsNewEvent } from '@girae/common/hooks/types'
+
+export default class MyHook {
+  @Hook('cards:new')
+  static async onCardsNew(event: CardsNewEvent) { /* query the DB, maybe reply() */ }
+}
+```
+
+- **Events are defined in `packages/common/hooks/types.ts`** (`HookEventMap`,
+  one entry per event name) — add a new event there before adding a listener
+  for it. `cards:new` (userId, cardId, previousCount, newCount, telegramId,
+  displayName, platform) is the only one today, fired once per distinct card
+  whose owned count went up in one action — see `cativeiroNotify.ts` for the
+  reference listener (checks `rarities.cativeiroThreshold` and DMs the player
+  on first crossing).
+- **Emit from the command layer, never from `@girae/database`** — the same
+  layering rule as messaging: `@girae/database` doesn't know about
+  `@girae/commandeer` or DBOS. `girar.main.ts`/`girarauto.cards.ts` call
+  `emitHook`/`emitCardsNew` (from `../../hookLoader`) right after the
+  `*DB`/`GachaLogic` call that actually granted the card, using the
+  `previousCount`/`newCount` those methods already return.
+- **A throwing listener doesn't break the emitting command** — `emitHook`
+  catches and logs per-handler, same reasoning as `settleReply()` swallowing
+  a permanently failed send. Multiple hook files can listen to the same
+  event; each runs independently.
+- **Not for anything that needs to block or branch on a reply** — a hook
+  handler fires-and-forgets (well, `await`ed by the emitter, but the emitter
+  doesn't inspect what it did). If the *command* itself needs to react to an
+  outcome, that's normal command logic, not a hook.
 
 ## Redis / DragonflyDB usage
 
@@ -89,3 +132,17 @@ Command handlers should read `ctx.message.platform` only when a behavior
 is genuinely platform-specific (e.g. `mention()` builds a different string
 for Telegram vs Discord) — the default assumption is that a command works
 identically on both platforms without checking `platform` at all.
+
+**Replying somewhere other than where the trigger came from**:
+`packages/commandeer/services/syntheticCtx.ts` builds a synthetic
+`IncomingCommand` for exactly this — `sideCtx(base, telegramId, name, chatId,
+threadId?)` swaps chat/author onto an existing `ctx` (a `/trade` negotiation
+DM, a staff review topic), keeping everything else (notably `platform`)
+inherited from `base`; `buildCtx(platform, telegramId, name, chatId,
+threadId?)` builds one from scratch with an explicit `platform`, for the two
+cases with no `base` ctx at all — a `@QuickView` handler (never receives
+one) and forwarding to a chat whose platform isn't the triggering user's own
+(e.g. a Telegram-only staff topic, regardless of which platform the
+triggering user is on). Both just feed `reply()`; see `04-dbos.md`'s "Real
+platform DMs" section for why this works without a "send to anyone"
+primitive.

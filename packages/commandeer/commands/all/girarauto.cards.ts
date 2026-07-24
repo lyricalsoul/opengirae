@@ -9,6 +9,7 @@ import { ptBR } from 'date-fns/locale'
 import { claimGirar, releaseGirar } from '../../services/girarClaim'
 import { buildBulkDrawSummary, renderBulkDrawSummaryPage, cacheBulkDrawSummary, loadBulkDrawSummary } from '../../services/bulkDrawSummary'
 import { resolveCategoryByIdOrName } from '../../services/commandArguments'
+import { emitCardsNew } from '../../hookLoader'
 
 export function parseQuantity(raw: string | undefined, remaining: number): number | null {
   if (!raw) return null
@@ -91,10 +92,10 @@ export default class GirarAutoCommand extends Command {
     }
 
     try {
-      const results = await GachaLogic.runBulkDraws(user.id, categoryOrder, user.luckModifier, favoriteSubcategoryIds);
-      const summary = await buildBulkDrawSummary(results, { splitFavorites: true });
+      const { draws, countsByCard } = await GachaLogic.runBulkDraws(user.id, categoryOrder, user.luckModifier, favoriteSubcategoryIds);
+      const summary = await buildBulkDrawSummary(draws, { splitFavorites: true });
 
-      if (results.length === 0) {
+      if (draws.length === 0) {
         await reply(ctx, summary.header);
         return;
       }
@@ -109,6 +110,8 @@ export default class GirarAutoCommand extends Command {
         photoUrl: firstPage.photoUrl,
         buttonRows: navRow.length ? [navRow] : undefined,
       });
+
+      await emitCardsNew(user.id, authorId, ctx.message.author.name, ctx.message.platform, countsByCard);
     } finally {
       await releaseGirar(authorId, chatId);
     }

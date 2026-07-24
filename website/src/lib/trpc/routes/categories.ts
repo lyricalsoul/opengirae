@@ -64,6 +64,7 @@ export const categoriesRouter = t.router({
 				tags: z.array(z.string()).optional(),
 				isSecondary: z.boolean().optional(),
 				imageUrl: z.string().optional(),
+				emoji: z.string().optional(),
 				rarityModifier: z.number().optional()
 			})
 		)

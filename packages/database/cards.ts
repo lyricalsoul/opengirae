@@ -11,11 +11,20 @@ import {
   trades,
   wishlist,
   subcategoryGoals,
+  cardCustomizationSubmissions,
 } from "./schemas/cards";
 import { users } from "./schemas/users";
 import { eq, and, sql, ilike, desc, gte, gt, inArray } from "drizzle-orm";
 import { CARD_DISCARD_REWARDS } from "./constants";
 import { EconomyDB } from "./economy";
+
+export interface CativeiroSubmitter {
+  platform: string;
+  platformId: string;
+  name: string;
+  chatId: string;
+  threadId?: string;
+}
 
 export class InsufficientCardError extends Error {
   constructor(public userId: number, public cardId: number) {
@@ -60,6 +69,8 @@ export class CardsDB {
         rarityEmoji: rarities.emoji,
         categoryEmoji: categories.emoji,
         subcategoryName: subcategories.name,
+        cativeiroThreshold: rarities.cativeiroThreshold,
+        subcategoryEmoji: sql<string | null>`COALESCE(${subcategories.emoji}, ${categories.emoji})`,
       })
       .from(cards)
       .innerJoin(rarities, eq(rarities.id, cards.rarityId))
@@ -331,12 +342,13 @@ export class CardsDB {
       .then((a) => a?.[0]);
 
     if (existing) {
-      return await client
+      const updated = await client
         .update(userCards)
         .set({ count: sql`${userCards.count} + 1` })
         .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)))
         .returning()
         .then(a => a?.[0]);
+      return updated ? { ...updated, previousCount: existing.count } : undefined;
     }
 
     const user = await client
@@ -346,10 +358,11 @@ export class CardsDB {
       .limit(1)
       .then(a => a?.[0]);
 
-    return await client.insert(userCards)
+    const inserted = await client.insert(userCards)
       .values({ userId, cardId, tradable: user?.makeCardsTradeableByDefault ?? false })
       .returning()
       .then(a => a?.[0]);
+    return inserted ? { ...inserted, previousCount: 0 } : undefined;
   })
 
   static executeTrade = maybeTransaction('executeTrade', async (
@@ -364,6 +377,17 @@ export class CardsDB {
       if (offer.some(o => o.count <= 0)) throw new Error('executeTrade: offer counts must be positive');
     }
 
+    // pre-fetch thresholds for every offered card up front, avoiding an N+1 in decrement().
+    const allOfferedCardIds = [...offerA, ...offerB].map(o => o.cardId);
+    const thresholds = allOfferedCardIds.length
+      ? await client
+        .select({ cardId: cards.id, cativeiroThreshold: rarities.cativeiroThreshold })
+        .from(cards)
+        .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+        .where(inArray(cards.id, allOfferedCardIds))
+      : [];
+    const thresholdByCardId = new Map(thresholds.map(t => [t.cardId, t.cativeiroThreshold]));
+
     const decrement = async (userId: number, cardId: number, count: number) => {
       const [row] = await client
         .update(userCards)
@@ -373,8 +397,20 @@ export class CardsDB {
       if (!row) throw new InsufficientCardError(userId, cardId);
       if (row.count === 0) {
         await client.delete(userCards).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+        return;
+      }
+
+      // no longer eligible - clear any customization.
+      const threshold = thresholdByCardId.get(cardId) ?? 0;
+      if (row.count < threshold) {
+        await client
+          .update(userCards)
+          .set({ customEmoji: null, customMediaUrl: null, customMediaType: null })
+          .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
       }
     };
+
+    const crossings: { userId: number; cardId: number; previousCount: number; newCount: number }[] = [];
 
     const increment = async (userId: number, cardId: number, count: number) => {
       const existing = await client
@@ -383,6 +419,9 @@ export class CardsDB {
         .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)))
         .limit(1)
         .then(a => a?.[0]);
+
+      const previousCount = existing?.count ?? 0;
+      crossings.push({ userId, cardId, previousCount, newCount: previousCount + count });
 
       if (existing) {
         await client
@@ -399,7 +438,7 @@ export class CardsDB {
     for (const { cardId, count } of offerA) await increment(userBId, cardId, count);
     for (const { cardId, count } of offerB) await increment(userAId, cardId, count);
 
-    return await client
+    const trade = await client
       .insert(trades)
       .values({
         user1Id: userAId,
@@ -409,6 +448,8 @@ export class CardsDB {
       })
       .returning()
       .then(a => a?.[0]);
+
+    return { trade, crossings };
   })
 
   static addCardDrawHistory = maybeTransaction('addCardDrawHistory', async (client, userId: number, cardId: number, categoryId: number, subcategoryId: number) => {
@@ -700,6 +741,147 @@ export class CardsDB {
     ]);
 
     return { rows, total };
+  })
+
+  static getCativeiroEligibleCards = maybeTransaction('getCativeiroEligibleCards', async (
+    client, userId: number, opts: { limit?: number; offset?: number } = {},
+  ) => {
+    const { limit = 20, offset = 0 } = opts;
+    const eligible = sql`${userCards.count} >= ${rarities.cativeiroThreshold}`;
+    const where = and(eq(userCards.userId, userId), eligible);
+
+    const [rows, total] = await Promise.all([
+      client
+        .select({
+          id: cards.id,
+          name: cards.name,
+          rarityName: rarities.name,
+          rarityEmoji: rarities.emoji,
+          subcategoryEmoji: sql<string | null>`COALESCE(${subcategories.emoji}, ${categories.emoji})`,
+          ownedCount: userCards.count,
+          customEmoji: userCards.customEmoji,
+          customMediaUrl: userCards.customMediaUrl,
+          customMediaType: userCards.customMediaType,
+        })
+        .from(userCards)
+        .innerJoin(cards, eq(cards.id, userCards.cardId))
+        .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+        .leftJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.isMain, true)))
+        .leftJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
+        .leftJoin(categories, eq(categories.id, subcategories.categoryId))
+        .where(where)
+        .orderBy(desc(cards.rarityId), cards.id)
+        .limit(limit)
+        .offset(offset),
+      client
+        .select({ total: sql<number>`CAST(COUNT(*) AS INTEGER)` })
+        .from(userCards)
+        .innerJoin(cards, eq(cards.id, userCards.cardId))
+        .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+        .where(where)
+        .then(r => r[0]?.total ?? 0),
+    ]);
+
+    return { rows, total };
+  })
+
+  static setUserCardCustomEmoji = maybeTransaction('setUserCardCustomEmoji', async (client, userId: number, cardId: number, emoji: string) => {
+    // eligibility folded into the WHERE - no check-then-write gap for a concurrent discard/trade.
+    const [updated] = await client
+      .update(userCards)
+      .set({ customEmoji: emoji })
+      .where(and(
+        eq(userCards.userId, userId),
+        eq(userCards.cardId, cardId),
+        sql`${userCards.count} >= (SELECT ${rarities.cativeiroThreshold} FROM ${cards} INNER JOIN ${rarities} ON ${rarities.id} = ${cards.rarityId} WHERE ${cards.id} = ${cardId})`,
+      ))
+      .returning();
+    return updated ? { ok: true as const, row: updated } : { ok: false as const, reason: 'not_eligible' as const };
+  })
+
+  static createCativeiroSubmission = async (userId: number, cardId: number, mediaUrl: string, mediaType: 'photo' | 'video', submitter: CativeiroSubmitter) => {
+    try {
+      return { ok: true as const, submission: await CardsDB.createCativeiroSubmissionTx(userId, cardId, mediaUrl, mediaType, submitter) };
+    } catch (e) {
+      // drizzle-orm 0.45 wraps the raw pg error (with .code) as .cause.
+      const code = (e as { code?: string }).code ?? (e as { cause?: { code?: string } }).cause?.code;
+      if (code === '23505') return { ok: false as const, reason: 'already_pending' as const };
+      throw e;
+    }
+  }
+
+  private static createCativeiroSubmissionTx = maybeTransaction('createCativeiroSubmission', async (
+    client, userId: number, cardId: number, mediaUrl: string, mediaType: 'photo' | 'video', submitter: CativeiroSubmitter,
+  ) => {
+    return await client
+      .insert(cardCustomizationSubmissions)
+      .values({
+        userId, cardId, mediaUrl, mediaType,
+        submitterPlatform: submitter.platform,
+        submitterPlatformId: submitter.platformId,
+        submitterName: submitter.name,
+        submitterChatId: submitter.chatId,
+        submitterThreadId: submitter.threadId,
+      })
+      .returning()
+      .then(a => a?.[0]);
+  })
+
+  static setCativeiroSubmissionReviewMessage = maybeTransaction('setCativeiroSubmissionReviewMessage', async (client, submissionId: number, reviewChatId: string, reviewMessageId: string) => {
+    await client.update(cardCustomizationSubmissions).set({ reviewChatId, reviewMessageId }).where(eq(cardCustomizationSubmissions.id, submissionId));
+  })
+
+  // reviewer/reviewedAt aren't stored here - AuditDB.log('cativeiro.approve'/'reject') already has them.
+  static approveCativeiroSubmission = maybeTransaction('approveCativeiroSubmission', async (client, submissionId: number) => {
+    // re-checked here (not just at guard time) - the submission may have sat pending for
+    // days while the user dropped below cativeiroThreshold. Folded into the WHERE for TOCTOU-safety.
+    const stillEligible = sql`EXISTS (
+      SELECT 1 FROM ${userCards}
+      INNER JOIN ${cards} ON ${cards.id} = ${userCards.cardId}
+      INNER JOIN ${rarities} ON ${rarities.id} = ${cards.rarityId}
+      WHERE ${userCards.userId} = ${cardCustomizationSubmissions.userId}
+        AND ${userCards.cardId} = ${cardCustomizationSubmissions.cardId}
+        AND ${userCards.count} >= ${rarities.cativeiroThreshold}
+    )`;
+
+    const [submission] = await client
+      .update(cardCustomizationSubmissions)
+      .set({ status: 'approved' })
+      .where(and(
+        eq(cardCustomizationSubmissions.id, submissionId),
+        eq(cardCustomizationSubmissions.status, 'pending'),
+        stillEligible,
+      ))
+      .returning();
+
+    if (submission) {
+      await client
+        .update(userCards)
+        .set({ customMediaUrl: submission.mediaUrl, customMediaType: submission.mediaType })
+        .where(and(eq(userCards.userId, submission.userId), eq(userCards.cardId, submission.cardId)));
+
+      return { ok: true as const, submission };
+    }
+
+    const [current] = await client
+      .select()
+      .from(cardCustomizationSubmissions)
+      .where(eq(cardCustomizationSubmissions.id, submissionId));
+    if (!current || current.status !== 'pending') return { ok: false as const, reason: 'not_pending' as const };
+    return { ok: false as const, reason: 'not_eligible' as const };
+  })
+
+  static rejectCativeiroSubmission = maybeTransaction('rejectCativeiroSubmission', async (client, submissionId: number) => {
+    const [submission] = await client
+      .update(cardCustomizationSubmissions)
+      .set({ status: 'rejected' })
+      .where(and(eq(cardCustomizationSubmissions.id, submissionId), eq(cardCustomizationSubmissions.status, 'pending')))
+      .returning();
+    return submission ? { ok: true as const, submission } : { ok: false as const, reason: 'not_pending' as const };
+  })
+
+  static updateRarity = maybeTransaction('updateRarity', async (client, id: number, data: Partial<typeof rarities.$inferInsert>) => {
+    return await client.update(rarities).set(data).where(eq(rarities.id, id)).returning().then(a => a?.[0]);
   })
 
   static addToWishlist = maybeTransaction('addToWishlist', async (client, userId: number, cardId: number) => {
@@ -1089,7 +1271,7 @@ export class CardsDB {
     if (uniqueIds.length === 0) return { ok: true as const, results: [], totalCoinsAwarded: 0 };
 
     const owned = await client
-      .select({ cardId: userCards.cardId, count: userCards.count, rarityName: rarities.name })
+      .select({ cardId: userCards.cardId, count: userCards.count, rarityName: rarities.name, cativeiroThreshold: rarities.cativeiroThreshold })
       .from(userCards)
       .innerJoin(cards, eq(cards.id, userCards.cardId))
       .innerJoin(rarities, eq(rarities.id, cards.rarityId))
@@ -1118,6 +1300,12 @@ export class CardsDB {
 
       if (updated.count === 0) {
         await client.delete(userCards).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+      } else if (updated.count < row.cativeiroThreshold) {
+        // no longer eligible - clear any customization instead of leaving it dangling.
+        await client
+          .update(userCards)
+          .set({ customEmoji: null, customMediaUrl: null, customMediaType: null })
+          .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
       }
 
       results.push({ cardId, remainingCount: updated.count, coinsAwarded: reward });
@@ -1211,6 +1399,7 @@ export class CardsDB {
           tags: subcategories.tags,
           isSecondary: subcategories.isSecondary,
           imageUrl: subcategories.imageUrl,
+          emoji: subcategories.emoji,
           rarityModifier: subcategories.rarityModifier,
           cardCount: sql<number>`CAST(COUNT(${cardSubcategories.cardId}) AS INTEGER)`,
         })

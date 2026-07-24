@@ -25,6 +25,23 @@ arg, what page)` alone with a DB query, it's stateless. If the next step
 depends on a chain of *previous answers* that can't be re-derived from
 scratch, it's a workflow.
 
+**A moderator-approval queue is stateless too, not a workflow**, even though
+it "waits" for a click — the wait can legitimately last hours or days, and
+`reply()`'s `InlineReplyOptions` button state (see below) has a hard 1-hour
+Redis TTL, so a workflow parked on `DBOS.recv()` that long would have its
+buttons silently stop working while the workflow itself is still technically
+suspended forever. `/upload`'s cativeiro-customization review
+(`packages/commandeer/commands/all/upload.cards.ts`) is the concrete
+pattern: a real DB table (`cardCustomizationSubmissions`) holds a
+`status: pending/approved/rejected`, its own row is the durable state (not a
+workflow variable), and Approve/Reject are ordinary `@QuickView` handlers —
+stateless, resolved by name, safe to click at any point in the future. Each
+handler does one atomic conditional `UPDATE ... WHERE status = 'pending'`
+(same shape as `UsersDB.spendCoins`) so a double-click or two staff racing
+each other on the same submission just no-ops the second click, with no
+message-editing needed (`qv:` callbacks don't carry a `messageId` to edit
+anyway — see `02-architecture.md`).
+
 ## Scheduled workflows (cron)
 
 For work that runs on a clock rather than in response to a user action —
@@ -100,11 +117,32 @@ with multiple replicas).
   caption/buttons changed (an unchanged-URL `editMessageMedia` gets Telegram's
   "message is not modified" error).
 - **GIFs**: `isAnimatedMediaUrl()` sniffs `.gif`/`.mp4`/`.webm` and routes to
-  `sendAnimation` automatically for any `photoUrl`.
+  `sendAnimation` automatically for any `photoUrl`. This is soundless
+  (Telegram's animation endpoint) — pass `isVideo: true` alongside `photoUrl`
+  to force real `sendVideo` (with sound) instead, for any `.mp4`/`.webm` URL
+  that's an actual video, not a gif. `isVideo` only affects the plain
+  `MessageReply` object branch's new-message path (not `InlineReplyOptions`,
+  not an `editMessageId` edit) — extend it there first if a future caller
+  needs one of those.
 - A permanently failed send does **not** throw into the calling workflow —
   `settleReply()` catches and logs it, returning `undefined`. A workflow
   crashing because one platform send failed would be worse than a silently
   dropped reply.
+- **Posting a brand-new message into a specific forum topic**: set
+  `chat.threadId` on the `ctx` you `reply()` with (`buildCtx`/`sideCtx` from
+  `packages/commandeer/services/syntheticCtx.ts` both take a `threadId`
+  param) — `reply()` threads it into `PendingResponse.threadId`, and the
+  answerer passes it as `messageThreadId` to `sendMessage`/`sendPhoto`/
+  `sendAnimation`/`sendVideo`. **This only matters for a genuinely new
+  message** — editing/deleting an existing message never needs it (the
+  message already belongs to whichever topic it was sent in), and replying
+  to a message that's already inside a topic gets the topic for free from
+  Telegram's own `reply_to_message` inference, without needing `threadId` at
+  all. Before this existed, nothing sent by the bot from a synthetic ctx
+  (`buildCtx`, no real message to reply to) could ever land anywhere but a
+  chat's default/General topic, silently — worth checking first if a
+  bot-initiated message into a specific topic seems to be landing in the
+  wrong place.
 - `deleteMsg(ctx, messageId)`.
 - `awaitTextReply(cmd, eventName)` — registers the sender's *next* plain
   (non-`/`) message to resume a workflow via `DBOS.recv<{value}>(eventName)`.
@@ -235,3 +273,14 @@ mode-specific inputs, then call the shared wizard."
   (not a text message) — see `/trade`'s `FALLBACK_TRADE_IMAGE`. Converting a
   text message to a photo message later via `editMessageMedia` does work,
   but it's simpler to never need to.
+- **A real (sound-having) video sent via `sendAnimation` fails with two
+  different Bad Request messages across retries** — "failed to get HTTP URL
+  content" on the first attempt (Telegram hasn't fetched it yet), then
+  "wrong type of the web page content" once it has and rejected the actual
+  content (`sendAnimation` only accepts silent GIF-style video). This can
+  happen even when `isVideo` was correctly threaded through if the inbound
+  classification upstream got it wrong. `sendAnimation`'s case in
+  `packages/answerer/platforms/telegram.ts` catches both messages
+  (`isRetriableAsVideo()`) and retries once via `sendVideo` before giving up
+  — don't remove this without confirming inbound video classification is
+  airtight first.
