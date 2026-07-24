@@ -26,8 +26,9 @@ describe("/upload's cativeiroApprove/cativeiroReject QuickViews", () => {
     reviewerId = reviewer.id;
     const owner = await fx.user({ displayName: "Test Review Owner", platform: 'none', platformId: submitter.platformId });
     userId = owner.id;
-    cardId = (await fx.card({ name: "Test Review Card" })).id;
-    await fx.ownCard(userId, cardId, 1);
+    const rarityId = (await fx.rarity({ name: "Test Review Rarity", cativeiroThreshold: 5 })).id;
+    cardId = (await fx.card({ name: "Test Review Card", rarityId })).id;
+    await fx.ownCard(userId, cardId, 5);
 
     fx.onCleanup(async () => { await db.delete(cardCustomizationSubmissions).where(eq(cardCustomizationSubmissions.userId, userId)); });
     // approve/reject write AuditDB.log(reviewer.id, ...) rows - must clear those before the
@@ -69,5 +70,26 @@ describe("/upload's cativeiroApprove/cativeiroReject QuickViews", () => {
   test("an unknown submission id is handled gracefully", async () => {
     const result = await UploadCommand.cativeiroApprove('999999999', reviewerPlatformId, 'telegram');
     expect(result).toContain('já foi revisada');
+  });
+
+  test("approving a submission after the user dropped below threshold is refused, not silently applied", async () => {
+    const { userCards } = await import("@girae/database/schemas/cards");
+    const { and } = await import("drizzle-orm");
+    const submitResult = await CardsDB.createCativeiroSubmission(userId, cardId, 'https://example.com/stale.jpg', 'photo', submitter);
+    const submissionId = submitResult.submission!.id;
+
+    await db.update(userCards).set({ count: 1 }).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+
+    try {
+      const before = await CardsDB.getUserCard(userId, cardId);
+      const click = await UploadCommand.cativeiroApprove(String(submissionId), reviewerPlatformId, 'telegram');
+      expect(click).toContain('não é mais elegível');
+
+      const after = await CardsDB.getUserCard(userId, cardId);
+      expect(after?.customMediaUrl).toBe(before?.customMediaUrl);
+    } finally {
+      await db.update(userCards).set({ count: 5 }).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+      await CardsDB.rejectCativeiroSubmission(submissionId);
+    }
   });
 });

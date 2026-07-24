@@ -115,7 +115,11 @@ export default class UploadCommand extends Command {
     if (!reviewer) return 'Erro ao processar.'
 
     const result = await CardsDB.approveCativeiroSubmission(submissionId)
-    if (!result.ok) return '⚠️ Essa submissão já foi revisada.'
+    if (!result.ok) {
+      return result.reason === 'not_eligible'
+        ? '⚠️ O usuário não tem mais cópias suficientes desse card - não é mais elegível para cativeiro.'
+        : '⚠️ Essa submissão já foi revisada.'
+    }
 
     const { submission } = result
     await AuditDB.log(reviewer.id, 'cativeiro.approve', { submissionId, cardId: submission.cardId, userId: submission.userId })

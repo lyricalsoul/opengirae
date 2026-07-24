@@ -377,6 +377,19 @@ export class CardsDB {
       if (offer.some(o => o.count <= 0)) throw new Error('executeTrade: offer counts must be positive');
     }
 
+    // pre-fetch cativeiroThreshold for every card in both offers up front - one query, not
+    // one per decrement() call (see docs/agent/00-overview.md's no-N+1 rule; same pattern
+    // discardUserCardsTx already uses).
+    const allOfferedCardIds = [...offerA, ...offerB].map(o => o.cardId);
+    const thresholds = allOfferedCardIds.length
+      ? await client
+        .select({ cardId: cards.id, cativeiroThreshold: rarities.cativeiroThreshold })
+        .from(cards)
+        .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+        .where(inArray(cards.id, allOfferedCardIds))
+      : [];
+    const thresholdByCardId = new Map(thresholds.map(t => [t.cardId, t.cativeiroThreshold]));
+
     const decrement = async (userId: number, cardId: number, count: number) => {
       const [row] = await client
         .update(userCards)
@@ -391,14 +404,7 @@ export class CardsDB {
 
       // dropped below the rarity's cativeiro threshold - clear any customization, it's no
       // longer eligible to keep it.
-      const threshold = await client
-        .select({ cativeiroThreshold: rarities.cativeiroThreshold })
-        .from(cards)
-        .innerJoin(rarities, eq(rarities.id, cards.rarityId))
-        .where(eq(cards.id, cardId))
-        .limit(1)
-        .then(a => a?.[0]?.cativeiroThreshold ?? 0);
-
+      const threshold = thresholdByCardId.get(cardId) ?? 0;
       if (row.count < threshold) {
         await client
           .update(userCards)
@@ -783,12 +789,19 @@ export class CardsDB {
   })
 
   static setUserCardCustomEmoji = maybeTransaction('setUserCardCustomEmoji', async (client, userId: number, cardId: number, emoji: string) => {
-    return await client
+    // guard→execute leaves a small window for a concurrent discard/trade to drop the card
+    // below cativeiroThreshold - fold the eligibility check into the UPDATE's WHERE so there's
+    // no separate check-then-write gap.
+    const [updated] = await client
       .update(userCards)
       .set({ customEmoji: emoji })
-      .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)))
-      .returning()
-      .then(a => a?.[0]);
+      .where(and(
+        eq(userCards.userId, userId),
+        eq(userCards.cardId, cardId),
+        sql`${userCards.count} >= (SELECT ${rarities.cativeiroThreshold} FROM ${cards} INNER JOIN ${rarities} ON ${rarities.id} = ${cards.rarityId} WHERE ${cards.id} = ${cardId})`,
+      ))
+      .returning();
+    return updated ? { ok: true as const, row: updated } : { ok: false as const, reason: 'not_eligible' as const };
   })
 
   static createCativeiroSubmission = async (userId: number, cardId: number, mediaUrl: string, mediaType: 'photo' | 'video', submitter: CativeiroSubmitter) => {
@@ -827,19 +840,44 @@ export class CardsDB {
   // who reviewed and when is already recorded by AuditDB.log('cativeiro.approve'/'reject') -
   // no need to duplicate it on this row.
   static approveCativeiroSubmission = maybeTransaction('approveCativeiroSubmission', async (client, submissionId: number) => {
+    // the submission may have sat pending for hours/days - the user could have discarded or
+    // traded away the card in the meantime, dropping below the rarity's cativeiroThreshold
+    // (which correctly clears customization on that path). Folding the eligibility check into
+    // this same atomic UPDATE's WHERE keeps it TOCTOU-safe: no separate check-then-write gap.
+    const stillEligible = sql`EXISTS (
+      SELECT 1 FROM ${userCards}
+      INNER JOIN ${cards} ON ${cards.id} = ${userCards.cardId}
+      INNER JOIN ${rarities} ON ${rarities.id} = ${cards.rarityId}
+      WHERE ${userCards.userId} = ${cardCustomizationSubmissions.userId}
+        AND ${userCards.cardId} = ${cardCustomizationSubmissions.cardId}
+        AND ${userCards.count} >= ${rarities.cativeiroThreshold}
+    )`;
+
     const [submission] = await client
       .update(cardCustomizationSubmissions)
       .set({ status: 'approved' })
-      .where(and(eq(cardCustomizationSubmissions.id, submissionId), eq(cardCustomizationSubmissions.status, 'pending')))
+      .where(and(
+        eq(cardCustomizationSubmissions.id, submissionId),
+        eq(cardCustomizationSubmissions.status, 'pending'),
+        stillEligible,
+      ))
       .returning();
-    if (!submission) return { ok: false as const, reason: 'not_pending' as const };
 
-    await client
-      .update(userCards)
-      .set({ customMediaUrl: submission.mediaUrl, customMediaType: submission.mediaType })
-      .where(and(eq(userCards.userId, submission.userId), eq(userCards.cardId, submission.cardId)));
+    if (submission) {
+      await client
+        .update(userCards)
+        .set({ customMediaUrl: submission.mediaUrl, customMediaType: submission.mediaType })
+        .where(and(eq(userCards.userId, submission.userId), eq(userCards.cardId, submission.cardId)));
 
-    return { ok: true as const, submission };
+      return { ok: true as const, submission };
+    }
+
+    const [current] = await client
+      .select()
+      .from(cardCustomizationSubmissions)
+      .where(eq(cardCustomizationSubmissions.id, submissionId));
+    if (!current || current.status !== 'pending') return { ok: false as const, reason: 'not_pending' as const };
+    return { ok: false as const, reason: 'not_eligible' as const };
   })
 
   static rejectCativeiroSubmission = maybeTransaction('rejectCativeiroSubmission', async (client, submissionId: number) => {

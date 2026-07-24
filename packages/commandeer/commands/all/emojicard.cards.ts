@@ -24,7 +24,11 @@ export default class EmojicardCommand extends Command {
     if (!user) return
 
     const emoji = args.emoji.trim()
-    await CardsDB.setUserCardCustomEmoji(user.id, args.card.id, emoji)
+    const result = await CardsDB.setUserCardCustomEmoji(user.id, args.card.id, emoji)
+    if (!result.ok) {
+      await reply(ctx, `😔 Você não tem mais cópias suficientes desse card para personalizá-lo. Confira com /cativeiros!`)
+      return
+    }
 
     await reply(ctx, `✨ Prontinho! Seu card agora aparece como ${emoji} \`${args.card.id}\`. **${escapeMarkdown(args.card.name)}**.`)
   }

@@ -359,4 +359,18 @@ exactly, don't default to a generic/corporate tone:
    a card you're no longer eligible for"), not a notification, so it belongs
    in the same atomic write as the decrement rather than a best-effort
    post-commit listener.
-10. `bun test` clean, `bun run check` (in `website/`, if touched) clean.
+10. The same invariant cuts the other way too: any write that *grants* a
+    customization (`setUserCardCustomEmoji`, `approveCativeiroSubmission`)
+    must re-check `count >= cativeiroThreshold` at write time, inside the
+    same atomic UPDATE — not just at guard/argument-resolution time. The
+    gap between a `@CommandArgument` guard resolving and the write actually
+    happening is real (a `/upload` review can sit pending for hours/days;
+    even `/emojicard`'s guard→execute gap is a real, if small, window), and
+    a concurrent discard/trade can land in it. Fold `userCards.count >=
+    (threshold subquery)` straight into the `UPDATE ... WHERE` — see
+    `CardsDB.setUserCardCustomEmoji`/`approveCativeiroSubmission` — so a
+    stale write can't resurrect a customization the decrement path already
+    correctly cleared. Return a distinct `not_eligible` reason (as opposed
+    to `not_pending`/etc.) so the caller can message the user/reviewer
+    accordingly instead of silently no-oping.
+11. `bun test` clean, `bun run check` (in `website/`, if touched) clean.
