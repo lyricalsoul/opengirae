@@ -122,6 +122,20 @@ Not just a BullMQ backend — also used directly for:
 - Locks (`girar:active:{telegramId}:{chatId}` — prevents double-`/girar`
   races; see `packages/commandeer/services/gacha/girarClaim.ts`/
   `services/cards/tradeLock.ts`)
+- Query result caching: `packages/common/cache/` (`kv.ts` — generic
+  get/set/del wrapper around `rawClient`; `users.ts` — the `(platform,
+  platformId) → userId` mapping, by far the most frequently re-resolved
+  lookup in the system). `@girae/database` intentionally doesn't depend on
+  `@girae/common`, so this caching lives in `common`, wrapping calls to
+  `UsersDB`'s plain (uncached) methods — never inside `@girae/database`
+  itself. Only the id is cached, never the row (coins/isAdmin/etc. always
+  come from a fresh read on every call). Whatever writes `linkedAccounts`
+  must invalidate: `UsersDB.mergeUsers` repoints another user's linked
+  accounts onto the merge target, so its caller (`/link`'s `redeemCode`)
+  captures the secondary user's platform ids *before* the merge and calls
+  `invalidateCachedUserId` on each *after* — `mergeUsers` itself can't do
+  this, since it lives in `@girae/database` and has no path to `common`'s
+  cache.
 
 ## Storage & third-party services (all optional locally, all fail safe)
 

@@ -3,6 +3,7 @@ import { DBOS } from '@dbos-inc/dbos-sdk'
 import { reply, awaitMultiPartyChoice } from '@girae/common/dbos/messaging'
 import { UsersDB } from '@girae/database/users'
 import { rawClient } from '@girae/common/queue'
+import { invalidateCachedUserId } from '@girae/common/cache/users'
 import type { IncomingCommand } from '@girae/common/commands/types'
 
 const LINK_CODE_TTL_SECONDS = 5 * 60
@@ -93,11 +94,20 @@ async function redeemCode(ctx: IncomingCommand, code: string) {
   const mainUserId = primaryIsInitiator ? initiatorUserId : redeemer.id
   const secondaryUserId = primaryIsInitiator ? redeemer.id : initiatorUserId
 
+  // captured before the merge - mergeUsers repoints these rows, so they won't resolve after
+  const secondaryPlatformIds = await Promise.all(
+    (['telegram', 'discord'] as const).map(async platform => ({ platform, platformId: await UsersDB.getPlatformIdForUser(secondaryUserId, platform) }))
+  )
+
   try {
     await UsersDB.mergeUsers(mainUserId, secondaryUserId)
   } catch {
     await reply(ctx, '❌ Erro ao vincular as contas. Tente novamente com o mesmo código.')
     return
+  }
+
+  for (const { platform, platformId } of secondaryPlatformIds) {
+    if (platformId) await invalidateCachedUserId(platform, platformId)
   }
 
   await rawClient.del(`link:code:${code.toUpperCase()}`)

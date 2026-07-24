@@ -127,6 +127,13 @@
       "when": 1784855414029,
       "tag": "0017_rare_legion",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1784873999460,
+      "tag": "0018_jazzy_nehzno",
+      "breakpoints": true
     }
   ]
 }

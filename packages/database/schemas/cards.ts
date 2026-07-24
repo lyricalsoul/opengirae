@@ -50,17 +50,24 @@ export const subcategories = pgTable("subcategories", {
   rarityModifier: integer().notNull().default(100),
 });
 
-export const cards = pgTable("cards", {
-  id: integer().primaryKey().generatedAlwaysAsIdentity(),
-  name: text().notNull(),
-  rarityId: integer()
-    .notNull()
-    .references(() => rarities.id),
-  imageUrl: text(),
-  updatedAt: timestamp().notNull().defaultNow(),
+export const cards = pgTable(
+  "cards",
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    name: text().notNull(),
+    rarityId: integer()
+      .notNull()
+      .references(() => rarities.id),
+    imageUrl: text(),
+    updatedAt: timestamp().notNull().defaultNow(),
 
-  rarityModifier: integer().notNull().default(100),
-});
+    rarityModifier: integer().notNull().default(100),
+  },
+  (table) => [
+    // ilike(name, '%query%') needs pg_trgm's operator class, a plain btree can't do it
+    index("cards_name_trgm_idx").using("gin", sql`${table.name} gin_trgm_ops`),
+  ],
+);
 
 export const cardSubcategories = pgTable(
   "card_subcategories",
@@ -99,7 +106,11 @@ export const userCards = pgTable(
     customMediaUrl: text(),
     customMediaType: cativeiroMediaType(),
   },
-  (table) => [primaryKey({ columns: [table.userId, table.cardId] })],
+  (table) => [
+    primaryKey({ columns: [table.userId, table.cardId] }),
+    // the (userId, cardId) PK can't serve a cardId-only lookup/join, was seq-scanning
+    index("user_cards_card_idx").on(table.cardId),
+  ],
 );
 
 export const cativeiroSubmissionStatus = pgEnum("cativeiro_submission_status", ["pending", "approved", "rejected"])
@@ -171,14 +182,22 @@ export const subcategoryGoals = pgTable(
   ],
 );
 
-export const cardDrawHistory = pgTable("card_draw_history", {
-  id: integer().primaryKey().generatedAlwaysAsIdentity(),
-  userId: integer().notNull().references(() => users.id),
-  cardId: integer().notNull().references(() => cards.id),
-  categoryId: integer().notNull().references(() => categories.id),
-  subcategoryId: integer().notNull().references(() => subcategories.id, { onDelete: "cascade" }),
-  drawnAt: timestamp().notNull().defaultNow(),
-});
+export const cardDrawHistory = pgTable(
+  "card_draw_history",
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    userId: integer().notNull().references(() => users.id),
+    cardId: integer().notNull().references(() => cards.id),
+    categoryId: integer().notNull().references(() => categories.id),
+    subcategoryId: integer().notNull().references(() => subcategories.id, { onDelete: "cascade" }),
+    drawnAt: timestamp().notNull().defaultNow(),
+  },
+  (table) => [
+    // append-only, ever-growing, had zero indexes beyond the PK - was seq-scanned constantly
+    index("card_draw_history_card_idx").on(table.cardId),
+    index("card_draw_history_drawn_at_idx").on(table.drawnAt),
+  ],
+);
 
 export const chocolateFactoryCorrections = pgTable("chocolate_factory_corrections", {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
