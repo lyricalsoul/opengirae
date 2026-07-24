@@ -377,9 +377,7 @@ export class CardsDB {
       if (offer.some(o => o.count <= 0)) throw new Error('executeTrade: offer counts must be positive');
     }
 
-    // pre-fetch cativeiroThreshold for every card in both offers up front - one query, not
-    // one per decrement() call (see docs/agent/00-overview.md's no-N+1 rule; same pattern
-    // discardUserCardsTx already uses).
+    // pre-fetch thresholds for every offered card up front, avoiding an N+1 in decrement().
     const allOfferedCardIds = [...offerA, ...offerB].map(o => o.cardId);
     const thresholds = allOfferedCardIds.length
       ? await client
@@ -402,8 +400,7 @@ export class CardsDB {
         return;
       }
 
-      // dropped below the rarity's cativeiro threshold - clear any customization, it's no
-      // longer eligible to keep it.
+      // no longer eligible - clear any customization.
       const threshold = thresholdByCardId.get(cardId) ?? 0;
       if (row.count < threshold) {
         await client
@@ -789,9 +786,7 @@ export class CardsDB {
   })
 
   static setUserCardCustomEmoji = maybeTransaction('setUserCardCustomEmoji', async (client, userId: number, cardId: number, emoji: string) => {
-    // guard→execute leaves a small window for a concurrent discard/trade to drop the card
-    // below cativeiroThreshold - fold the eligibility check into the UPDATE's WHERE so there's
-    // no separate check-then-write gap.
+    // eligibility folded into the WHERE - no check-then-write gap for a concurrent discard/trade.
     const [updated] = await client
       .update(userCards)
       .set({ customEmoji: emoji })
@@ -808,8 +803,7 @@ export class CardsDB {
     try {
       return { ok: true as const, submission: await CardsDB.createCativeiroSubmissionTx(userId, cardId, mediaUrl, mediaType, submitter) };
     } catch (e) {
-      // drizzle-orm 0.45 wraps driver errors in DrizzleQueryError, with the raw pg
-      // error (carrying .code) as .cause - check both shapes defensively.
+      // drizzle-orm 0.45 wraps the raw pg error (with .code) as .cause.
       const code = (e as { code?: string }).code ?? (e as { cause?: { code?: string } }).cause?.code;
       if (code === '23505') return { ok: false as const, reason: 'already_pending' as const };
       throw e;
@@ -837,13 +831,10 @@ export class CardsDB {
     await client.update(cardCustomizationSubmissions).set({ reviewChatId, reviewMessageId }).where(eq(cardCustomizationSubmissions.id, submissionId));
   })
 
-  // who reviewed and when is already recorded by AuditDB.log('cativeiro.approve'/'reject') -
-  // no need to duplicate it on this row.
+  // reviewer/reviewedAt aren't stored here - AuditDB.log('cativeiro.approve'/'reject') already has them.
   static approveCativeiroSubmission = maybeTransaction('approveCativeiroSubmission', async (client, submissionId: number) => {
-    // the submission may have sat pending for hours/days - the user could have discarded or
-    // traded away the card in the meantime, dropping below the rarity's cativeiroThreshold
-    // (which correctly clears customization on that path). Folding the eligibility check into
-    // this same atomic UPDATE's WHERE keeps it TOCTOU-safe: no separate check-then-write gap.
+    // re-checked here (not just at guard time) - the submission may have sat pending for
+    // days while the user dropped below cativeiroThreshold. Folded into the WHERE for TOCTOU-safety.
     const stillEligible = sql`EXISTS (
       SELECT 1 FROM ${userCards}
       INNER JOIN ${cards} ON ${cards.id} = ${userCards.cardId}
@@ -1310,8 +1301,7 @@ export class CardsDB {
       if (updated.count === 0) {
         await client.delete(userCards).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
       } else if (updated.count < row.cativeiroThreshold) {
-        // dropped below the rarity's cativeiro threshold - the card is no longer eligible,
-        // so any customization it had must be cleared, not left dangling on the row.
+        // no longer eligible - clear any customization instead of leaving it dangling.
         await client
           .update(userCards)
           .set({ customEmoji: null, customMediaUrl: null, customMediaType: null })

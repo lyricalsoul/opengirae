@@ -43,9 +43,7 @@ const isLocalDevelopment = !!process.env.LOCAL_DEVELOPMENT
 tg.on('message', async (msg) => {
   let content = msg.content ?? msg.caption
 
-  // msg.threadId/msg.inTopic (per-message) - not msg.chat.threadId/msg.chat.inTopic, which
-  // telegramsjs appears to patch onto a per-chat-id cached Chat object, so reading it can
-  // reflect whichever topic most recently touched that same chat, not this message's own.
+  // msg.threadId/msg.inTopic, not msg.chat.threadId/msg.chat.inTopic (telegramsjs caches those per chat id).
   const matchingChat = ADDCARD_CHAT_IDS.find(([chatId, threadId]) => String(msg.chat?.id) === chatId && String(msg.threadId) === threadId)
   if (matchingChat && msg.inTopic && msg.photo?.length && !isLocalDevelopment) {
     content = `/addcard ${content ?? ''}`.trim()

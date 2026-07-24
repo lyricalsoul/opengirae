@@ -24,10 +24,7 @@ function isValidHttpUrl(url: string): boolean {
 
 const isAnimatedMediaUrl = (url: string) => /\.(gif|mp4|webm)(\?|#|$)/i.test(url)
 
-// Telegram's two failure modes for a URL that isn't actually a valid silent animation:
-// it can't fetch it yet ("failed to get HTTP URL content", seen on the first attempt
-// against a just-uploaded file) or it fetched it and rejected the content itself
-// ("wrong type of the web page content", once it actually inspected the file).
+// Telegram's two failure messages for a URL that isn't a valid silent animation.
 export const isRetriableAsVideo = (e: any) =>
   /failed to get http url content|wrong type of the web page content/i.test(e?.message ?? '')
 
@@ -204,12 +201,7 @@ export async function sendTelegramAnswer(response: PendingResponse): Promise<str
         })
         return msg.id
       } catch (e: any) {
-        // sendAnimation requires a silent GIF-like file - Telegram rejects a real video
-        // (has an audio track) fetched from a URL with exactly this message, only after
-        // actually fetching and inspecting it (the first attempt, before the file is
-        // reachable/inspectable, instead gets "failed to get HTTP URL content"). Retry as
-        // a real video rather than losing the send outright - this is a misclassification
-        // upstream (an inbound video resolved without isVideo:true), not a bad URL.
+        // real video (has audio) misclassified upstream as an animation - retry as sendVideo.
         if (!isRetriableAsVideo(e)) throw e
         warn('answerer', `sendAnimation rejected ${animationUrl} as wrong type, retrying as sendVideo: ${e.message}`)
         const msg = await tg.sendVideo({

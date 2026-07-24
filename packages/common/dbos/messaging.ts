@@ -48,8 +48,7 @@ export function pageNavRow(handler: string, arg: string, page: number, hasNext: 
 export type MessageReply = string | {
     content?: string;
     photoUrl?: string;
-    // forces sendVideo instead of the extension-sniffed sendPhoto/sendAnimation - needed
-    // whenever photoUrl is a real video (with sound), not a soundless gif-as-mp4/webm.
+    // forces sendVideo instead of the extension-sniffed sendPhoto/sendAnimation.
     isVideo?: boolean;
     editMessageId?: string;
     buttons?: ButtonSpec[];

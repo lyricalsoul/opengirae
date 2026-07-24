@@ -1,10 +1,6 @@
 import type { MessageChat, Message } from '@girae/common/commands/types'
 
-// Telegram's own getFile can refuse a file that's simply too large (independent of any
-// limit this bot enforces) - .fetch() throwing must never crash inbound processing.
-// Callers downstream (e.g. /upload) still get fileSizeBytes even when the fetch itself
-// failed, which is enough to reject oversized media with a real message instead of
-// silently dropping the update.
+// getFile can refuse a too-large file - must never let that throw crash inbound processing.
 async function safeFetchUrl(file: { fetch(): Promise<{ url: string | null }> }): Promise<string | undefined> {
   try {
     const fetched = await file.fetch()

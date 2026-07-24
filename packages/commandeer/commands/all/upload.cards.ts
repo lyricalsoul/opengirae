@@ -17,8 +17,7 @@ type Submission = typeof cardCustomizationSubmissions.$inferSelect
 const REVIEW_CHAT_ID = '-1003993142790'
 const REVIEW_THREAD_ID = '82150'
 
-// Shared by cativeiroApprove/cativeiroReject: delete the original submission message and
-// post a fresh decision message in its place, in the same topic, with the media attached.
+// Shared by cativeiroApprove/cativeiroReject: replaces the submission message with a decision message in the same topic.
 async function postDecisionMessage(
   submission: Submission, card: CardDetails | undefined,
   verb: 'aprovou' | 'rejeitou', hashtagPrefix: 'APROVAÇÃO' | 'REJEIÇÃO',
@@ -56,10 +55,7 @@ export default class UploadCommand extends Command {
 
     const source = ctx.message.photoUrl ? ctx.message : ctx.message.replyTo
 
-    // Checked before even looking at photoUrl: Telegram's own getFile can fail outright
-    // for a huge file, so fileSizeBytes (known upfront, no fetch needed) may be the only
-    // thing we have - and it's already enough to reject with a real message instead of
-    // falling through to "não encontrei nenhuma mídia".
+    // checked before photoUrl: fileSizeBytes is known upfront even if getFile fails on a huge file.
     if ((source?.fileSizeBytes ?? 0) > MAX_UPLOAD_BYTES) {
       await reply(ctx, '😔 Essa mídia passa de 50 MB e eu não posso aceitar ela... Tenta comprimir ou enviar uma versão mais leve?')
       return
@@ -127,9 +123,7 @@ export default class UploadCommand extends Command {
     const card = await CardsDB.getCardWithDetails(submission.cardId)
     await postDecisionMessage(submission, card, 'aprovou', 'APROVAÇÃO', reviewer.displayName, clickerUserId, platform)
 
-    // Exclusively the player's own private chat - never wherever they happened to run
-    // /upload from (that could be a group). A Telegram/Discord private chat's id is the
-    // user's own platform id.
+    // exclusively the player's own private chat, never wherever /upload was run from.
     const dm = buildCtx(submission.submitterPlatform as 'telegram' | 'discord', submission.submitterPlatformId, submission.submitterName, submission.submitterPlatformId)
     await reply(dm, {
       content: `🎉 Parabéns! Seu card ${card?.rarityEmoji ?? ''} \`${submission.cardId}\`. **${escapeMarkdown(card?.name ?? '?')}** foi personalizado com sucesso!`,

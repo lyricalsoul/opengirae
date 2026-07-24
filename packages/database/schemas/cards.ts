@@ -104,8 +104,7 @@ export const userCards = pgTable(
 
 export const cativeiroSubmissionStatus = pgEnum("cativeiro_submission_status", ["pending", "approved", "rejected"])
 
-// pending-review queue for /upload's media customizations - kept separate from userCards'
-// current-customization columns since a submission has its own lifecycle/history.
+// pending-review queue for /upload's media customizations - has its own lifecycle/history.
 export const cardCustomizationSubmissions = pgTable(
   "card_customization_submissions",
   {
@@ -116,26 +115,21 @@ export const cardCustomizationSubmissions = pgTable(
     mediaType: cativeiroMediaType().notNull(),
     status: cativeiroSubmissionStatus().notNull().default("pending"),
 
-    // denormalized submitter context - staff may review this long after the
-    // submitting request/workflow (if any) has ended, so we can't rely on
-    // re-deriving "where to reply" from anything else at review time.
+    // denormalized submitter context - staff may review this long after the request ended.
     submitterPlatform: text().notNull(),
     submitterPlatformId: text().notNull(),
     submitterName: text().notNull(),
     submitterChatId: text().notNull(),
     submitterThreadId: text(),
 
-    // the review-topic message this submission was posted as - so approve/reject can
-    // delete it and post a fresh decision message in the same topic.
+    // the review-topic message this was posted as, so approve/reject can replace it.
     reviewChatId: text(),
     reviewMessageId: text(),
 
     createdAt: timestamp().notNull().defaultNow(),
   },
   (table) => [
-    // at most one pending submission per (user, card) at a time - the actual TOCTOU-safe
-    // guard (checked via a 23505 catch in CardsDB.createCativeiroSubmission), not just an
-    // app-level check-then-insert.
+    // at most one pending submission per (user, card) - the real TOCTOU-safe guard.
     uniqueIndex("card_customization_submissions_pending_unique")
       .on(table.userId, table.cardId)
       .where(sql`${table.status} = 'pending'`),

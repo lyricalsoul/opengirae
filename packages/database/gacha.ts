@@ -222,9 +222,7 @@ export class GachaLogic {
     for (const r of results) countByCard.set(r.card.id, (countByCard.get(r.card.id) ?? 0) + 1);
     const drawnCardIds = [...countByCard.keys()];
 
-    // read pre-update counts up front (one bulk query, not N+1) so we can report which
-    // cards crossed their cativeiro threshold in this batch - the upsert below only ever
-    // returns post-update state.
+    // bulk pre-update counts, since the upsert below only returns post-update state.
     const existingCounts = await client
       .select({ cardId: userCards.cardId, count: userCards.count })
       .from(userCards)

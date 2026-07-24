@@ -64,9 +64,7 @@ export interface PendingResponse {
   messageId?: string;
   callbackQueryId?: string;
   chatId: string;
-  // Telegram forum topic to post a brand-new message into. Only meaningful for the
-  // send* methods - editing/deleting an existing message never needs it (the message
-  // already belongs to whichever topic it was originally sent in).
+  // forum topic for a new message; irrelevant when editing/deleting an existing one.
   threadId?: string;
   platform: Platform;
   buttons?: Array<Array<{ text: string; callbackData?: string; url?: string; color?: ButtonColor }>>;

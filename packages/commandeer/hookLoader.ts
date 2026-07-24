@@ -23,9 +23,7 @@ for (const mod of loadedHookModules) {
   }
 }
 
-// Fires every registered listener for `eventName` in parallel - a listener that throws
-// is logged and swallowed, same reasoning as settleReply(): one broken hook shouldn't
-// take down the command that emitted it.
+// a throwing listener is logged and swallowed - one broken hook shouldn't take down the emitter.
 export async function emitHook<E extends HookEventName>(eventName: E, payload: HookEventMap[E]): Promise<void> {
   const handlers = handlersByEvent.get(eventName) ?? []
   await Promise.all(handlers.map(handler =>
@@ -33,7 +31,6 @@ export async function emitHook<E extends HookEventName>(eventName: E, payload: H
   ))
 }
 
-// Convenience for the three card-granting call sites (/girar, /girarauto, /trade):
 // emits one 'cards:new' event per distinct card gained in a single draw/trade.
 export async function emitCardsNew(
   userId: number, telegramId: string, displayName: string, platform: Platform,
