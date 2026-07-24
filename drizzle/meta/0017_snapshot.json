@@ -1,6 +1,6 @@
 {
-  "id": "0abf9e3c-db85-4f0f-a280-b4e0ab8ef616",
-  "prevId": "76f61700-cb2f-4e0c-b7e4-7ebeb3182bb8",
+  "id": "01568190-1754-4737-ae04-e0897cd69ffa",
+  "prevId": "c7314107-3b79-439f-846a-784711793781",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -60,6 +60,168 @@
           "tableTo": "users",
           "columnsFrom": [
             "actorUserId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.card_customization_submissions": {
+      "name": "card_customization_submissions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "card_customization_submissions_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "userId": {
+          "name": "userId",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cardId": {
+          "name": "cardId",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mediaUrl": {
+          "name": "mediaUrl",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mediaType": {
+          "name": "mediaType",
+          "type": "cativeiro_media_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "cativeiro_submission_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "submitterPlatform": {
+          "name": "submitterPlatform",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "submitterPlatformId": {
+          "name": "submitterPlatformId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "submitterName": {
+          "name": "submitterName",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "submitterChatId": {
+          "name": "submitterChatId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "submitterThreadId": {
+          "name": "submitterThreadId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewChatId": {
+          "name": "reviewChatId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewMessageId": {
+          "name": "reviewMessageId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "card_customization_submissions_pending_unique": {
+          "name": "card_customization_submissions_pending_unique",
+          "columns": [
+            {
+              "expression": "userId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "cardId",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"card_customization_submissions\".\"status\" = 'pending'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "card_customization_submissions_userId_users_id_fk": {
+          "name": "card_customization_submissions_userId_users_id_fk",
+          "tableFrom": "card_customization_submissions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "userId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "card_customization_submissions_cardId_cards_id_fk": {
+          "name": "card_customization_submissions_cardId_cards_id_fk",
+          "tableFrom": "card_customization_submissions",
+          "tableTo": "cards",
+          "columnsFrom": [
+            "cardId"
           ],
           "columnsTo": [
             "id"
@@ -519,6 +681,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "cativeiroThreshold": {
+          "name": "cativeiroThreshold",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 15
         }
       },
       "indexes": {},
@@ -591,6 +760,12 @@
         },
         "imageUrl": {
           "name": "imageUrl",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "emoji": {
+          "name": "emoji",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -832,6 +1007,25 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "customEmoji": {
+          "name": "customEmoji",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "customMediaUrl": {
+          "name": "customMediaUrl",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "customMediaType": {
+          "name": "customMediaType",
+          "type": "cativeiro_media_type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -990,7 +1184,7 @@
         },
         "treasuryBalance": {
           "name": "treasuryBalance",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": 0
@@ -1009,6 +1203,13 @@
           "notNull": true,
           "default": 1
         },
+        "lastSyncedTreasuryBalance": {
+          "name": "lastSyncedTreasuryBalance",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "updatedAt": {
           "name": "updatedAt",
           "type": "timestamp",
@@ -1021,6 +1222,78 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.treasury_allocations": {
+      "name": "treasury_allocations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "treasury_allocations_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "allocationId": {
+          "name": "allocationId",
+          "type": "allocation_ids",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "percentage": {
+          "name": "percentage",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "balance": {
+          "name": "balance",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "treasury_allocations_allocationId_unique": {
+          "name": "treasury_allocations_allocationId_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "allocationId"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -2170,6 +2443,30 @@
     }
   },
   "enums": {
+    "public.cativeiro_media_type": {
+      "name": "cativeiro_media_type",
+      "schema": "public",
+      "values": [
+        "photo",
+        "video"
+      ]
+    },
+    "public.cativeiro_submission_status": {
+      "name": "cativeiro_submission_status",
+      "schema": "public",
+      "values": [
+        "pending",
+        "approved",
+        "rejected"
+      ]
+    },
+    "public.allocation_ids": {
+      "name": "allocation_ids",
+      "schema": "public",
+      "values": [
+        "rifa"
+      ]
+    },
     "public.store_item_types": {
       "name": "store_item_types",
       "schema": "public",

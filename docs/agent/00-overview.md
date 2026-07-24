@@ -127,3 +127,8 @@ Beyond "it works when I tried it once":
   but is missing the concurrency-safety half of it. A feature that's
   honestly scoped down is fine; one that looks finished but has a live race
   in it is worse than not having built it.
+- **Comments: short, and only when non-obvious.** Don't restate what the
+  code already says (`// increment count` above `count++`). A comment earns
+  its place by explaining a *why* the code can't: a TOCTOU-safety reason, a
+  footgun another agent will hit, a workaround for a specific bug. One line,
+  not a paragraph.

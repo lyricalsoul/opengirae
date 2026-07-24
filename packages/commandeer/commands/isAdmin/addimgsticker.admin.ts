@@ -15,7 +15,7 @@ export default class AddImageStickerCommand extends Command {
     aliases: ['setimagesticker', 'setimgsticker']
   }
 
-  @CommandArgument([{ name: 'item', type: CommandArgumentType.VANITY_ITEM, vanityType: 'sticker' }])
+  @CommandArgument([{ name: 'item', type: CommandArgumentType.VANITY_ITEM, vanityType: 'sticker', showBasePrice: true }])
   static override async execute(ctx: IncomingCommand, args: { item: NonNullable<Awaited<ReturnType<typeof VanitiesDB.getStoreItemById>>> }) {
     const item = args.item
     const photoUrl = ctx.message.photoUrl ?? ctx.message.replyTo?.photoUrl

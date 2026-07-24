@@ -14,7 +14,8 @@
 		{ href: '/admin/subcategories', label: 'Subcategorias' },
 		{ href: '/admin/cards', label: 'Cartas' },
 		{ href: '/admin/rarities', label: 'Raridades' },
-		{ href: '/admin/promo-codes', label: 'Códigos Promos' }
+		{ href: '/admin/promo-codes', label: 'Códigos Promos' },
+		{ href: '/admin/economy', label: 'Economia' }
 	];
 </script>
 

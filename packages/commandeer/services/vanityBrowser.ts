@@ -1,5 +1,6 @@
 import { VanitiesDB } from '@girae/database/vanities'
 import { UsersDB } from '@girae/database/users'
+import { EconomyDB } from '@girae/database/economy'
 import { EMOJI } from '../constants'
 import { applyFilters, filterAdviceText, filterButtonsRow, parseFilterArg, type FilterDef } from '@girae/common/utilities/pageFilters'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
@@ -22,9 +23,10 @@ export async function renderVanityBrowsePage(rawArg: string, page: number, viewe
   const { active, rest } = parseFilterArg(rawArg)
   const type = rest as VanityType
 
-  const [items, user] = await Promise.all([
+  const [items, user, inflationRate] = await Promise.all([
     VanitiesDB.listStoreItemsByType(type),
     UsersDB.getUserByPlatformAccount(platform, viewerTelegramId),
+    EconomyDB.getInflationRate(),
   ])
   const ownedIds = new Set(user ? await VanitiesDB.getBoughtItemIds(user.id) : [])
   const filters = filtersFor(ownedIds)
@@ -34,7 +36,7 @@ export async function renderVanityBrowsePage(rawArg: string, page: number, viewe
   const slice = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
   const rows = slice.length > 0
-    ? slice.map(i => `${ownedIds.has(i.id) ? '✅' : '💸'} \`${i.id}\`. **${escapeMarkdown(i.title)}** — ${i.price} moedas`).join('\n')
+    ? slice.map(i => `${ownedIds.has(i.id) ? '✅' : '💸'} \`${i.id}\`. **${escapeMarkdown(i.title)}** — ${Math.round(i.price * inflationRate)} moedas`).join('\n')
     : '_Nenhum item para mostrar._'
   const advice = filterAdviceText(filters, active, filtered.length, `${TYPE_LABEL[type]}s`)
   const pageInfo = totalPages > 1 ? `${EMOJI.page} Página \`${page + 1}\` de **${totalPages}**\n` : ''

@@ -2,6 +2,7 @@ import { users, userProfiles, linkedAccounts } from "./schemas/users";
 import { userCards, wishlist, cardDrawHistory, trades } from "./schemas/cards";
 import { boughtItems } from "./schemas/vanities";
 import { auditLogs } from "./schemas/audit";
+import { EconomyDB } from "./economy";
 import { maybeTransaction } from "./decorators";
 import { eq, sql, and, or, gte, ilike, desc } from "drizzle-orm";
 
@@ -131,12 +132,7 @@ export class UsersDB {
   })
 
   static spendCoins = maybeTransaction('spendCoins', async (client, userId: number, amount: number): Promise<boolean> => {
-    const [row] = await client
-      .update(users)
-      .set({ coins: sql`${users.coins} - ${amount}` })
-      .where(and(eq(users.id, userId), gte(users.coins, amount)))
-      .returning();
-    return !!row;
+    return await EconomyDB.deductCoinsToTreasury(client, userId, amount);
   })
 
   static setFavoriteCard = maybeTransaction('setFavoriteCard', async (client, userId: number, cardId: number) => {

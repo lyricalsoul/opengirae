@@ -13,7 +13,7 @@ export default class EditStickerCommand extends Command {
   }
 
   @DBOS.workflow()
-  @CommandArgument([{ name: 'item', type: CommandArgumentType.VANITY_ITEM, vanityType: 'sticker' }])
+  @CommandArgument([{ name: 'item', type: CommandArgumentType.VANITY_ITEM, vanityType: 'sticker', showBasePrice: true }])
   static override async execute(ctx: IncomingCommand, args: { item: NonNullable<Awaited<ReturnType<typeof VanitiesDB.getStoreItemById>>> }) {
     await editVanityItem(ctx, 'sticker', args.item)
   }

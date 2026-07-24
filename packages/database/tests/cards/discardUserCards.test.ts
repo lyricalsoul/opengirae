@@ -6,6 +6,7 @@ import { userCards, rarities, cards } from "../../schemas/cards";
 import { eq, and } from "drizzle-orm";
 import { CardsDB } from "../../cards";
 import { CARD_DISCARD_REWARDS } from "../../constants";
+import { EconomyDB } from "../../economy";
 
 describe("CardsDB.discardUserCards", () => {
   const fx = new TestFixtures();
@@ -117,6 +118,25 @@ describe("CardsDB.discardUserCards", () => {
       expect(remaining!.customMediaType).toBeNull();
     } finally {
       await db.update(rarities).set({ cativeiroThreshold: previousThreshold }).where(eq(rarities.id, rarityId));
+    }
+  });
+
+  test("coinsAwarded scales with incomeInflationRate, and so does the actual coins credit", async () => {
+    const originalIncomeInflationRate = await EconomyDB.getIncomeInflationRate();
+    await EconomyDB.setIncomeInflationRate(2);
+
+    try {
+      const result = await CardsDB.discardUserCards(userId, [ownedCardAId]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.totalCoinsAwarded).toBe(CARD_DISCARD_REWARDS.Comum! * 2);
+      expect(result.results[0]!.coinsAwarded).toBe(CARD_DISCARD_REWARDS.Comum! * 2);
+
+      const [user] = await db.select().from(users).where(eq(users.id, userId));
+      expect(user!.coins).toBe(CARD_DISCARD_REWARDS.Comum! * 2);
+    } finally {
+      await EconomyDB.setIncomeInflationRate(originalIncomeInflationRate);
     }
   });
 });

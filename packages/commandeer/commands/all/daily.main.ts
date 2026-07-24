@@ -1,6 +1,7 @@
 import { Command } from '@girae/common/commands'
 import { reply } from '@girae/common/dbos/messaging'
 import { UsersDB } from '@girae/database/users'
+import { EconomyDB } from '@girae/database/economy'
 import type { IncomingCommand } from '@girae/common/commands/types'
 
 function getTimeUntilMidnight(): string {
@@ -52,6 +53,7 @@ export default class DailyCommand extends Command {
     }
 
     added = added * 2
+    added = await EconomyDB.applyIncomeInflation(added)
     const daysToNextBonus = 7 - (streak % 7)
 
     await UsersDB.setDailyGotten(user.id, streak)

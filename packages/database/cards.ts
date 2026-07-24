@@ -16,6 +16,7 @@ import {
 import { users } from "./schemas/users";
 import { eq, and, sql, ilike, desc, gte, gt, inArray } from "drizzle-orm";
 import { CARD_DISCARD_REWARDS } from "./constants";
+import { EconomyDB } from "./economy";
 
 export interface CativeiroSubmitter {
   platform: string;
@@ -1224,15 +1225,17 @@ export class CardsDB {
   })
 
   static discardUserCards = async (userId: number, cardIds: number[]) => {
+    // fetched outside the tx, same rate-once-then-pass-in pattern as buyItem/purchaseItem
+    const incomeInflationRate = await EconomyDB.getIncomeInflationRate();
     try {
-      return await CardsDB.discardUserCardsTx(userId, cardIds);
+      return await CardsDB.discardUserCardsTx(userId, cardIds, incomeInflationRate);
     } catch (e) {
       if (e instanceof InsufficientCardError) return { ok: false as const, reason: 'missing_or_not_owned' as const, cardId: e.cardId };
       throw e;
     }
   }
 
-  private static discardUserCardsTx = maybeTransaction('discardUserCards', async (client, userId: number, cardIds: number[]) => {
+  private static discardUserCardsTx = maybeTransaction('discardUserCards', async (client, userId: number, cardIds: number[], incomeInflationRate: number) => {
     const requestedQty = new Map<number, number>();
     for (const id of cardIds) requestedQty.set(id, (requestedQty.get(id) ?? 0) + 1);
     const uniqueIds = [...requestedQty.keys()];
@@ -1255,11 +1258,9 @@ export class CardsDB {
     const results: { cardId: number; remainingCount: number; coinsAwarded: number }[] = [];
     let totalCoinsAwarded = 0;
 
-    // guard each decrement against the row's live count (not the snapshot read above) so a
-    // concurrent discard/trade on the same card can't be double-spent between the check and here
     for (const [cardId, qty] of requestedQty) {
       const row = ownedById.get(cardId)!;
-      const reward = (CARD_DISCARD_REWARDS[row.rarityName] ?? 0) * qty;
+      const reward = Math.round((CARD_DISCARD_REWARDS[row.rarityName] ?? 0) * qty * incomeInflationRate);
 
       const [updated] = await client
         .update(userCards)

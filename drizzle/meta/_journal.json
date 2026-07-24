@@ -103,22 +103,29 @@
     {
       "idx": 14,
       "version": "7",
-      "when": 1784785017992,
-      "tag": "0014_busy_kulan_gath",
+      "when": 1784781526672,
+      "tag": "0014_steep_veda",
       "breakpoints": true
     },
     {
       "idx": 15,
       "version": "7",
-      "when": 1784841331368,
-      "tag": "0015_blushing_goblin_queen",
+      "when": 1784783754211,
+      "tag": "0015_hot_scalphunter",
       "breakpoints": true
     },
     {
       "idx": 16,
       "version": "7",
-      "when": 1784853391519,
-      "tag": "0016_supreme_jackal",
+      "when": 1784787028060,
+      "tag": "0016_red_crystal",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784855414029,
+      "tag": "0017_rare_legion",
       "breakpoints": true
     }
   ]

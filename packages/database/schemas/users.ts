@@ -35,6 +35,7 @@ export const users = pgTable("users", {
   hasJoinedSupportChannel: boolean().notNull().default(false),
   supportChannelCheckedAt: timestamp(),
   hasGivenRepToday: boolean().notNull().default(false),
+  treasuryContributed: integer().notNull().default(0),
   // TODO: if user loses card, this should be set to NULL. they need the card to make them their favorite.
   favoriteCardId: integer()
     .references(() => cards.id)

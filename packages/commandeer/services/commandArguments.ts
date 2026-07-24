@@ -4,6 +4,7 @@ import type { IncomingCommand } from '@girae/common/commands/types'
 import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { VanitiesDB } from '@girae/database/vanities'
+import { EconomyDB } from '@girae/database/economy'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { normalizeText } from '@girae/common/utilities/normalizeText'
 import { TYPE_LABEL } from './vanityBrowser'
@@ -107,7 +108,7 @@ async function parseCategory(raw: string): Promise<ParseOutcome> {
   return { ok: true, value: results[0] }
 }
 
-async function parseVanityItem(raw: string, vanityType: 'background' | 'sticker'): Promise<ParseOutcome> {
+async function parseVanityItem(raw: string, vanityType: 'background' | 'sticker', showBasePrice?: boolean): Promise<ParseOutcome> {
   const label = TYPE_LABEL[vanityType]
   const asId = parseInt(raw, 10)
   if (!isNaN(asId)) {
@@ -118,7 +119,10 @@ async function parseVanityItem(raw: string, vanityType: 'background' | 'sticker'
   const results = await VanitiesDB.searchStoreItemsByType(vanityType, raw, 100)
   if (results.length === 0) return { ok: false, message: `Não encontrei um ${label} com esse nome.` }
   if (results.length > 1) {
-    const lines = results.map(i => `💸 \`${i.id}\`. **${escapeMarkdown(i.title)}** — ${i.price} moedas`)
+    const lines = await Promise.all(results.map(async i => {
+      const price = showBasePrice ? i.price : await EconomyDB.applyInflation(i.price)
+      return `💸 \`${i.id}\`. **${escapeMarkdown(i.title)}** — ${price} moedas`
+    }))
     return { ok: false, message: ambiguousResultsMessage(lines) }
   }
 
@@ -207,7 +211,7 @@ async function parseValue(spec: CommandArgumentSpec, raw: string | undefined, ct
     case CommandArgumentType.CARD: return parseCard(raw)
     case CommandArgumentType.CATEGORY: return parseCategory(raw)
     case CommandArgumentType.SUBCATEGORY: return parseSubcategory(raw)
-    case CommandArgumentType.VANITY_ITEM: return parseVanityItem(raw, spec.vanityType)
+    case CommandArgumentType.VANITY_ITEM: return parseVanityItem(raw, spec.vanityType, spec.showBasePrice)
   }
 }
 

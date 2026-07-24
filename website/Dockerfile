@@ -6,10 +6,12 @@ FROM base AS deps
 COPY package.json bun.lock ./
 COPY packages/database/package.json packages/database/package.json
 COPY packages/common/package.json packages/common/package.json
+COPY packages/tests/package.json packages/tests/package.json
+COPY packages/answerer/package.json packages/answerer/package.json
+COPY packages/commandeer/package.json packages/commandeer/package.json
 COPY website/package.json website/package.json
 
-# TODO: this needs to go once i find out why a random dep is failing
-RUN bun install || bun install
+RUN bun install
 
 FROM deps AS build
 COPY packages/database packages/database

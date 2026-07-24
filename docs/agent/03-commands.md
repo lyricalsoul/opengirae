@@ -164,6 +164,15 @@ duplicating a workflow's logic behind a "button version."
   running workflow, or a plain/transactional fallback otherwise) — callers
   never see or pass it. **Use `maybeTransaction()` for every new method**,
   not a raw `db.select()`/`db.transaction()` call.
+- **Exception**: a pure read with no atomicity requirement (e.g. reading a
+  single global settings/singleton row) should be a *plain* function using
+  `db` directly, not `maybeTransaction`-wrapped — if it's ever called from
+  inside another already-`maybeTransaction`-wrapped method's body (which a
+  shared read helper often is), wrapping it too would nest one transaction
+  inside another, which isn't safe to rely on. See `EconomyDB.getState()`/
+  `getInflationRate()` (`packages/database/economy.ts`) for the pattern:
+  reads are plain, only the mutations (`setInflationRate`, etc.) are
+  `maybeTransaction`-wrapped.
 - The non-DBOS fallback is a real `db.transaction(...)`, not a bare client —
   a multi-statement method still rolls back atomically outside a workflow
   (e.g. in a test).

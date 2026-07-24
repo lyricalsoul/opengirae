@@ -83,9 +83,12 @@ with multiple replicas).
   flag (`users.hasGivenRepToday`) piggybacks on the existing
   `runMidnightReset` → `UsersDB.resetMidnightStats()` job, reset in the same
   bulk `UPDATE` that already clears `hasGottenDaily`, instead of registering
-  a second midnight schedule. Only reach for a genuinely new
-  `scheduleName`/cron entry when the timing actually differs (a different
-  time of day, a different frequency) from what already exists.
+  a second midnight schedule. Same reasoning for
+  `EconomyDB.syncAllocations()` — called from inside the existing
+  `runHourlyDrawDecay`, not a new `scheduleName`, since both already run
+  hourly. Only reach for a genuinely new `scheduleName`/cron entry when the
+  timing actually differs (a different time of day, a different frequency)
+  from what already exists.
 - **`resetMidnightStats()` (and any job shaped like it) updates every row in
   `users` with no per-user `WHERE` scoping** — correct for a real scheduled
   run, but means it should never be called from a test against a shared dev

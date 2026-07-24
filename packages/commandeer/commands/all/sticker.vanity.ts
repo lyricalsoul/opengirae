@@ -2,6 +2,7 @@ import { Command, CommandArgument, CommandArgumentType } from '@girae/common/com
 import { reply, toPageButton, pageNavRow } from '@girae/common/dbos/messaging'
 import { VanitiesDB } from '@girae/database/vanities'
 import { UsersDB } from '@girae/database/users'
+import { EconomyDB } from '@girae/database/economy'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { buildFilterArg } from '@girae/common/utilities/pageFilters'
 import { renderVanityBrowsePage } from '../../services/vanityBrowser'
@@ -10,12 +11,15 @@ import { escapeMarkdown } from '@girae/common/utilities/markdown'
 type VanityItem = NonNullable<Awaited<ReturnType<typeof VanitiesDB.getStoreItemById>>>
 
 async function renderItem(item: VanityItem, viewerTelegramId: string, platform: 'telegram' | 'discord') {
-  const user = await UsersDB.getUserByPlatformAccount(platform, viewerTelegramId)
+  const [user, displayPrice] = await Promise.all([
+    UsersDB.getUserByPlatformAccount(platform, viewerTelegramId),
+    EconomyDB.applyInflation(item.price),
+  ])
   const owned = user ? await VanitiesDB.hasBought(user.id, item.id) : false
 
   const content = `**${escapeMarkdown(item.title)}**
 ${escapeMarkdown(item.description)}
-💸 ${item.price} moedas${owned ? '\n✅ Você possui este item.' : ''}`
+💸 ${displayPrice} moedas${owned ? '\n✅ Você possui este item.' : ''}`
 
   const button = owned
     ? { text: '✅ Equipar', quickView: { handler: 'equip', arg: `${item.type}:${item.id}` } }

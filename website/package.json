@@ -32,6 +32,7 @@
 		"clsx": "^2.1.1",
 		"framework7-icons": "^5.0.5",
 		"konsta": "^5.2.0",
+		"lucide-svelte": "^1.0.1",
 		"svelte-dnd-action": "^0.9.74",
 		"tailwind-merge": "^3.6.0",
 		"trpc-sveltekit": "^3.6.3",

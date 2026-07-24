@@ -13,7 +13,7 @@ export default class DeleteBackgroundCommand extends Command {
   }
 
   @DBOS.workflow()
-  @CommandArgument([{ name: 'item', type: CommandArgumentType.VANITY_ITEM, vanityType: 'background' }])
+  @CommandArgument([{ name: 'item', type: CommandArgumentType.VANITY_ITEM, vanityType: 'background', showBasePrice: true }])
   static override async execute(ctx: IncomingCommand, args: { item: NonNullable<Awaited<ReturnType<typeof VanitiesDB.getStoreItemById>>> }) {
     await deleteVanityItem(ctx, 'background', args.item)
   }
