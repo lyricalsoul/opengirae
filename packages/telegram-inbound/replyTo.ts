@@ -1,19 +1,34 @@
 import type { MessageChat, Message } from '@girae/common/commands/types'
 
-export const resolveMedia = async (msg: any): Promise<{ photoUrl?: string, isAnimatedPhoto?: boolean }> => {
+// Telegram's own getFile can refuse a file that's simply too large (independent of any
+// limit this bot enforces) - .fetch() throwing must never crash inbound processing.
+// Callers downstream (e.g. /upload) still get fileSizeBytes even when the fetch itself
+// failed, which is enough to reject oversized media with a real message instead of
+// silently dropping the update.
+async function safeFetchUrl(file: { fetch(): Promise<{ url: string | null }> }): Promise<string | undefined> {
+  try {
+    const fetched = await file.fetch()
+    return fetched?.url ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
+export const resolveMedia = async (msg: any): Promise<{ photoUrl?: string, isAnimatedPhoto?: boolean, isVideo?: boolean, fileSizeBytes?: number }> => {
   if (msg.animation) {
-    const file = await msg.animation.fetch()
-    return { photoUrl: file.url ?? undefined, isAnimatedPhoto: true }
+    return { photoUrl: await safeFetchUrl(msg.animation), isAnimatedPhoto: true, fileSizeBytes: msg.animation.size ?? undefined }
+  }
+
+  if (msg.video) {
+    return { photoUrl: await safeFetchUrl(msg.video), isVideo: true, fileSizeBytes: msg.video.size ?? undefined }
   }
 
   if (msg.document?.mimeType?.startsWith('image/')) {
-    const file = await msg.document.fetch()
-    return { photoUrl: file.url ?? undefined }
+    return { photoUrl: await safeFetchUrl(msg.document), fileSizeBytes: msg.document.size ?? undefined }
   }
   const largest = msg.photo?.[msg.photo.length - 1]
   if (!largest) return {}
-  const file = await largest.fetch()
-  return { photoUrl: file.url ?? undefined }
+  return { photoUrl: await safeFetchUrl(largest), fileSizeBytes: largest.size ?? undefined }
 }
 
 export async function buildReplyTo(msg: any, chat: MessageChat): Promise<Message | undefined> {

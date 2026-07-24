@@ -11,9 +11,9 @@
 // *creation* always goes through the real `*DB` method when one exists.
 import { db } from "@girae/database/index";
 import { users, linkedAccounts, userProfiles } from "@girae/database/schemas/users";
-import { cards, categories, subcategories, cardSubcategories, rarities } from "@girae/database/schemas/cards";
+import { cards, categories, subcategories, cardSubcategories, rarities, userCards } from "@girae/database/schemas/cards";
 import { storeItems } from "@girae/database/schemas/vanities";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { UsersDB } from "@girae/database/users";
 import { CardsDB } from "@girae/database/cards";
 import { VanitiesDB } from "@girae/database/vanities";
@@ -64,6 +64,14 @@ export class TestFixtures {
     return { id, platform, platformId };
   }
 
+  async rarity(opts: { name: string; emoji?: string; weight?: number; cativeiroThreshold?: number }): Promise<{ id: number }> {
+    const row = await CardsDB.createRarity(opts.name, opts.emoji ?? '🏷️', opts.weight ?? 100);
+    const id = row!.id;
+    if (opts.cativeiroThreshold !== undefined) await CardsDB.updateRarity(id, { cativeiroThreshold: opts.cativeiroThreshold });
+    this.onCleanup(async () => { await db.delete(rarities).where(eq(rarities.id, id)); });
+    return { id };
+  }
+
   async category(opts: { name: string; emoji?: string } = { name: `Test Category ${Bun.randomUUIDv7()}` }): Promise<{ id: number }> {
     const row = await CardsDB.createCategory(opts.name, opts.emoji);
     const id = row!.id;
@@ -102,6 +110,12 @@ export class TestFixtures {
     const id = row!.id;
     this.onCleanup(async () => { await db.delete(cards).where(eq(cards.id, id)); });
     return { id };
+  }
+
+  /** Grants a user N copies of a card via the real CardsDB.addUserCard, looped N times. */
+  async ownCard(userId: number, cardId: number, count: number): Promise<void> {
+    for (let i = 0; i < count; i++) await CardsDB.addUserCard(userId, cardId);
+    this.onCleanup(async () => { await db.delete(userCards).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId))); });
   }
 
   async storeItem(opts: {

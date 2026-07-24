@@ -13,6 +13,13 @@ export interface FakeCtxOptions {
   replyToId?: string;
   /** Override the auto-generated workflow id - needed when a test drives a @Page handler by run id. */
   workflowID?: string;
+  photoUrl?: string;
+  isVideo?: boolean;
+  fileSizeBytes?: number;
+  /** Same media fields, but on the synthetic replyTo message instead of the message itself. */
+  replyToPhotoUrl?: string;
+  replyToIsVideo?: boolean;
+  replyToFileSizeBytes?: number;
 }
 
 /**
@@ -33,6 +40,9 @@ export function fakeCtx(opts: FakeCtxOptions): IncomingCommand {
     content: '',
     timestamp: new Date(),
     platform,
+    photoUrl: opts.replyToPhotoUrl,
+    isVideo: opts.replyToIsVideo,
+    fileSizeBytes: opts.replyToFileSizeBytes,
   } : undefined;
 
   return {
@@ -47,6 +57,9 @@ export function fakeCtx(opts: FakeCtxOptions): IncomingCommand {
       timestamp: new Date(),
       platform,
       replyTo,
+      photoUrl: opts.photoUrl,
+      isVideo: opts.isVideo,
+      fileSizeBytes: opts.fileSizeBytes,
     },
   };
 }

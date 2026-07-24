@@ -28,6 +28,12 @@ export interface BulkDrawResult {
   isFromFavorite: boolean;
 }
 
+export interface CardCountCrossing {
+  cardId: number;
+  previousCount: number;
+  newCount: number;
+}
+
 export class GachaLogic {
   static selectSubcategories(
     subs: SubcategoryForDraw[],
@@ -133,9 +139,9 @@ export class GachaLogic {
     categoryOrder: number[],
     luckModifier: number,
     favoriteSubcategoryIds?: Set<number>,
-  ): Promise<BulkDrawResult[]> => {
+  ): Promise<{ draws: BulkDrawResult[]; countsByCard: CardCountCrossing[] }> => {
     const distinctCategoryIds = [...new Set(categoryOrder)];
-    if (distinctCategoryIds.length === 0) return [];
+    if (distinctCategoryIds.length === 0) return { draws: [], countsByCard: [] };
 
     const categoryRows = await client
       .select({ id: categories.id, name: categories.name, emoji: categories.emoji, subcategoriesOnDraw: categories.subcategoriesOnDraw })
@@ -210,10 +216,21 @@ export class GachaLogic {
       });
     }
 
-    if (results.length === 0) return results;
+    if (results.length === 0) return { draws: results, countsByCard: [] };
 
     const countByCard = new Map<number, number>();
     for (const r of results) countByCard.set(r.card.id, (countByCard.get(r.card.id) ?? 0) + 1);
+    const drawnCardIds = [...countByCard.keys()];
+
+    // read pre-update counts up front (one bulk query, not N+1) so we can report which
+    // cards crossed their cativeiro threshold in this batch - the upsert below only ever
+    // returns post-update state.
+    const existingCounts = await client
+      .select({ cardId: userCards.cardId, count: userCards.count })
+      .from(userCards)
+      .where(and(eq(userCards.userId, userId), inArray(userCards.cardId, drawnCardIds)));
+    const previousCountByCard = new Map(existingCounts.map(r => [r.cardId, r.count]));
+
     await client
       .insert(userCards)
       .values([...countByCard.entries()].map(([cardId, count]) => ({ userId, cardId, count })))
@@ -228,6 +245,11 @@ export class GachaLogic {
 
     await client.update(users).set({ usedDraws: sql`${users.usedDraws} + ${results.length}` }).where(eq(users.id, userId));
 
-    return results;
+    const countsByCard: CardCountCrossing[] = [...countByCard.entries()].map(([cardId, drawnCount]) => {
+      const previousCount = previousCountByCard.get(cardId) ?? 0;
+      return { cardId, previousCount, newCount: previousCount + drawnCount };
+    });
+
+    return { draws: results, countsByCard };
   })
 }

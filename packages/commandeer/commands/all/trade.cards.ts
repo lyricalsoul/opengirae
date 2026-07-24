@@ -12,6 +12,8 @@ import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { mention } from '@girae/common/utilities/mention'
 import { error } from '@girae/common/logger'
+import { sideCtx } from '../../services/syntheticCtx'
+import { emitCardsNew } from '../../hookLoader'
 
 const LOCK_TTL_SECONDS = 60 * 60
 const INACTIVITY_TIMEOUT_SECONDS = 30 * 60
@@ -55,18 +57,6 @@ function groupMessageLink(chatId: string, messageId: string): string {
   if (isNaN(idNum)) return `https://t.me/${chatId.replace('@', '')}/${messageId}`
   const stripped = chatId.startsWith('-100') ? chatId.slice(4) : chatId.replace('-', '')
   return `https://t.me/c/${stripped}/${messageId}`
-}
-
-function sideCtx(base: IncomingCommand, telegramId: string, name: string, chatId: string): IncomingCommand {
-  return {
-    ...base,
-    message: {
-      ...base.message,
-      id: '',
-      author: { id: telegramId, name, avatarUrl: '' },
-      chat: { id: chatId, title: 'DM' },
-    },
-  }
 }
 
 export async function getActiveTradeSide(telegramId: string): Promise<{ workflowID: string; state: TradeState; side: Side } | null> {
@@ -392,8 +382,9 @@ export default class TradeCommand extends Command {
       const offerAEntries = Object.entries(finalState.offers.proposer).map(([cardId, count]) => ({ cardId: Number(cardId), count }))
       const offerBEntries = Object.entries(finalState.offers.target).map(([cardId, count]) => ({ cardId: Number(cardId), count }))
 
+      let crossings: { userId: number; cardId: number; previousCount: number; newCount: number }[]
       try {
-        await CardsDB.executeTrade(proposerUser.id, offerAEntries, targetUser.id, offerBEntries)
+        ({ crossings } = await CardsDB.executeTrade(proposerUser.id, offerAEntries, targetUser.id, offerBEntries))
       } catch (e) {
         await deleteMsg(ctx, groupMessageId)
         if (e instanceof InsufficientCardError) {
@@ -413,6 +404,9 @@ export default class TradeCommand extends Command {
         content: `💱 Troca entre ${m(ctx.message.author.id, proposerName)} e ${m(targetTelegramId, targetName)} FINALIZADA! ✅\n\n🃏 **${escapeMarkdown(proposerName)}** ofereceu:\n\n${proposerOfferText}\n\n🃏 **${escapeMarkdown(targetName)}** ofereceu:\n\n${targetOfferText}`,
         photoUrl: image.url,
       })
+
+      await emitCardsNew(proposerUser.id, ctx.message.author.id, proposerName, ctx.message.platform, crossings.filter(c => c.userId === proposerUser.id))
+      await emitCardsNew(targetUser.id, targetTelegramId, targetName, ctx.message.platform, crossings.filter(c => c.userId === targetUser.id))
     } finally {
       await rawClient.del(lockKey(ctx.message.author.id))
       await rawClient.del(lockKey(targetTelegramId))

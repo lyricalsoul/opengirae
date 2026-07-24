@@ -48,6 +48,9 @@ export function pageNavRow(handler: string, arg: string, page: number, hasNext: 
 export type MessageReply = string | {
     content?: string;
     photoUrl?: string;
+    // forces sendVideo instead of the extension-sniffed sendPhoto/sendAnimation - needed
+    // whenever photoUrl is a real video (with sound), not a soundless gif-as-mp4/webm.
+    isVideo?: boolean;
     editMessageId?: string;
     buttons?: ButtonSpec[];
     buttonRows?: ButtonSpec[][];
@@ -101,6 +104,7 @@ export const reply = maybeStep('reply', async (cmd: IncomingCommand, content: Me
     if (typeof content === 'string' || !('options' in content)) {
         const text = typeof content === 'string' ? content : content.content;
         const photoUrl = typeof content === 'string' ? undefined : content.photoUrl;
+        const isVideo = typeof content === 'string' ? false : !!content.isVideo;
         const editMessageId = typeof content === 'string' ? undefined : content.editMessageId;
         const captionOnly = typeof content === 'string' ? false : !!content.captionOnly;
         const embedFields = typeof content === 'string' ? undefined : content.embedFields;
@@ -116,7 +120,7 @@ export const reply = maybeStep('reply', async (cmd: IncomingCommand, content: Me
         if (targetMessageId) {
             method = photoUrl ? (captionOnly ? 'editMessageCaption' : 'editMessageMedia') : 'editMessageText';
         } else if (photoUrl) {
-            method = isAnimatedMediaUrl(photoUrl) ? 'sendAnimation' : 'sendPhoto';
+            method = isVideo ? 'sendVideo' : isAnimatedMediaUrl(photoUrl) ? 'sendAnimation' : 'sendPhoto';
         }
 
         const job = await responseQueue.add('sendMessage', {
@@ -126,6 +130,7 @@ export const reply = maybeStep('reply', async (cmd: IncomingCommand, content: Me
             photoUrl,
             messageId: targetMessageId,
             replyToMessageId: targetMessageId ? undefined : cmd.message.id,
+            threadId: targetMessageId ? undefined : cmd.message.chat.threadId,
             platform: cmd.message.platform,
             buttons,
             interactionToken,
@@ -163,6 +168,7 @@ export const reply = maybeStep('reply', async (cmd: IncomingCommand, content: Me
         photoUrl: content.photoUrl,
         messageId: targetMessageId,
         replyToMessageId: targetMessageId ? undefined : cmd.message.id,
+        threadId: targetMessageId ? undefined : cmd.message.chat.threadId,
         platform: cmd.message.platform,
         buttons,
         interactionToken,

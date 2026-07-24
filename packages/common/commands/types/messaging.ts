@@ -23,6 +23,8 @@ export interface Message {
   platform: Platform;
   photoUrl?: string;
   isAnimatedPhoto?: boolean;
+  isVideo?: boolean;
+  fileSizeBytes?: number;
   interactionToken?: string;
 }
 
@@ -55,13 +57,17 @@ export interface StoredStep {
 }
 
 export interface PendingResponse {
-  method: 'sendMessage' | 'sendPhoto' | 'sendAnimation' | 'editMessageMedia' | 'editMessageCaption' | 'editMessageText' | 'deleteMessage' | 'answerCallbackQuery';
+  method: 'sendMessage' | 'sendPhoto' | 'sendAnimation' | 'sendVideo' | 'editMessageMedia' | 'editMessageCaption' | 'editMessageText' | 'deleteMessage' | 'answerCallbackQuery';
   content?: string;
   photoUrl?: string;
   replyToMessageId?: string;
   messageId?: string;
   callbackQueryId?: string;
   chatId: string;
+  // Telegram forum topic to post a brand-new message into. Only meaningful for the
+  // send* methods - editing/deleting an existing message never needs it (the message
+  // already belongs to whichever topic it was originally sent in).
+  threadId?: string;
   platform: Platform;
   buttons?: Array<Array<{ text: string; callbackData?: string; url?: string; color?: ButtonColor }>>;
   interactionToken?: string;

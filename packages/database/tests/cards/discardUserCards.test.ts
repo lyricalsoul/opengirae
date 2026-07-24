@@ -2,8 +2,8 @@ import { test, expect, describe, beforeAll, afterAll, beforeEach } from "bun:tes
 import { TestFixtures } from "@girae/tests";
 import { db } from "../../index";
 import { users } from "../../schemas/users";
-import { userCards, rarities } from "../../schemas/cards";
-import { eq } from "drizzle-orm";
+import { userCards, rarities, cards } from "../../schemas/cards";
+import { eq, and } from "drizzle-orm";
 import { CardsDB } from "../../cards";
 import { CARD_DISCARD_REWARDS } from "../../constants";
 
@@ -93,5 +93,30 @@ describe("CardsDB.discardUserCards", () => {
 
     const [user] = await db.select().from(users).where(eq(users.id, userId));
     expect(user!.coins).toBe(0);
+  });
+
+  test("discarding below the rarity's cativeiro threshold clears customization", async () => {
+    const [{ rarityId, previousThreshold }] = await db
+      .select({ rarityId: cards.rarityId, previousThreshold: rarities.cativeiroThreshold })
+      .from(cards).innerJoin(rarities, eq(rarities.id, cards.rarityId))
+      .where(eq(cards.id, ownedCardAId)).limit(1);
+    await db.update(rarities).set({ cativeiroThreshold: 5 }).where(eq(rarities.id, rarityId));
+
+    try {
+      await db.update(userCards)
+        .set({ count: 5, customEmoji: '💎', customMediaUrl: 'https://example.com/x.jpg', customMediaType: 'photo' })
+        .where(and(eq(userCards.userId, userId), eq(userCards.cardId, ownedCardAId)));
+
+      const result = await CardsDB.discardUserCards(userId, [ownedCardAId]);
+      expect(result.ok).toBe(true);
+
+      const [remaining] = await db.select().from(userCards).where(eq(userCards.cardId, ownedCardAId));
+      expect(remaining!.count).toBe(4);
+      expect(remaining!.customEmoji).toBeNull();
+      expect(remaining!.customMediaUrl).toBeNull();
+      expect(remaining!.customMediaType).toBeNull();
+    } finally {
+      await db.update(rarities).set({ cativeiroThreshold: previousThreshold }).where(eq(rarities.id, rarityId));
+    }
   });
 });

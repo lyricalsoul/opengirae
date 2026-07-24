@@ -24,6 +24,13 @@ function isValidHttpUrl(url: string): boolean {
 
 const isAnimatedMediaUrl = (url: string) => /\.(gif|mp4|webm)(\?|#|$)/i.test(url)
 
+// Telegram's two failure modes for a URL that isn't actually a valid silent animation:
+// it can't fetch it yet ("failed to get HTTP URL content", seen on the first attempt
+// against a just-uploaded file) or it fetched it and rejected the content itself
+// ("wrong type of the web page content", once it actually inspected the file).
+export const isRetriableAsVideo = (e: any) =>
+  /failed to get http url content|wrong type of the web page content/i.test(e?.message ?? '')
+
 function buildReplyParameters(replyToMessageId: string | undefined, multipart: boolean): { replyParameters?: any } {
   if (!replyToMessageId) return {}
   const params = { message_id: replyToMessageId, allow_sending_without_reply: false }
@@ -95,6 +102,7 @@ export async function sendTelegramAnswer(response: PendingResponse): Promise<str
     case 'sendMessage': {
       const msg = await tg.sendMessage({
         chatId: response.chatId,
+        messageThreadId: response.threadId,
         text: formattedContent ?? '',
         parseMode: 'HTML',
         disableNotification: true,
@@ -151,6 +159,7 @@ export async function sendTelegramAnswer(response: PendingResponse): Promise<str
         warn('answerer', `sendPhoto received invalid URL, falling back to sendMessage: ${photoUrl}`)
         const msg = await tg.sendMessage({
           chatId: response.chatId,
+          messageThreadId: response.threadId,
           text: formattedContent ?? '',
           parseMode: 'HTML',
           ...buildReplyParameters(response.replyToMessageId, false),
@@ -160,6 +169,7 @@ export async function sendTelegramAnswer(response: PendingResponse): Promise<str
       }
       const msg = await tg.sendPhoto({
         chatId: response.chatId,
+        messageThreadId: response.threadId,
         photo: photoUrl,
         caption: formattedContent,
         parseMode: 'HTML',
@@ -174,6 +184,7 @@ export async function sendTelegramAnswer(response: PendingResponse): Promise<str
         warn('answerer', `sendAnimation received invalid URL, falling back to sendMessage: ${animationUrl}`)
         const msg = await tg.sendMessage({
           chatId: response.chatId,
+          messageThreadId: response.threadId,
           text: formattedContent ?? '',
           parseMode: 'HTML',
           ...buildReplyParameters(response.replyToMessageId, false),
@@ -181,9 +192,57 @@ export async function sendTelegramAnswer(response: PendingResponse): Promise<str
         })
         return msg.id
       }
-      const msg = await tg.sendAnimation({
+      try {
+        const msg = await tg.sendAnimation({
+          chatId: response.chatId,
+          messageThreadId: response.threadId,
+          animation: animationUrl,
+          caption: formattedContent,
+          parseMode: 'HTML',
+          ...buildReplyParameters(response.replyToMessageId, true),
+          ...buildReplyMarkup(response.buttons)
+        })
+        return msg.id
+      } catch (e: any) {
+        // sendAnimation requires a silent GIF-like file - Telegram rejects a real video
+        // (has an audio track) fetched from a URL with exactly this message, only after
+        // actually fetching and inspecting it (the first attempt, before the file is
+        // reachable/inspectable, instead gets "failed to get HTTP URL content"). Retry as
+        // a real video rather than losing the send outright - this is a misclassification
+        // upstream (an inbound video resolved without isVideo:true), not a bad URL.
+        if (!isRetriableAsVideo(e)) throw e
+        warn('answerer', `sendAnimation rejected ${animationUrl} as wrong type, retrying as sendVideo: ${e.message}`)
+        const msg = await tg.sendVideo({
+          chatId: response.chatId,
+          messageThreadId: response.threadId,
+          video: animationUrl,
+          caption: formattedContent,
+          parseMode: 'HTML',
+          ...buildReplyParameters(response.replyToMessageId, true),
+          ...buildReplyMarkup(response.buttons)
+        })
+        return msg.id
+      }
+    }
+    case 'sendVideo': {
+      const videoUrl = response.photoUrl!
+      if (!isValidHttpUrl(videoUrl)) {
+        warn('answerer', `sendVideo received invalid URL, falling back to sendMessage: ${videoUrl}`)
+        const msg = await tg.sendMessage({
+          chatId: response.chatId,
+          messageThreadId: response.threadId,
+          text: formattedContent ?? '',
+          parseMode: 'HTML',
+          ...buildReplyParameters(response.replyToMessageId, false),
+          ...buildReplyMarkup(response.buttons)
+        })
+        return msg.id
+      }
+      // same multipart reply_parameters quirk as sendPhoto/sendAnimation (see docs/agent/04-dbos.md)
+      const msg = await tg.sendVideo({
         chatId: response.chatId,
-        animation: animationUrl,
+        messageThreadId: response.threadId,
+        video: videoUrl,
         caption: formattedContent,
         parseMode: 'HTML',
         ...buildReplyParameters(response.replyToMessageId, true),

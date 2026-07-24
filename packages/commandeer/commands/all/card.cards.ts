@@ -20,11 +20,12 @@ async function showCard(ctx: IncomingCommand, card: CardDetails) {
   ])
   const count = owned?.count ?? 0
   const badge = cativeiroEmoji(count)
+  const rarityOrCustom = owned?.customEmoji ?? card.rarityEmoji
 
   const subcategoryNames = [card.subcategoryName ?? '?', ...tags].map(escapeMarkdown).join(' / ')
   const countSuffix = count > 0 ? ` (\`${count}x\`)` : ''
 
-  const text = `${card.rarityEmoji} \`${card.id}\`. **${escapeMarkdown(card.name)}**${badge ? ` ${badge}` : ''}
+  const text = `${rarityOrCustom} \`${card.id}\`. **${escapeMarkdown(card.name)}**${badge ? ` ${badge}` : ''}
 ${card.categoryEmoji ?? EMOJI.category} _${subcategoryNames}_
 
 ${EMOJI.owner} \`${user?.id ?? '?'}\`. ${mention(ctx.message.platform, ctx.message.author.id, ctx.message.author.name)}${countSuffix}`
@@ -44,7 +45,8 @@ ${EMOJI.owner} \`${user?.id ?? '?'}\`. ${mention(ctx.message.platform, ctx.messa
 
   await reply(ctx, {
     content: text,
-    photoUrl: card.imageUrl ?? FALLBACK_IMAGE,
+    photoUrl: owned?.customMediaUrl ?? card.imageUrl ?? FALLBACK_IMAGE,
+    isVideo: owned?.customMediaType === 'video',
     buttonRows,
   })
 }

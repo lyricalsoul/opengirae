@@ -11,6 +11,7 @@ import { addHours, formatDistanceToNow, startOfHour } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { claimGirar, getGirarActive, updateGirarStep, releaseGirar } from '../../services/girarClaim'
 import { buildBulkDrawSummary, renderBulkDrawSummaryPage, cacheBulkDrawSummary, loadBulkDrawSummary } from '../../services/bulkDrawSummary'
+import { emitCardsNew } from '../../hookLoader'
 
 function outOfDrawsMessage(): string {
   const nextRegen = startOfHour(addHours(new Date(), 1));
@@ -172,6 +173,10 @@ ${category.emoji} _${subcategoryNames}_
         photoUrl: drawnCard.imageUrl ?? 'https://placehold.co/600x400/png',
         editMessageId: messageId,
       });
+
+      await emitCardsNew(user.id, authorId, ctx.message.author.name, ctx.message.platform, [
+        { cardId: drawnCard.id, previousCount: userCard?.previousCount ?? 0, newCount: userCard?.count ?? 1 },
+      ]);
     } finally {
       await releaseGirar(authorId, chatId);
     }
@@ -204,10 +209,10 @@ ${category.emoji} _${subcategoryNames}_
       }
 
       const categoryOrder = Array.from({ length: drawCount }, () => categories[Math.floor(Math.random() * categories.length)]!.id);
-      const results = await GachaLogic.runBulkDraws(user.id, categoryOrder, user.luckModifier);
-      const summary = await buildBulkDrawSummary(results, { splitFavorites: false });
+      const { draws, countsByCard } = await GachaLogic.runBulkDraws(user.id, categoryOrder, user.luckModifier);
+      const summary = await buildBulkDrawSummary(draws, { splitFavorites: false });
 
-      if (results.length === 0) {
+      if (draws.length === 0) {
         await reply(ctx, summary.header);
         return;
       }
@@ -222,6 +227,8 @@ ${category.emoji} _${subcategoryNames}_
         photoUrl: firstPage.photoUrl,
         buttonRows: navRow.length ? [navRow] : undefined,
       });
+
+      await emitCardsNew(user.id, authorId, ctx.message.author.name, ctx.message.platform, countsByCard);
     } finally {
       await releaseGirar(authorId, chatId);
     }

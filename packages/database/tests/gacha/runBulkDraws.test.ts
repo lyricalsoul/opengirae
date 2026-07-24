@@ -36,7 +36,7 @@ describe("GachaLogic.runBulkDraws", () => {
   test("with a favorite subcategory rolled, always draws from it (isFromFavorite: true)", async () => {
     const before = await db.select({ usedDraws: users.usedDraws }).from(users).where(eq(users.id, userId)).then(r => r[0]!.usedDraws);
 
-    const results = await GachaLogic.runBulkDraws(userId, [categoryId, categoryId, categoryId, categoryId, categoryId], 100, new Set([favSubId]));
+    const { draws: results } = await GachaLogic.runBulkDraws(userId, [categoryId, categoryId, categoryId, categoryId, categoryId], 100, new Set([favSubId]));
 
     // subcategoriesOnDraw=3 out of {fav, other, empty} means the favorite is rolled most of the time
     // across 5 draws - assert it's rolled and honored at least once (probabilistically near-certain).
@@ -57,7 +57,7 @@ describe("GachaLogic.runBulkDraws", () => {
     const before = await db.select({ usedDraws: users.usedDraws }).from(users).where(eq(users.id, userId)).then(r => r[0]!.usedDraws);
 
     const drawCount = 30;
-    const results = await GachaLogic.runBulkDraws(
+    const { draws: results } = await GachaLogic.runBulkDraws(
       userId,
       Array(drawCount).fill(categoryId),
       100,
@@ -83,7 +83,7 @@ describe("GachaLogic.runBulkDraws", () => {
   });
 
   test("with no favorites passed, falls back to plain weighted pick (isFromFavorite: false)", async () => {
-    const results = await GachaLogic.runBulkDraws(userId, [categoryId, categoryId, categoryId], 100);
+    const { draws: results } = await GachaLogic.runBulkDraws(userId, [categoryId, categoryId, categoryId], 100);
     expect(results.every(r => r.isFromFavorite === false)).toBe(true);
     expect(results.length).toBeGreaterThan(0);
 
@@ -94,7 +94,7 @@ describe("GachaLogic.runBulkDraws", () => {
   test("a category with no subcategories is skipped, not counted against usedDraws", async () => {
     const before = await db.select({ usedDraws: users.usedDraws }).from(users).where(eq(users.id, userId)).then(r => r[0]!.usedDraws);
 
-    const results = await GachaLogic.runBulkDraws(userId, [999999], 100); // nonexistent category id
+    const { draws: results } = await GachaLogic.runBulkDraws(userId, [999999], 100); // nonexistent category id
     expect(results).toEqual([]);
 
     const after = await db.select({ usedDraws: users.usedDraws }).from(users).where(eq(users.id, userId)).then(r => r[0]!.usedDraws);
@@ -106,7 +106,7 @@ describe("GachaLogic.runBulkDraws", () => {
     // with subcategoriesOnDraw covering all 3 subs so it's always in the rolled set
     const before = await db.select({ usedDraws: users.usedDraws }).from(users).where(eq(users.id, userId)).then(r => r[0]!.usedDraws);
 
-    const results = await GachaLogic.runBulkDraws(userId, [categoryId], 100, new Set([emptySubId]));
+    const { draws: results } = await GachaLogic.runBulkDraws(userId, [categoryId], 100, new Set([emptySubId]));
     // either it drew nothing (skipped) or, if the weighted pick happened not to land on emptySubId
     // this run, it drew normally - either way usedDraws only moves by results.length
     const after = await db.select({ usedDraws: users.usedDraws }).from(users).where(eq(users.id, userId)).then(r => r[0]!.usedDraws);
@@ -119,12 +119,15 @@ describe("GachaLogic.runBulkDraws", () => {
   test("a card drawn multiple times in one batch accumulates into a single userCards row (batched upsert)", async () => {
     // only one favorite subcategory in play, and it's the sole candidate on every roll, so every
     // one of these draws lands on favCardId - this exercises the same-card-twice-in-one-INSERT path.
-    const results = await GachaLogic.runBulkDraws(userId, Array(10).fill(categoryId), 100, new Set([favSubId]));
+    const { draws: results, countsByCard } = await GachaLogic.runBulkDraws(userId, Array(10).fill(categoryId), 100, new Set([favSubId]));
     expect(results.every(r => r.card.id === favCardId)).toBe(true);
 
     const row = await db.select({ count: userCards.count }).from(userCards)
       .where(and(eq(userCards.userId, userId), eq(userCards.cardId, favCardId))).then(r => r[0]);
     expect(row?.count).toBe(results.length);
+
+    // fresh card for this user in this batch: previousCount 0, newCount = full batch size
+    expect(countsByCard).toEqual([{ cardId: favCardId, previousCount: 0, newCount: results.length }]);
 
     await db.delete(cardDrawHistory).where(eq(cardDrawHistory.userId, userId));
     await db.delete(userCards).where(eq(userCards.userId, userId));
@@ -133,7 +136,7 @@ describe("GachaLogic.runBulkDraws", () => {
   test("handles a large batch (n=100) across multiple categories without per-draw queries blowing up", async () => {
     const before = await db.select({ usedDraws: users.usedDraws }).from(users).where(eq(users.id, userId)).then(r => r[0]!.usedDraws);
 
-    const results = await GachaLogic.runBulkDraws(userId, Array(100).fill(categoryId), 100, new Set([favSubId, favSubBId]));
+    const { draws: results } = await GachaLogic.runBulkDraws(userId, Array(100).fill(categoryId), 100, new Set([favSubId, favSubBId]));
     expect(results.length).toBe(100);
     expect(results.every(r => r.subcategoryId === favSubId || r.subcategoryId === favSubBId)).toBe(true);
 

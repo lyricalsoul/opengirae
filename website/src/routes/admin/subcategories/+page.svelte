@@ -26,6 +26,7 @@
 		tags: string[] | null;
 		isSecondary: boolean;
 		imageUrl: string | null;
+		emoji: string | null;
 		rarityModifier: number;
 	};
 
@@ -160,6 +161,7 @@
 	let tags = $state('');
 	let isSecondary = $state(false);
 	let imageUrl = $state('');
+	let emoji = $state('');
 	let rarityModifier = $state(100);
 
 	function openCreate() {
@@ -170,6 +172,7 @@
 		tags = '';
 		isSecondary = false;
 		imageUrl = '';
+		emoji = '';
 		rarityModifier = 100;
 		dialogOpen = true;
 	}
@@ -182,6 +185,7 @@
 		tags = (row.tags ?? []).join(', ');
 		isSecondary = row.isSecondary;
 		imageUrl = row.imageUrl ?? '';
+		emoji = row.emoji ?? '';
 		rarityModifier = row.rarityModifier;
 		dialogOpen = true;
 	}
@@ -214,10 +218,12 @@
 				tags: tagList,
 				isSecondary,
 				imageUrl: imageUrl || undefined,
+				emoji: emoji || undefined,
 				rarityModifier
 			});
 			const rowNode = gridApi?.getRowNode(String(editId));
-			if (rowNode?.data) rowNode.setData({ ...rowNode.data, name, tags: tagList, isSecondary, imageUrl: imageUrl || null, rarityModifier });
+			if (rowNode?.data)
+				rowNode.setData({ ...rowNode.data, name, tags: tagList, isSecondary, imageUrl: imageUrl || null, emoji: emoji || null, rarityModifier });
 			toast.success('Subcategoria atualizada');
 		} catch {
 			toast.error('Falha ao atualizar subcategoria');
@@ -316,6 +322,10 @@
 			<label class="text-ink-dim text-xs">
 				Imagem (URL)
 				<input bind:value={imageUrl} class="field mt-1" />
+			</label>
+			<label class="text-ink-dim text-xs">
+				Emoji (cativeiro)
+				<input bind:value={emoji} class="field mt-1" />
 			</label>
 			<label class="text-ink-dim text-xs">
 				Modificador de raridade (%)

@@ -33,6 +33,9 @@
         "@girae/common": "workspace:^",
         "marked": "^18.0.5",
       },
+      "devDependencies": {
+        "@girae/tests": "workspace:*",
+      },
     },
     "packages/commandeer": {
       "name": "@girae/commandeer",
