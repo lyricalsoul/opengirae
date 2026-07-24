@@ -34,21 +34,28 @@ export const categories = pgTable("categories", {
   drawImageUrl: text(),
 });
 
-export const subcategories = pgTable("subcategories", {
-  id: integer().primaryKey().generatedAlwaysAsIdentity(),
-  categoryId: integer()
-    .notNull()
-    .references(() => categories.id),
-  name: text().notNull(),
-  tags: text().array(),
-  aliases: text().array(),
-  isSecondary: boolean().notNull().default(false),
-  imageUrl: text(),
-  // shown next to cativeiro listings/alerts; falls back to the category's emoji when unset
-  emoji: text(),
+export const subcategories = pgTable(
+  "subcategories",
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    categoryId: integer()
+      .notNull()
+      .references(() => categories.id),
+    name: text().notNull(),
+    tags: text().array(),
+    aliases: text().array(),
+    isSecondary: boolean().notNull().default(false),
+    imageUrl: text(),
+    // shown next to cativeiro listings/alerts; falls back to the category's emoji when unset
+    emoji: text(),
 
-  rarityModifier: integer().notNull().default(100),
-});
+    rarityModifier: integer().notNull().default(100),
+  },
+  (table) => [
+    // every /girar draw filters subcategories by categoryId
+    index("subcategories_category_idx").on(table.categoryId),
+  ],
+);
 
 export const cards = pgTable(
   "cards",

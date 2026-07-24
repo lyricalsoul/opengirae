@@ -6,6 +6,7 @@ import {
     timestamp,
     pgEnum,
     unique,
+    index,
 } from "drizzle-orm/pg-core";
 import {
     users
@@ -35,4 +36,6 @@ export const boughtItems = pgTable("bought_items", {
     boughtAt: timestamp().notNull().defaultNow(),
 }, (table) => [
     unique().on(table.userId, table.itemId),
+    // /loja's purchaseCount join filters by itemId
+    index("bought_items_item_idx").on(table.itemId),
 ]);

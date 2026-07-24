@@ -5,6 +5,7 @@ import {
   text,
   timestamp,
   unique,
+  index,
 } from "drizzle-orm/pg-core";
 import { users } from "./users";
 
@@ -30,4 +31,6 @@ export const promoCodeRedemptions = pgTable("promo_code_redemptions", {
   redeemedAt: timestamp().notNull().defaultNow(),
 }, (table) => [
   unique().on(table.userId, table.promoCodeId),
+  // remaining-uses check filters by promoCodeId
+  index("promo_code_redemptions_code_idx").on(table.promoCodeId),
 ]);
