@@ -6,8 +6,7 @@ import { buildCtx } from '../syntheticCtx'
 import { EMOJI } from '../../constants'
 
 const MAX_LISTED_CARDS = 30
-// synthetic author for a cron-originated message - no real user triggered this send.
-// shared with vanityAnnouncements.ts, which announces new store items via the same cron tick.
+// synthetic author for a cron-originated message; also used by vanityAnnouncements.ts (same cron tick)
 export const ANNOUNCEMENT_AUTHOR_ID = '0'
 export const ANNOUNCEMENT_AUTHOR_NAME = 'openGIRAÊ'
 

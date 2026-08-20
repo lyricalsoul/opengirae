@@ -55,7 +55,6 @@ describe("/listtroco pagination and filters", () => {
     commonRarityId = rarityRows.find(r => r.name === 'Comum')!.id;
     legendaryRarityId = rarityRows.find(r => r.name === 'Lendário')!.id;
 
-    // mixed rarities, to exercise both pagination and the rarity filter
     for (let i = 0; i < 11; i++) {
       const card = await fx.card({ name: `Test Listtroco Common ${i}`, rarityId: commonRarityId, subcategoryId });
       cardIds.push(card.id);

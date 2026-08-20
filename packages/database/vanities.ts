@@ -230,7 +230,7 @@ export class VanitiesDB {
     return await client.delete(storeItems).where(eq(storeItems.id, id)).returning().then(a => a?.[0]);
   })
 
-  // stamps announcedAt with schedTime (not now()) so a whole claimed batch shares one pagination key
+  // stamps announcedAt with schedTime (not now()) so a whole claimed batch shares one key
   static claimUnannouncedStoreItems = maybeTransaction('claimUnannouncedStoreItems', async (
     client, type: StoreItemType, schedTime: Date, cutoff: Date, onlyIds?: number[],
   ) => {

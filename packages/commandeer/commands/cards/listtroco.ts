@@ -44,7 +44,7 @@ ${rows}
 
 ${pageInfo}${EMOJI.browse} Para adicionar ou remover, use \`/troco\` ou \`/naotroco\`.`
 
-  const dittoCards = allCards
+  const dittoCards = slice
     .filter(c => c.imageUrl)
     .slice(0, 10)
     .map(c => ({ id: c.id, name: c.name, imageUrl: c.imageUrl! }))
