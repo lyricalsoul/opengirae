@@ -37,6 +37,11 @@ await DBOS.applySchedules([
         scheduleName: 'dbos-system-db-cleanup',
         workflowFn: CronJobs.runDbosSystemDbCleanup,
         schedule: '0 5 * * *',
+    },
+    {
+        scheduleName: 'auction-sweep',
+        workflowFn: CronJobs.runAuctionSweep,
+        schedule: '* * * * *',
     }
 ])
 

@@ -22,6 +22,11 @@ export const rarities = pgTable("rarities", {
 
   // admin-configurable "own this many copies of one card" unlock for cativeiro customization
   cativeiroThreshold: integer().notNull().default(15),
+
+  // reference value (at economy.inflationRate = 1) used to price a /leilao listing for this
+  // rarity - deliberately not admin-editable via its own UI/command, scales with inflationRate
+  // instead. Seeded by migration, not this default - see AuctionsDB.
+  auctionBaseValue: integer().notNull().default(0),
 });
 
 /// The category which cards and items may belong to.
@@ -71,6 +76,7 @@ export const cards = pgTable(
       .notNull()
       .references(() => rarities.id),
     imageUrl: text(),
+    aliases: text().array(),
     updatedAt: timestamp().notNull().defaultNow(),
 
     rarityModifier: integer().notNull().default(100),
@@ -274,6 +280,72 @@ export const chocolateFactoryCorrections = pgTable("chocolate_factory_correction
   subcategoryId: integer().notNull().references(() => subcategories.id, { onDelete: "cascade" }),
 });
 
+export const auctionStatus = pgEnum("auction_status", ["active", "sold", "expired", "cancelled"])
+
+export const auctions = pgTable(
+  "auctions",
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    sellerId: integer().notNull().references(() => users.id),
+    cardId: integer().notNull().references(() => cards.id),
+
+    // snapshot of the listed unit's customization, taken out of userCards at creation time -
+    // same shape as hipotecaHoldings, restored (to the seller) or dropped (to the winner) at settlement.
+    tradable: boolean().notNull(),
+    customEmoji: text(),
+    customMediaUrl: text(),
+    customMediaType: cativeiroMediaType(),
+
+    status: auctionStatus().notNull().default("active"),
+
+    // all fixed at creation time from rarities.auctionBaseValue x economy.inflationRate (then
+    // rounded to the nearest 500) - never recomputed live, so a later inflation change doesn't
+    // retroactively affect an auction already in progress.
+    startingBid: integer().notNull(),
+    capPrice: integer().notNull(),
+    bidIncrement: integer().notNull(),
+    overtimeIncrement: integer().notNull(),
+
+    currentBid: integer(),
+    currentBidderId: integer().references(() => users.id),
+
+    // set only once settled 'sold' - the commission taken out of currentBid at payout time
+    saleFeePaid: integer(),
+
+    createdAt: timestamp().notNull().defaultNow(),
+    expiresAt: timestamp().notNull(),
+    resolvedAt: timestamp(),
+
+    // notification outbox for sold/expired/cancelled - see AuctionsDB/CronJobs.runAuctionSweep
+    resolutionNotifiedAt: timestamp(),
+  },
+  (table) => [
+    // the real "one active auction per (seller, card)" guard - not an app-level pre-check
+    uniqueIndex("auctions_active_seller_card_idx").on(table.sellerId, table.cardId).where(sql`${table.status} = 'active'`),
+    index("auctions_status_expires_idx").on(table.status, table.expiresAt),
+    // /leilao's 3-per-day limit and the 6h re-list cooldown both scan by (sellerId, createdAt)/(sellerId, cardId, resolvedAt)
+    index("auctions_seller_created_idx").on(table.sellerId, table.createdAt),
+  ],
+);
+
+export const auctionBids = pgTable(
+  "auction_bids",
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    auctionId: integer().notNull().references(() => auctions.id),
+    bidderId: integer().notNull().references(() => users.id),
+    amount: integer().notNull(),
+    createdAt: timestamp().notNull().defaultNow(),
+    // outbid-notification outbox - see AuctionsDB/CronJobs.runAuctionSweep
+    notifiedAt: timestamp(),
+  },
+  (table) => [
+    index("auction_bids_auction_idx").on(table.auctionId),
+    // used by the site's "a licitar" (bids by this user) listing.
+    index("auction_bids_bidder_idx").on(table.bidderId),
+  ],
+);
+
 export const trades = pgTable(
   "trades",
   {
@@ -282,6 +354,10 @@ export const trades = pgTable(
     user2Id: integer().notNull().references(() => users.id),
     cardsUser1: integer().array().notNull(),
     cardsUser2: integer().array().notNull(),
+    // Discoteca entry ids offered by each side, same flatten-by-count shape as cardsUser1/2 -
+    // see CardsDB.executeMixedTrade.
+    discotecaUser1: integer().array().notNull().default([]),
+    discotecaUser2: integer().array().notNull().default([]),
     createdAt: timestamp().notNull().defaultNow(),
   },
   (table) => [

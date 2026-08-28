@@ -66,7 +66,7 @@ interface UnannouncedCardRow {
   subcategoryImageUrl: string | null
 }
 
-// rows arrive pre-ordered by subcategoryId (CardsDB.claimUnannouncedCards), so a single pass groups them.
+// rows arrive pre-ordered by subcategoryId then rarity (CardsDB.claimUnannouncedCards), so a single pass groups them.
 export function groupCardsBySubcategory(rows: UnannouncedCardRow[]): NewCardsGroupAnnouncement[] {
   const groups: NewCardsGroupAnnouncement[] = []
   const bySubcategory = new Map<number, NewCardsGroupAnnouncement>()

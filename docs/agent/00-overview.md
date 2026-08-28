@@ -66,6 +66,14 @@ bug class here. Concretely, in this codebase:
   `UPDATE ... SET coins = coins - $amount WHERE coins >= $amount`, returning
   whether a row was actually updated. The check and the write are the same
   atomic statement — there is no gap for a race to land in.
+  `UsersDB.spendCoins` always routes through `EconomyDB.deductCoinsToTreasury`
+  (the coins go *somewhere* — into the treasury, because something was
+  bought); `UsersDB.transferCoins` (`/pix`) is the sibling for a direct
+  player-to-player move that must **not** touch the treasury, same
+  conditional-`UPDATE` shape on the sender's row, then a plain credit to the
+  recipient, both in the same `maybeTransaction`. Don't reuse `spendCoins`
+  for a transfer just because the atomicity shape matches — check which one
+  actually fits before copying.
 - **"Already exists" / "already owned" checks**: an app-level
   check-then-insert (`SELECT ... ; if not found, INSERT`) always has a race
   window. The fix is a **real DB-level unique constraint**, with the insert

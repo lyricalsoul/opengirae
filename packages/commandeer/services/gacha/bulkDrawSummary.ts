@@ -8,7 +8,7 @@ const PAGE_SIZE = 10
 const SUMMARY_CACHE_TTL_SECONDS = 10 * 60
 
 const line = (r: BulkDrawResult) =>
-  `${r.isFromFavorite ? '⭐ ' : ''}${r.card.rarityEmoji} \`${r.card.id}\`. **${escapeMarkdown(r.card.name)}** ${r.categoryEmoji} _${escapeMarkdown(r.subcategoryName)}_`
+  `${r.card.rarityEmoji} \`${r.card.id}\`. **${escapeMarkdown(r.card.name)}** ${r.categoryEmoji} _${escapeMarkdown(r.subcategoryName)}_${r.isFromFavorite ? ' 💝' : ''}`
 
 const byRarity = (a: BulkDrawResult, b: BulkDrawResult) => a.card.rarityWeight - b.card.rarityWeight
 

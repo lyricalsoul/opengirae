@@ -14,6 +14,7 @@
 		{ href: '/admin/subcategories', label: 'Subcategorias' },
 		{ href: '/admin/cards', label: 'Cartas' },
 		{ href: '/admin/rarities', label: 'Raridades' },
+		{ href: '/admin/leiloes', label: 'Leilões' },
 		{ href: '/admin/promo-codes', label: 'Códigos Promos' },
 		{ href: '/admin/economy', label: 'Economia' },
 		{ href: '/admin/settings', label: 'Configurações' }

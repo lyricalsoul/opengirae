@@ -8,7 +8,7 @@ import { auditLogs } from "@girae/database/schemas/audit";
 import { eq, and, or } from "drizzle-orm";
 import DoarCommand from "../../commands/cards/doar";
 
-mockTelegram();
+const { sentMessages } = mockTelegram();
 
 describe("/doar (and its alias /micar) donate cards as a one-sided trade", () => {
   const fx = new TestFixtures();
@@ -87,10 +87,16 @@ describe("/doar (and its alias /micar) donate cards as a one-sided trade", () =>
     expect(await ownedCount(recipientId, cardCId)).toBe(0);
   });
 
-  test("a repeated ID donates that many copies", async () => {
+  test("a repeated ID donates that many copies, and the confirmation prompt totals the quantity (not the distinct ID count)", async () => {
     await fx.ownCard(donorId, cardAId, 2);
     const recipientCountBefore = await ownedCount(recipientId, cardAId);
+    const startIndex = sentMessages.length;
     const { workflowID, handle } = await runToConfirm([String(cardAId), String(cardAId)]);
+
+    const confirmPrompt = sentMessages.slice(startIndex).find(m => typeof m.text === 'string' && m.text.includes('Doar'));
+    expect(confirmPrompt).toBeDefined();
+    expect(confirmPrompt!.text).toInclude('Doar <strong>2</strong> carta(s)');
+
     await DBOS.send(workflowID, { value: true }, 'doar:confirm');
     await handle.getResult();
 

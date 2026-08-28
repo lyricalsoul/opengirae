@@ -68,10 +68,11 @@ export class TestFixtures {
     return { id, platform, platformId };
   }
 
-  async rarity(opts: { name: string; emoji?: string; weight?: number; cativeiroThreshold?: number }): Promise<{ id: number }> {
+  async rarity(opts: { name: string; emoji?: string; weight?: number; cativeiroThreshold?: number; auctionBaseValue?: number }): Promise<{ id: number }> {
     const row = await CardsDB.createRarity(opts.name, opts.emoji ?? '🏷️', opts.weight ?? 100);
     const id = row!.id;
     if (opts.cativeiroThreshold !== undefined) await CardsDB.updateRarity(id, { cativeiroThreshold: opts.cativeiroThreshold });
+    if (opts.auctionBaseValue !== undefined) await CardsDB.updateRarity(id, { auctionBaseValue: opts.auctionBaseValue });
     this.onCleanup(async () => { await db.delete(rarities).where(eq(rarities.id, id)); });
     return { id };
   }

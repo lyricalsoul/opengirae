@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy, mount, unmount } from 'svelte';
 	import Modal from '$lib/components/Modal.svelte';
+	import DonationHistoryModal from '$lib/components/DonationHistoryModal.svelte';
 	import {
 		createGrid,
 		ModuleRegistry,
@@ -41,6 +42,16 @@
 	let banDialogOpen = $state(false);
 	let banTargetId = $state<number | null>(null);
 	let banReason = $state('');
+
+	let historyDialogOpen = $state(false);
+	let historyUserId = $state<number | null>(null);
+	let historyUserName = $state('');
+
+	function openHistory(userId: number, displayName: string) {
+		historyUserId = userId;
+		historyUserName = displayName;
+		historyDialogOpen = true;
+	}
 
 	function openBanDialog(userId: number) {
 		banTargetId = userId;
@@ -135,7 +146,8 @@
 					isAdmin: params.data!.isAdmin,
 					onBan: () => openBanDialog(params.data!.id),
 					onUnban: () => unban(params.data!.id),
-					onToggleAdmin: () => toggleAdmin(params.data!.id, params.data!.isAdmin)
+					onToggleAdmin: () => toggleAdmin(params.data!.id, params.data!.isAdmin),
+					onViewHistory: () => openHistory(params.data!.id, params.data!.displayName)
 				}
 			});
 		}
@@ -231,3 +243,5 @@
 		</div>
 	</form>
 </Modal>
+
+<DonationHistoryModal bind:open={historyDialogOpen} userId={historyUserId} userName={historyUserName} />

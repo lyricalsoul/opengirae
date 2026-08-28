@@ -6,7 +6,7 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
 	server: {
-		allowedHosts: ['girae.io', 'zealously-infracostal-branda.ngrok-free.dev', 'localhost']
+		allowedHosts: ['girae.io', 'zealously-infracostal-branda.ngrok-free.dev', 'localhost', '.loca.lt']
 	},
 	ssr: {
 		noExternal: ['framework7-icons']

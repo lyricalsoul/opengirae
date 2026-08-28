@@ -10,7 +10,7 @@
 	import SubcategoryDetailView from './SubcategoryDetailView.svelte';
 	import InfiniteScrollSentinel from './InfiniteScrollSentinel.svelte';
 
-	type CardRow = { id: number; name: string; imageUrl: string | null; rarityName: string; rarityEmoji: string; ownedCount: number; tradable: boolean };
+	type CardRow = { id: number; name: string; imageUrl: string | null; rarityName: string; rarityEmoji: string; ownedCount: number; tradable: boolean; inAuction: boolean };
 	type Section = { subcategoryId: number; subcategoryName: string; categoryEmoji: string; categoryName: string; total: number; cards: CardRow[] };
 	type WishlistCard = { id: number; name: string; imageUrl: string | null; rarityName: string; rarityEmoji: string };
 

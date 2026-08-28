@@ -5,7 +5,8 @@ import { auditLogs } from "./schemas/audit";
 import { EconomyDB } from "./economy";
 import { economy } from "./schemas/economy";
 import { maybeTransaction } from "./decorators";
-import { eq, sql, and, or, gte, ilike, desc } from "drizzle-orm";
+import type { DrizzleClient } from "./decorators";
+import { eq, sql, and, or, gte, ilike, desc, inArray } from "drizzle-orm";
 
 export type Platform = 'telegram' | 'discord' | 'none';
 
@@ -77,6 +78,11 @@ export class UsersDB {
     return await client.select().from(users).where(eq(users.id, id)).limit(1).then(a => a?.[0]);
   })
 
+  static getUsersByIds = maybeTransaction('getUsersByIds', async (client, ids: number[]) => {
+    if (ids.length === 0) return [];
+    return await client.select().from(users).where(inArray(users.id, ids));
+  })
+
   static isViewable(viewerId: number, target: { id: number; privacyMode: boolean }): boolean {
     return target.id === viewerId || !target.privacyMode
   }
@@ -99,6 +105,16 @@ export class UsersDB {
       .where(and(eq(linkedAccounts.userId, userId), eq(linkedAccounts.platform, platform)))
       .limit(1)
       .then(rows => rows[0]?.platformId);
+  })
+
+  // Batched getPlatformIdForUser, for building mention() links without one query per user.
+  static getPlatformIdsForUsers = maybeTransaction('getPlatformIdsForUsers', async (client, userIds: number[], platform: Platform): Promise<Map<number, string>> => {
+    if (userIds.length === 0) return new Map();
+    const rows = await client
+      .select({ userId: linkedAccounts.userId, platformId: linkedAccounts.platformId })
+      .from(linkedAccounts)
+      .where(and(inArray(linkedAccounts.userId, userIds), eq(linkedAccounts.platform, platform)));
+    return new Map(rows.map(r => [r.userId, r.platformId]));
   })
 
   static getUserByUsername = maybeTransaction('getUserByUsername', async (client, username: string) => {
@@ -142,6 +158,19 @@ export class UsersDB {
 
   static spendCoins = maybeTransaction('spendCoins', async (client, userId: number, amount: number): Promise<boolean> => {
     return await EconomyDB.deductCoinsToTreasury(client, userId, amount);
+  })
+
+  // player-to-player transfer (e.g. /pix) - unlike spendCoins, doesn't touch the treasury since nothing is being bought
+  static transferCoins = maybeTransaction('transferCoins', async (client, fromUserId: number, toUserId: number, amount: number): Promise<boolean> => {
+    const [spendRow] = await client
+      .update(users)
+      .set({ coins: sql`${users.coins} - ${amount}` })
+      .where(and(eq(users.id, fromUserId), gte(users.coins, amount)))
+      .returning();
+    if (!spendRow) return false;
+
+    await client.update(users).set({ coins: sql`${users.coins} + ${amount}` }).where(eq(users.id, toUserId));
+    return true;
   })
 
   static setFavoriteCard = maybeTransaction('setFavoriteCard', async (client, userId: number, cardId: number) => {
@@ -334,6 +363,16 @@ export class UsersDB {
     await client.update(economy).set({ treasuryBalance: sql`${economy.treasuryBalance} + ${price}` });
     return { ok: true };
   })
+
+  // AuditDB.revertDonation's penalty chain, step 2: take one available draw atomically.
+  static async tryConsumeDrawAsPenaltyWithClient(client: DrizzleClient, userId: number): Promise<boolean> {
+    const [row] = await client
+      .update(users)
+      .set({ usedDraws: sql`${users.usedDraws} + 1` })
+      .where(and(eq(users.id, userId), sql`${users.usedDraws} < ${users.maxDraws}`))
+      .returning();
+    return !!row;
+  }
 
   static giveTemporaryDraws = maybeTransaction('giveTemporaryDraws', async (client, userId: number, amount: number) => {
     return await client

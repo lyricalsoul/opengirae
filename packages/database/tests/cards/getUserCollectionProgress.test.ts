@@ -1,9 +1,11 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
 import { TestFixtures } from "@girae/tests";
 import { db } from "../../index";
-import { userCards } from "../../schemas/cards";
+import { userCards, auctions } from "../../schemas/cards";
+import { users } from "../../schemas/users";
 import { eq } from "drizzle-orm";
 import { CardsDB } from "../../cards";
+import { AuctionsDB } from "../../auctions";
 
 describe("CardsDB.getUserCollectionProgress", () => {
   const fx = new TestFixtures();
@@ -80,5 +82,25 @@ describe("CardsDB.getUserCollectionProgress", () => {
     expect(after.rows.find(r => r.subcategoryId === subcategoryId)!.isGoal).toBe(true);
 
     await CardsDB.removeFromGoals(userId, subcategoryId);
+  });
+
+  test("a card currently in the user's own active auction still counts toward owned", async () => {
+    const auctionUserId = (await fx.user({ displayName: `Test Progress Auction User ${Date.now()}` })).id;
+    await db.update(users).set({ coins: 1_000_000 }).where(eq(users.id, auctionUserId));
+    const rarityId = (await fx.rarity({ name: `Test Progress Auction Rarity ${Date.now()}`, auctionBaseValue: 10000 })).id;
+    const auctionSubcategoryId = (await fx.subcategory({ categoryId, name: `Test Progress Auction Subcategory ${Date.now()}` })).id;
+    const cardId = (await fx.card({ name: "Test Progress Auction Card", rarityId, subcategoryId: auctionSubcategoryId })).id;
+
+    await fx.ownCard(auctionUserId, cardId, 1);
+    await CardsDB.setCardTradable(auctionUserId, cardId, true);
+    const created = await AuctionsDB.createAuction(auctionUserId, cardId);
+    if (!created.ok) throw new Error(`fixture setup failed: ${created.reason}`);
+    fx.onCleanup(async () => { await db.delete(auctions).where(eq(auctions.id, created.auction.id)); });
+
+    const result = await CardsDB.getUserCollectionProgress(auctionUserId, { query: "Test Progress Auction Subcategory" });
+    const row = result.rows.find(r => r.subcategoryId === auctionSubcategoryId);
+    expect(row).toBeDefined();
+    expect(row!.owned).toBe(1);
+    expect(row!.total).toBe(1);
   });
 });

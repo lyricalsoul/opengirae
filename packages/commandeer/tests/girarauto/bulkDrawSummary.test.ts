@@ -41,4 +41,12 @@ describe("renderBulkDrawSummaryPage line format", () => {
     const { content } = renderBulkDrawSummaryPage(summary, 0);
     expect(content).toContain('**Card 1** 🎨 _Test Sub_');
   });
+
+  test("a favorite draw ends with the 💝 marker, a non-favorite doesn't", async () => {
+    const results = [result({ id: 1, rarityWeight: 100, isFromFavorite: true }), result({ id: 2, rarityWeight: 1, isFromFavorite: false })];
+    const summary = await buildBulkDrawSummary(results, { splitFavorites: false });
+    const { content } = renderBulkDrawSummaryPage(summary, 0);
+    expect(content).toContain('_Test Sub_ 💝');
+    expect(content).not.toContain('**Card 2** 🎨 _Test Sub_ 💝');
+  });
 });

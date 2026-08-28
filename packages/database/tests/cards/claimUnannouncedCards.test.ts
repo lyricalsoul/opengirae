@@ -33,6 +33,20 @@ describe("CardsDB.claimUnannouncedCards", () => {
     expect(secondRun).toHaveLength(0);
   });
 
+  test("orders newly-claimed cards rarest-first, regardless of creation order", async () => {
+    const common = await fx.rarity({ name: `Test Common ${Date.now()}`, weight: 1000 });
+    const rare = await fx.rarity({ name: `Test Rare ${Date.now()}`, weight: 100 });
+    const legendary = await fx.rarity({ name: `Test Legendary ${Date.now()}`, weight: 10 });
+
+    const commonCardId = (await fx.card({ name: "Test Claim Ordered Common", rarityId: common.id, subcategoryId })).id;
+    const rareCardId = (await fx.card({ name: "Test Claim Ordered Rare", rarityId: rare.id, subcategoryId })).id;
+    const legendaryCardId = (await fx.card({ name: "Test Claim Ordered Legendary", rarityId: legendary.id, subcategoryId })).id;
+    const cutoff = new Date();
+
+    const claimed = await CardsDB.claimUnannouncedCards(cutoff, [commonCardId, rareCardId, legendaryCardId]);
+    expect(claimed.map(c => c.id)).toEqual([legendaryCardId, rareCardId, commonCardId]);
+  });
+
   test("a card younger than cutoff is not claimed", async () => {
     const cardId = (await fx.card({ name: "Test Claim Card Fresh", subcategoryId })).id;
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);

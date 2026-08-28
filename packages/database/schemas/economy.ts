@@ -1,4 +1,4 @@
-import { integer, bigint, pgTable, pgEnum, text, doublePrecision, timestamp } from "drizzle-orm/pg-core";
+import { integer, bigint, pgTable, pgEnum, text, doublePrecision, boolean, timestamp } from "drizzle-orm/pg-core";
 
 // singleton
 export const economy = pgTable("economy", {
@@ -8,6 +8,12 @@ export const economy = pgTable("economy", {
   incomeInflationRate: doublePrecision().notNull().default(1),
   // watermark: treasuryBalance as of the last allocation sync - see EconomyDB.syncAllocations
   lastSyncedTreasuryBalance: bigint({ mode: 'number' }).notNull().default(0),
+
+  // /leilao sale commission, charged at settlement not at listing time (0.10 = 10%)
+  auctionSaleFeeRate: doublePrecision().notNull().default(0.10),
+  // emergency kill-switch: createAuction/placeBid refuse immediately when false, no deploy needed
+  auctionsEnabled: boolean().notNull().default(true),
+
   updatedAt: timestamp().notNull().defaultNow(),
 });
 

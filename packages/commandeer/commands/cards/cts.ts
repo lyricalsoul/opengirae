@@ -43,13 +43,16 @@ export async function renderPage(rawArg: string, page: number, viewerTelegramId:
 
   const rows = slice.length > 0
     ? slice.map(c => {
-      const badge = cativeiroEmoji(c.ownedCount)
-      return `${c.categoryEmoji ?? EMOJI.subcategory} ${c.rarityEmoji} \`${c.id}\`. **${escapeMarkdown(c.name)}** \`${c.ownedCount}x\` ${badge} — _${escapeMarkdown(c.subcategoryName ?? '?')}_`
+      // see CardsDB.getUserOwnedCards's note - a card in an active /leilao still shows up here.
+      const totalCount = c.ownedCount + (c.inAuction ? 1 : 0)
+      const badge = cativeiroEmoji(totalCount)
+      const auctionMark = c.inAuction ? ` ${EMOJI.inAuction}` : ''
+      return `${c.categoryEmoji ?? EMOJI.subcategory} ${c.rarityEmoji} \`${c.id}\`. **${escapeMarkdown(c.name)}** \`${totalCount}x\`${auctionMark} ${badge} — _${escapeMarkdown(c.subcategoryName ?? '?')}_`
     }).join('\n')
     : '_Nenhum card para mostrar._'
   const advice = filterAdviceText(FILTERS, active, cards.length, 'cards')
   const pageInfo = totalPages > 1 ? `${EMOJI.page} Página \`${page + 1}\` de **${totalPages}**\n` : ''
-  const totalCopies = allCards.reduce((sum, c) => sum + c.ownedCount, 0)
+  const totalCopies = allCards.reduce((sum, c) => sum + c.ownedCount + (c.inAuction ? 1 : 0), 0)
 
   const content = `👤 \`${viewer.id}\`. Cards de **${escapeMarkdown(viewer.displayName)}**
 ${EMOJI.dice} \`${totalCopies}\` cards no total.

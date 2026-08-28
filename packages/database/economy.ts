@@ -53,6 +53,22 @@ export class EconomyDB {
     return true;
   }
 
+  // unlike deductCoinsToTreasury, nothing is deducted from the seller - the fee is already withheld from the bid before payout.
+  static chargeAuctionSaleFee = async (client: DrizzleClient, sellerId: number, feeAmount: number): Promise<void> => {
+    if (feeAmount <= 0) return;
+    await client.update(economy).set({ treasuryBalance: sql`${economy.treasuryBalance} + ${feeAmount}` });
+    await client.update(users).set({ treasuryContributed: sql`${users.treasuryContributed} + ${feeAmount}` }).where(eq(users.id, sellerId));
+  }
+
+  static setAuctionSaleFeeRate = maybeTransaction('setAuctionSaleFeeRate', async (client, rate: number) => {
+    return await client.update(economy).set({ auctionSaleFeeRate: rate, updatedAt: new Date() }).returning().then(rows => rows[0]);
+  })
+
+  // /leilao emergency kill-switch - see AuctionsDB.createAuction/placeBid
+  static setAuctionsEnabled = maybeTransaction('setAuctionsEnabled', async (client, enabled: boolean) => {
+    return await client.update(economy).set({ auctionsEnabled: enabled, updatedAt: new Date() }).returning().then(rows => rows[0]);
+  })
+
   static getAllocatedPortion = async (id: AllocationId): Promise<number> => {
     const [row] = await db.select().from(treasuryAllocations).where(eq(treasuryAllocations.allocationId, id)).limit(1);
     return row?.balance ?? 0;

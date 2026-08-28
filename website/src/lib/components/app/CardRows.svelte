@@ -2,7 +2,7 @@
 	import { List, Checkbox, Stepper } from 'konsta/svelte';
 	import { scale, slide } from 'svelte/transition';
 
-	type Card = { id: number; name: string; imageUrl: string | null; rarityName: string; rarityEmoji: string; ownedCount: number; tradable: boolean };
+	type Card = { id: number; name: string; imageUrl: string | null; rarityName: string; rarityEmoji: string; ownedCount: number; tradable: boolean; inAuction?: boolean };
 
 	let {
 		cards,
@@ -58,7 +58,7 @@
 				{/if}
 				<div class="ml-1 min-w-0 flex-1">
 					<div class="truncate font-semibold text-black dark:text-white">{card.name}</div>
-					<div class="truncate text-sm text-black/55 dark:text-white/55">{card.rarityEmoji} {card.rarityName}</div>
+					<div class="truncate text-sm text-black/55 dark:text-white/55">{card.inAuction ? '📣 ' : ''}{card.rarityEmoji} {card.rarityName}</div>
 				</div>
 				{#if card.ownedCount > 1}
 					<div class="shrink-0 text-sm text-black/55 dark:text-white/55">x{card.ownedCount}</div>

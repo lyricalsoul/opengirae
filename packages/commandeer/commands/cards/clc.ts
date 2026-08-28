@@ -20,8 +20,15 @@ async function renderPage(rawArg: string, page: number, viewerTelegramId: string
 
   const rows = pageRows.length > 0
     ? pageRows.map(c => {
-      const badge = cativeiroEmoji(c.ownedCount)
-      const trailing = c.ownedCount > 0 ? `\`${c.ownedCount}x\`` : c.categoryEmoji
+      // a card the user currently has in an active /leilao still counts as owned (stats-wise)
+      // even though its stock is temporarily out of userCards - see CardsDB.getSubcategoryStats/
+      // getCardsInSubcategoryForUserFiltered. Count the auctioned unit back in and mark it with
+      // EMOJI.inAuction in the trailing slot instead of falling back to the "not owned"
+      // categoryEmoji, which would otherwise read as "you don't have this".
+      const totalCount = c.ownedCount + (c.inAuction ? 1 : 0)
+      const badge = cativeiroEmoji(totalCount)
+      const auctionMark = c.inAuction ? ` ${EMOJI.inAuction}` : ''
+      const trailing = totalCount > 0 ? `\`${totalCount}x\`${auctionMark}` : c.categoryEmoji
       return `${c.rarityEmoji} \`${c.id}\`. **${escapeMarkdown(c.name)}** ${badge}${trailing}`
     }).join('\n')
     : '_Nenhum card para mostrar._'

@@ -28,6 +28,20 @@ export const economyRouter = t.router({
 			return EconomyDB.getState();
 		}),
 
+	setAuctionSaleFeeRate: adminProcedure
+		.input(z.object({ rate: z.number().min(0) }))
+		.mutation(async ({ input }) => {
+			await EconomyDB.setAuctionSaleFeeRate(input.rate);
+			return EconomyDB.getState();
+		}),
+
+	setAuctionsEnabled: adminProcedure
+		.input(z.object({ enabled: z.boolean() }))
+		.mutation(async ({ input }) => {
+			await EconomyDB.setAuctionsEnabled(input.enabled);
+			return EconomyDB.getState();
+		}),
+
 	listAllocations: adminProcedure.query(() => EconomyDB.listAllocations()),
 
 	updateAllocation: adminProcedure

@@ -27,21 +27,87 @@ local docker Postgres/Redis `01-setup.md` describes. When given prod access:
 
 ## Reverting an accidental card transfer (`/doar`, `/trade`)
 
-**Only `/doar` writes an audit log entry** (`audit_logs.action = 'card.doar'`,
-`metadata: { recipientUserId, cardIds }` — donor is `actorUserId`). `/trade`
-(two-sided) does not audit-log at all today; if asked to revert a `/trade`,
-you'll need to reconstruct it from DBOS `workflow_inputs` (see below) since
-there's no audit trail to start from — say so up front rather than assuming
-one exists.
+**The bot has admin commands for this now — try those before doing any of
+this by hand.** `/doacoes @usuário [página]`
+(`packages/commandeer/commands/admin/doacoes.ts`, `isAdmin`-guarded) lists a
+user's donation history (10 per page, plain numeric page argument, not
+button-based - see the comment in that file for why), each entry showing its
+audit log `#id` and, if already reverted, who did it and when. Feed that id
+to `/doacaocancelar <ID da doação>`
+(`packages/commandeer/commands/admin/doacaocancelar.ts`) to actually revert
+it. The admin panel's donation-history modal (`Ver histórico de doações` on
+a user, `website/src/lib/components/DonationHistoryModal.svelte`) shows the
+same thing read-only, if OIDC happens to be working wherever you are — but
+`/doacoes` doesn't depend on that, so treat it as the primary way to find an
+id. Neither surface can trigger a revert by itself, deliberately — see "Why
+bot commands and not a website button" below.
 
-**Caveat on `card.doar`'s `cardIds`**: it's `offerA.map(o => o.cardId)` —
-*distinct* card IDs only, with duplicates from a quantity >1 collapsed to one
-entry. It also silently drops any card the donor didn't have enough of at
-confirm time (`doar.ts`'s `skippedIds`) — those were never actually
-transferred, don't revert them. Neither the count-per-card nor which
-requested IDs got skipped is recoverable from the audit log alone.
+The command calls `AuditDB.revertDonation` (`packages/database/audit.ts`),
+which automates most of what this section used to require doing manually: it
+claim-locks the audit log row (`revertedAt`/`revertedByAdminId`, so a
+donation can't be reverted twice), takes back each donated card unit from the
+recipient if they still have it, and — this is the part manual SQL can't
+do — if they *don't* still have a given unit, it applies a fallback penalty
+instead of just failing: takes one draw, then
+`DONATION_REVERT_PENALTY_COINS` (1000) coins to the treasury, then one card
+of the same rarity from the recipient's own collection, in that order. The
+donor gets a copy of the originally-donated card back regardless of which
+fallback paid for it. If every fallback is exhausted for even one unit, the
+whole revert rolls back atomically (nothing partially changes) and the
+command replies naming which card it couldn't cover — at that point you're
+into genuinely manual territory, see below. This also means
+`card.doar`/`card.doarclc` metadata now stores `cards: [{cardId, count}]`
+(exact per-card quantity), not just distinct `cardIds` — the caveat below
+only applies to rows logged before this shipped.
 
-**To get exact per-card quantities**, cross-reference DBOS
+**Why bot commands and not a website button**: the admin panel
+(`/admin`) authenticates staff via OIDC (`better-auth` + `genericOAuth`),
+which has no local-dev bypass the way the Mini App's
+`BYPASS_TELEGRAM_AUTH_DO_NOT_USE_THIS_IN_PROD_PRETTY_PLEASE` does — so a
+website-triggered mutation here couldn't be tested end-to-end without a real
+OIDC provider wired up. `AuditDB.revertDonation` took an admin's website
+login (email) as the "who reverted this" identity at first; that got
+reworked to take a bot `users.id` instead once the trigger moved to a
+command, so `audit_logs.revertedByAdminId` is a real FK to `users` now, not
+free text.
+
+**Only `/doar`/`/doarclc` write an audit log entry** (`audit_logs.action =
+'card.doar'`/`'card.doarclc'` — donor is `actorUserId`). `/trade`
+(two-sided) does not audit-log at all today and has no revert button; if
+asked to revert a `/trade`, you'll need to reconstruct it from DBOS
+`workflow_inputs` (see below) since there's no audit trail to start from —
+say so up front rather than assuming one exists.
+
+**Discoteca (album/single) donations have the identical setup under a
+separate namespace.** `/doardisco`/`/doarclcdisco` log
+`discoteca.doar`/`discoteca.doarclc` (metadata: `{recipientUserId, entries:
+[{entryId, count}], artistId?}` — `artistId` only on the `doarclcdisco`
+"whole discography" case, the Discoteca analog of `subcategoryId`).
+`/doacoesdisco @usuário [@usuário2 [página]]` and `/doacaocancelardisco <ID>`
+(`packages/commandeer/commands/discoteca/doacoesdisco.ts`,
+`doacaocancelardisco.ts`) are exact mirrors of `/doacoes`/`/doacaocancelar`,
+backed by `AuditDB.getDiscotecaDonationHistory`/`revertDiscotecaDonation` —
+same claim-lock, same draw→coins→same-rarity-item fallback chain (reusing
+`UsersDB.tryConsumeDrawAsPenaltyWithClient`/`DONATION_REVERT_PENALTY_COINS`,
+so the coin penalty amount and the draw pool are shared with card reverts).
+The two systems are otherwise completely separate: a card donation's audit
+log id and a Discoteca donation's audit log id can collide (auto-increment
+across the whole `audit_logs` table) but `/doacaocancelar` and
+`/doacaocancelardisco` each only ever match their own action names, so
+feeding one command's id to the other just replies "not found," never
+touches the wrong row.
+
+**Caveat on legacy `card.doar` rows logged before per-card quantity
+shipped**: their metadata only has `cardIds` — *distinct* card IDs, with
+duplicates from a quantity >1 collapsed to one entry. `AuditDB.revertDonation`
+treats each of those as a single unit (1x), which under-reverts a
+quantity>1 donation from before this fix. It also silently drops any card
+the donor didn't have enough of at confirm time (`doar.ts`'s `skippedIds`) —
+those were never actually transferred, don't revert them. Neither the
+count-per-card nor which requested IDs got skipped is recoverable from a
+legacy audit log alone.
+
+**To get exact per-card quantities for a legacy row**, cross-reference DBOS
 `dbos.workflow_status.inputs` for the matching `execute`/`doar` workflow
 (match by donor/recipient Telegram IDs from `linked_accounts` and a
 timestamp close to the audit log's `createdAt` — the confirm-button click
@@ -50,11 +116,15 @@ lands a few seconds after the workflow starts). The raw command args (e.g.
 and all — count occurrences yourself, then subtract any ID that's in the
 typed list but missing from the audit log's `cardIds` (that's a skipped one).
 
-**Before reverting, always check**:
-1. Does the recipient still hold at least the transferred quantity of every
-   card? If they've since spent/re-traded some, a full reversal isn't
-   possible without either short-changing the original donor or going
-   negative — stop and say so rather than partially reverting silently.
+**When the command's fallback chain isn't what you want** — e.g. the
+recipient shouldn't be penalized at all because the mistake wasn't theirs,
+or you need to revert a legacy under-counted row exactly — fall back to a
+manual reversal. Same checks as the automated path had to account for,
+spelled out here because you're now doing them by hand:
+1. Does the recipient still hold at least the quantity you intend to take
+   back of every card? If they've since spent/re-traded some, decide
+   consciously whether to under-revert or make the donor whole some other
+   way — don't silently short-change either side.
 2. Does either side have `customEmoji`/`customMediaUrl` set on the affected
    `user_cards` rows? If the recipient's count would need to be preserved
    above the card's `rarities.cativeiroThreshold` for the reversal not to
@@ -76,10 +146,15 @@ convention for any prod write — no throwaway TS/JS scripts), mirroring what
 row if it hits 0, upsert (`INSERT ... ON CONFLICT DO UPDATE SET count =
 user_cards.count + EXCLUDED.count`) the original owner's row back up. Back up
 the affected `user_cards` rows (`\copy ... TO 'backup.csv' WITH CSV HEADER`)
-before running it. Log the reversal itself to `audit_logs` (a new action like
-`card.doar.revert`, metadata pointing at the original audit log id/workflow
-id) so there's a trail explaining why the counts moved without a matching
-`/doar` in the bot's own command history.
+before running it. Log the reversal itself to `audit_logs` (action
+`card.doar.revert`, metadata pointing at the original audit log id — same
+action name `AuditDB.revertDonation` itself uses, so it shows up
+consistently either way) so there's a trail explaining why the counts moved
+without a matching `/doar` in the bot's own command history. If you also
+need to mark the original row so `/doacaocancelar` won't try to revert it
+again, set `revertedAt`/`revertedByAdminId` on it in the same transaction —
+`revertedByAdminId` is a real FK to `users.id`, so use whichever admin's row
+is doing this manual fix, not a placeholder.
 
 ## Traffic/abuse analysis: card-catalog scraping
 

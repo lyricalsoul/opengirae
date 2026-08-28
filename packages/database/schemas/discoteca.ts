@@ -146,6 +146,7 @@ export const userDiscoteca = pgTable(
       .notNull()
       .references(() => discotecaEntries.id),
     count: integer().notNull().default(1),
+    tradable: boolean().notNull().default(false),
     updatedAt: timestamp().notNull().defaultNow(),
   },
   (table) => [

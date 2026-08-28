@@ -55,6 +55,21 @@ describe("CardsDB.claimUnannouncedSubcategories", () => {
     expect(claimed[0]?.cards.map(c => c.id)).toEqual([cardId]);
   });
 
+  test("orders a subcategory's cards rarest-first, regardless of creation order", async () => {
+    const common = await fx.rarity({ name: `Test Common ${Date.now()}`, weight: 1000 });
+    const rare = await fx.rarity({ name: `Test Rare ${Date.now()}`, weight: 100 });
+    const legendary = await fx.rarity({ name: `Test Legendary ${Date.now()}`, weight: 10 });
+
+    const subcategoryId = (await fx.subcategory({ categoryId, name: "Test Claim Subcategory Ordered" })).id;
+    const commonCardId = (await fx.card({ name: "Test Ordered Common", rarityId: common.id, subcategoryId })).id;
+    const rareCardId = (await fx.card({ name: "Test Ordered Rare", rarityId: rare.id, subcategoryId })).id;
+    const legendaryCardId = (await fx.card({ name: "Test Ordered Legendary", rarityId: legendary.id, subcategoryId })).id;
+
+    const claimed = await CardsDB.claimUnannouncedSubcategories(new Date(), [subcategoryId]);
+    expect(claimed).toHaveLength(1);
+    expect(claimed[0]?.cards.map(c => c.id)).toEqual([legendaryCardId, rareCardId, commonCardId]);
+  });
+
   test("a subcategory younger than cutoff is not claimed", async () => {
     const subcategoryId = (await fx.subcategory({ categoryId, name: "Test Claim Subcategory Fresh" })).id;
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);

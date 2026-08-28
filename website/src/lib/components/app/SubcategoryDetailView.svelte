@@ -5,7 +5,7 @@
 	import CardRows from './CardRows.svelte';
 	import InfiniteScrollSentinel from './InfiniteScrollSentinel.svelte';
 
-	type Row = { id: number; name: string; imageUrl: string | null; rarityName: string; rarityEmoji: string; ownedCount: number; tradable: boolean };
+	type Row = { id: number; name: string; imageUrl: string | null; rarityName: string; rarityEmoji: string; ownedCount: number; tradable: boolean; inAuction: boolean };
 	type Tab = 'owned' | 'missing';
 	type Result = { rows: Row[]; total: number; ownedCount: number; missingCount: number };
 	type TradeFilter = 'all' | 'tradable' | 'nonTradable';

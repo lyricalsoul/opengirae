@@ -6,15 +6,16 @@
 		open = $bindable(false),
 		title,
 		children,
-		footer
-	}: { open?: boolean; title: string; children: Snippet; footer?: Snippet } = $props();
+		footer,
+		widthClass = 'max-w-sm'
+	}: { open?: boolean; title: string; children: Snippet; footer?: Snippet; widthClass?: string } = $props();
 </script>
 
 <Dialog.Root bind:open>
 	<Dialog.Portal>
 		<Dialog.Overlay class="fixed inset-0 z-50 bg-black/60" />
 		<Dialog.Content
-			class="border-line bg-panel fixed top-1/2 left-1/2 z-50 flex max-h-[85vh] w-full max-w-sm -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border p-5"
+			class="border-line bg-panel fixed top-1/2 left-1/2 z-50 flex max-h-[85vh] w-full {widthClass} -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border p-5"
 		>
 			<Dialog.Title class="text-ink mb-4 shrink-0 text-sm font-semibold">{title}</Dialog.Title>
 			<div class="overflow-y-auto">

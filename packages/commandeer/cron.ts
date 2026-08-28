@@ -5,9 +5,11 @@ import { EconomyDB } from '@girae/database/economy'
 import { StorefrontDB } from '@girae/database/storefront'
 import { CardsDB } from '@girae/database/cards'
 import { VanitiesDB } from '@girae/database/vanities'
+import { AuctionsDB } from '@girae/database/auctions'
 import { info } from '@girae/common/logger'
 import { announceNewSubcategory, announceNewCardsGroup, groupCardsBySubcategory } from './services/cards/contentAnnouncements'
 import { announceNewVanityItems } from './services/vanity/vanityAnnouncements'
+import { sendOutbidNotifications, sendResolutionNotifications } from './services/auctions/notifications'
 
 const ANNOUNCEMENT_LOOKBACK_MS = 60 * 60 * 1000
 
@@ -58,6 +60,13 @@ export class CronJobs {
       const claimed = await VanitiesDB.claimUnannouncedStoreItems(type, schedTime, cutoff)
       if (claimed.length > 0) await announceNewVanityItems(chatId, threadId, type, schedTime)
     }
+  }
+
+  @DBOS.workflow()
+  static async runAuctionSweep(schedTime: Date) {
+    await AuctionsDB.sweepExpiredAuctions(schedTime)
+    await sendOutbidNotifications()
+    await sendResolutionNotifications()
   }
 
   @DBOS.workflow()

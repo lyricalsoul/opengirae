@@ -6,13 +6,15 @@
 		isAdmin,
 		onBan,
 		onUnban,
-		onToggleAdmin
+		onToggleAdmin,
+		onViewHistory
 	}: {
 		isBanned: boolean;
 		isAdmin: boolean;
 		onBan: () => void;
 		onUnban: () => void;
 		onToggleAdmin: () => void;
+		onViewHistory: () => void;
 	} = $props();
 </script>
 
@@ -25,6 +27,7 @@
 	</DropdownMenu.Trigger>
 	<DropdownMenu.Portal>
 		<DropdownMenu.Content class="menu-content" sideOffset={4} align="end">
+			<DropdownMenu.Item onSelect={onViewHistory} class="menu-item">Ver histórico de doações</DropdownMenu.Item>
 			{#if isBanned}
 				<DropdownMenu.Item onSelect={onUnban} class="menu-item">Desbanir</DropdownMenu.Item>
 			{:else}

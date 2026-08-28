@@ -115,9 +115,11 @@ export default class MyHook {
 ## `services/` layout
 
 `packages/commandeer/services/` is split by domain: `cards/`, `vanity/`,
-`gacha/`, `users/` hold logic specific to that domain (e.g.
+`gacha/`, `users/`, `auctions/` hold logic specific to that domain (e.g.
 `services/cards/cativeiro.ts`, `services/vanity/vanityWizard.ts`,
-`services/gacha/girarClaim.ts`). Framework-core files that every domain
+`services/gacha/girarClaim.ts`, `services/auctions/notifications.ts` — see
+`04-dbos.md`'s "Scheduled workflows" section for the notification-outbox
+pattern this one implements). Framework-core files that every domain
 depends on — `commandArguments.ts`, `commands.ts`, `guards.ts`,
 `syntheticCtx.ts`, `botInfo.ts`, `supportChannel.ts` — stay flat at
 `services/` root rather than being forced into one domain folder. When adding
@@ -131,11 +133,15 @@ Not just a BullMQ backend — also used directly for:
 - Pending workflow state: `workflow:{workflowID}` hash (button flows, 1h
   TTL), `pendingText:{chatId}:{authorId}` (free-text capture)
 - Ad-hoc negotiation state for multi-actor flows that don't map cleanly onto
-  a single workflow's closure (e.g. `/trade`'s `trade:state:{workflowID}`)
+  a single workflow's closure (e.g. `/trade`'s `trade:state:{workflowID}`;
+  `/tradedisco` is a separate instance of the same pattern with its own
+  `tradedisco:state:{workflowID}` prefix and `services/discoteca/tradeLock.ts`
+  — the two negotiation systems don't share keys, so a user can be
+  mid-negotiation on both at once)
 - Short-lived one-time codes (`/link`'s account-merge code)
 - Locks (`girar:active:{telegramId}:{chatId}` — prevents double-`/girar`
   races; see `packages/commandeer/services/gacha/girarClaim.ts`/
-  `services/cards/tradeLock.ts`)
+  `services/cards/tradeLock.ts`/`services/discoteca/tradeLock.ts`)
 - Query result caching: `packages/common/cache/` (`kv.ts` — generic
   get/set/del wrapper around `rawClient`; `users.ts` — the `(platform,
   platformId) → userId` mapping, by far the most frequently re-resolved

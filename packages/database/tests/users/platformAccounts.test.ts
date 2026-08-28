@@ -49,6 +49,23 @@ describe("UsersDB platform-account methods", () => {
     expect(row?.user_profiles.userId).toBe(id);
   });
 
+  test("getPlatformIdsForUsers batch-resolves ids for the given platform, skipping unlinked/unknown users", async () => {
+    const a = await fx.user({ displayName: "Batch A", platform: 'telegram' });
+    const b = await fx.user({ displayName: "Batch B", platform: 'telegram' });
+    const c = await fx.user({ displayName: "Batch C", platform: 'discord' }); // not linked on telegram
+
+    const map = await UsersDB.getPlatformIdsForUsers([a.id, b.id, c.id, 999999999], 'telegram');
+    expect(map.get(a.id)).toBe(a.platformId);
+    expect(map.get(b.id)).toBe(b.platformId);
+    expect(map.has(c.id)).toBe(false);
+    expect(map.has(999999999)).toBe(false);
+  });
+
+  test("getPlatformIdsForUsers returns an empty map for an empty id list", async () => {
+    const map = await UsersDB.getPlatformIdsForUsers([], 'telegram');
+    expect(map.size).toBe(0);
+  });
+
   test("touchUsername updates displayName only when changed, scoped by platform", async () => {
     const { platformId } = await fx.user({ displayName: "Old Name", platform: 'telegram' });
 

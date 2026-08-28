@@ -77,6 +77,11 @@ export async function resolveDiscotecaAlbumByIdOrName(raw: string): Promise<Pars
   return parseDiscotecaEntry(raw, 'album')
 }
 
+// no entryType - matches an album OR a single, for commands that don't care which.
+export async function resolveDiscotecaEntryByIdOrName(raw: string): Promise<ParseOutcome> {
+  return parseDiscotecaEntry(raw)
+}
+
 export async function resolveDiscotecaArtistByIdOrName(raw: string): Promise<ParseOutcome> {
   return parseDiscotecaArtist(raw)
 }
@@ -86,6 +91,12 @@ async function parseCard(raw: string, ctx?: IncomingCommand, opts?: { paginatedA
   if (asId !== undefined) {
     const card = await CardsDB.getCardWithDetails(asId)
     return card ? { ok: true, value: card } : { ok: false, message: 'Não encontrei um personagem com esse ID.' }
+  }
+
+  const byAlias = await CardsDB.getCardByAlias(raw)
+  if (byAlias) {
+    const card = await CardsDB.getCardWithDetails(byAlias.id)
+    if (card) return { ok: true, value: card }
   }
 
   const results = await CardsDB.searchCardsByName(raw, 100)

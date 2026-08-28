@@ -1,6 +1,7 @@
 import { Command, QuickView, Page, CommandArgument, CommandArgumentType } from '@girae/common/commands'
 import { reply, type ButtonSpec } from '@girae/common/dbos/messaging'
 import { CardsDB } from '@girae/database/cards'
+import { AuctionsDB } from '@girae/database/auctions'
 import { UsersDB } from '@girae/database/users'
 import { getActiveTradeSide } from './trade'
 import type { IncomingCommand } from '@girae/common/commands/types'
@@ -37,11 +38,15 @@ export async function renderCardSearchResults(query: string, page: number) {
 async function showCard(ctx: IncomingCommand, card: CardDetails) {
   const activeTradePromise = getActiveTradeSide(ctx.message.author.id)
   const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
-  const [owned, tags] = await Promise.all([
+  const [owned, tags, activeAuction] = await Promise.all([
     user ? CardsDB.getUserCard(user.id, card.id) : null,
     CardsDB.getSecondarySubcategoryNames(card.id),
+    user ? AuctionsDB.getActiveAuctionForSellerCard(user.id, card.id) : null,
   ])
-  const count = owned?.count ?? 0
+  // a unit currently in this user's own /leilao is physically out of userCards (see
+  // AuctionsDB.createAuctionTx) but still theirs - count it back in instead of showing 0x.
+  const inAuction = !!activeAuction
+  const count = (owned?.count ?? 0) + (inAuction ? 1 : 0)
   const badge = cativeiroEmoji(count)
   const rarityOrCustom = resolveDisplayEmoji(owned?.customEmoji, card.rarityEmoji, ctx.message.platform === 'telegram')
   const obscured = !!user?.obscureMode
@@ -49,11 +54,12 @@ async function showCard(ctx: IncomingCommand, card: CardDetails) {
 
   const subcategoryNames = [card.subcategoryName ?? '?', ...tags].map(escapeMarkdown).join(' / ')
   const countSuffix = count > 0 ? ` (\`${count}x\`)` : ''
+  const auctionSuffix = inAuction ? ` (${EMOJI.inAuction})` : ''
 
   const text = `${rarityOrCustom} \`${card.id}\`. **${escapeMarkdown(displayName)}**${badge ? ` ${badge}` : ''}
 ${card.categoryEmoji ?? EMOJI.category} _${subcategoryNames}_
 
-${EMOJI.owner} \`${user?.id ?? '?'}\`. ${mention(ctx.message.platform, ctx.message.author.id, ctx.message.author.name)}${countSuffix}`
+${EMOJI.owner} \`${user?.id ?? '?'}\`. ${mention(ctx.message.platform, ctx.message.author.id, ctx.message.author.name)}${countSuffix}${auctionSuffix}`
 
   const buttonRows: ButtonSpec[][] = [[{ text: EMOJI.quickView, quickView: { handler: 'cardinfo', arg: String(card.id) } }]]
 

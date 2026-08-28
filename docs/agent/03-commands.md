@@ -305,9 +305,28 @@ instead of trusting a diff by eye.
     can lag by a second or more even after the promise resolves — this
     genuinely bit a real test in this codebase and cost real debugging time
     chasing a phantom "flaky infra" issue before landing on the fix below.
-  - Prefer asserting the same underlying guard/DB state the command checks,
-    or `expect(promise).resolves.toBeUndefined()` to prove it didn't throw,
-    rather than racing the reply queue.
+  - Prefer asserting the same underlying guard/DB state the command checks
+    rather than racing the reply queue. **Avoid chained `expect(promise).resolves...`
+    and `expect(promise).rejects...` matchers entirely** — under `bun test`
+    (v1.3.14) both have been observed to hang the whole file past its 5s
+    timeout even when the awaited call resolves/rejects in milliseconds
+    (confirmed via standalone repro scripts calling the exact same code
+    outside `bun test`, which returned instantly both times). This isn't
+    limited to command-level `execute()` calls — it reproduced on a plain
+    `maybeTransaction`-wrapped `*DB` method too
+    (`CardsDB.executeTrade`/`executeMixedTrade`), so treat it as a `bun test`
+    quirk with the chained-matcher API itself, not something specific to the
+    messaging pipeline. Use a plain `await` instead:
+    - Expecting success: `await theCommand.execute(...)` (no throw) instead
+      of `expect(promise).resolves.toBeUndefined()`.
+    - Expecting a rejection: manual try/catch —
+      `let threw: unknown; try { await p } catch (e) { threw = e }` then
+      `expect(threw).toBeInstanceOf(SomeError)` — instead of
+      `expect(promise).rejects.toBeInstanceOf(SomeError)`/`.rejects.toThrow(...)`.
+    This cost real debugging time on the `/leiloar`/`/lance` tests (now
+    unified into `/leilao`, `tests/leilao/leilao.test.ts`; the `.resolves`
+    case) and again on the Discoteca trade tests (the `.rejects` case) before
+    the pattern itself was found to be the cause, not the code under test.
   - **Never `mock.module()` a shared module** (like
     `@girae/common/dbos/messaging`) at the top of a test file expecting an
     `afterAll` to cleanly restore it — `bun test` shares one module registry

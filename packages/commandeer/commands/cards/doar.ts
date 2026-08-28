@@ -122,7 +122,8 @@ export default class DoarCommand extends Command {
       const skippedNote = skippedIds.length > 0 ? `\n\n⚠️ Ignoradas (você não tem em quantidade suficiente): ${skippedIds.map(id => `\`${id}\``).join(', ')}` : ''
 
       offerA = validIds.map(id => ({ cardId: id, count: finalQty.get(id)! }))
-      confirmContent = `Doar **${validIds.length}** carta(s) para **${escapeMarkdown(recipient.displayName)}**?\n\n${list}${skippedNote}`
+      const totalQty = offerA.reduce((sum, o) => sum + o.count, 0)
+      confirmContent = `Doar **${totalQty}** carta(s) para **${escapeMarkdown(recipient.displayName)}**?\n\n${list}${skippedNote}`
       successList = `\n\n${list}`
     }
 
@@ -153,7 +154,7 @@ export default class DoarCommand extends Command {
       return
     }
 
-    await AuditDB.log(donor.id, 'card.doar', { recipientUserId: recipient.id, cardIds: offerA.map(o => o.cardId) })
+    await AuditDB.log(donor.id, 'card.doar', { recipientUserId: recipient.id, cards: offerA })
 
     const dm = buildCtx(platform, args.target, recipient.displayName, args.target)
     await reply(dm, `💱 ${mention(platform, ctx.message.author.id, donor.displayName)} te doou **${cardCount}** carta(s)!${successList}`)

@@ -10,10 +10,12 @@ export const EMOJI = {
   page: '📃',
   browse: '👀',
   progress: '📊',
-  goal: '⭐',
+  goal: '💝',
   newContent: '➕',
   date: '📅',
   shop: '🛍',
+  auction: '🔨',
+  inAuction: '📣',
 }
 
 const CATIVEIRO_TIERS: Array<[min: number, emoji: string]> = [

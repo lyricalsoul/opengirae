@@ -15,11 +15,13 @@ import {
   subcategoryCompletionRewards,
   hipotecaSessions,
   hipotecaHoldings,
+  auctions,
 } from "./schemas/cards";
 import { users } from "./schemas/users";
 import { eq, and, sql, ilike, desc, gte, gt, inArray, isNull, lt } from "drizzle-orm";
 import { CARD_DISCARD_REWARDS, SUBCATEGORY_COMPLETION_BONUS_MULTIPLIER, calculateCardDiscardReward } from "./constants";
 import { EconomyDB } from "./economy";
+import { DiscotecaDB } from "./discoteca";
 import type { DrizzleClient } from "./decorators";
 
 export interface CativeiroSubmitter {
@@ -35,6 +37,15 @@ export interface CompletedSubcategory {
   subcategoryName: string;
   coinsAwarded: number;
 }
+
+// AuditDB.revertDonation's penalty chain - see applyDonationRevertPenaltyWithClient.
+export const DONATION_REVERT_PENALTY_COINS = 1000;
+export type DonationRevertPenalty =
+  | { ok: true; penalty: 'card_returned' }
+  | { ok: true; penalty: 'draw_taken' }
+  | { ok: true; penalty: 'coins_taken'; amount: number }
+  | { ok: true; penalty: 'same_tier_card_taken'; takenCardId: number }
+  | { ok: false };
 
 // the rarity /hipoteca holds - shared by the command layer's getUserCardsByRarityName call and this file's own filter
 export const HIPOTECA_RARITY_NAME = 'Lendário';
@@ -212,6 +223,30 @@ export class CardsDB {
           ELSE array_append(coalesce(${subcategories.aliases}, ARRAY[]::text[]), ${normalized}) END`,
       })
       .where(eq(subcategories.id, subcategoryId))
+      .returning()
+      .then(a => a?.[0]);
+  })
+
+  static getCardByAlias = maybeTransaction('getCardByAlias', async (client, alias: string) => {
+    const normalized = alias.trim().toLowerCase();
+    return await client
+      .select()
+      .from(cards)
+      .where(sql`${normalized} = ANY(${cards.aliases})`)
+      .limit(1)
+      .then(a => a?.[0]);
+  })
+
+  static addCardAlias = maybeTransaction('addCardAlias', async (client, cardId: number, alias: string) => {
+    const normalized = alias.trim().toLowerCase();
+    return await client
+      .update(cards)
+      .set({
+        aliases: sql`CASE WHEN ${normalized} = ANY(coalesce(${cards.aliases}, ARRAY[]::text[]))
+          THEN coalesce(${cards.aliases}, ARRAY[]::text[])
+          ELSE array_append(coalesce(${cards.aliases}, ARRAY[]::text[]), ${normalized}) END`,
+      })
+      .where(eq(cards.id, cardId))
       .returning()
       .then(a => a?.[0]);
   })
@@ -765,6 +800,151 @@ export class CardsDB {
     return { trade, crossings };
   })
 
+  // same as executeTrade (untouched, still the plain card-only path), but each side can also offer Discoteca entries, in one atomic transaction.
+  static executeMixedTrade = maybeTransaction('executeMixedTrade', async (
+    client,
+    userAId: number, cardOfferA: { cardId: number; count: number }[], discoOfferA: { entryId: number; count: number }[],
+    userBId: number, cardOfferB: { cardId: number; count: number }[], discoOfferB: { entryId: number; count: number }[],
+    incomeInflationRate: number,
+  ) => {
+    if (userAId === userBId) throw new Error('executeMixedTrade: userAId and userBId must differ');
+    for (const offer of [cardOfferA, cardOfferB]) {
+      const ids = offer.map(o => o.cardId);
+      if (new Set(ids).size !== ids.length) throw new Error('executeMixedTrade: an offer must not list the same cardId twice');
+      if (offer.some(o => o.count <= 0)) throw new Error('executeMixedTrade: offer counts must be positive');
+    }
+    for (const offer of [discoOfferA, discoOfferB]) {
+      const ids = offer.map(o => o.entryId);
+      if (new Set(ids).size !== ids.length) throw new Error('executeMixedTrade: an offer must not list the same discoteca entry twice');
+      if (offer.some(o => o.count <= 0)) throw new Error('executeMixedTrade: offer counts must be positive');
+    }
+
+    const allOfferedCardIds = [...cardOfferA, ...cardOfferB].map(o => o.cardId);
+    const thresholds = allOfferedCardIds.length
+      ? await client
+        .select({ cardId: cards.id, cativeiroThreshold: rarities.cativeiroThreshold })
+        .from(cards)
+        .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+        .where(inArray(cards.id, allOfferedCardIds))
+      : [];
+    const thresholdByCardId = new Map(thresholds.map(t => [t.cardId, t.cativeiroThreshold]));
+
+    const decrementCard = async (userId: number, cardId: number, count: number) => {
+      const [row] = await client
+        .update(userCards)
+        .set({ count: sql`${userCards.count} - ${count}` })
+        .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId), gte(userCards.count, count)))
+        .returning();
+      if (!row) throw new InsufficientCardError(userId, cardId);
+      if (row.count === 0) {
+        await client.delete(userCards).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+        return;
+      }
+      const threshold = thresholdByCardId.get(cardId) ?? 0;
+      if (row.count < threshold) {
+        await client
+          .update(userCards)
+          .set({ customEmoji: null, customMediaUrl: null, customMediaType: null })
+          .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+      }
+    };
+
+    const crossings: { userId: number; cardId: number; previousCount: number; newCount: number; completedSubcategories?: CompletedSubcategory[] }[] = [];
+
+    const incrementCard = async (userId: number, cardId: number, count: number) => {
+      const existing = await client
+        .select()
+        .from(userCards)
+        .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)))
+        .limit(1)
+        .then(a => a?.[0]);
+
+      const previousCount = existing?.count ?? 0;
+      if (existing) {
+        await client
+          .update(userCards)
+          .set({ count: sql`${userCards.count} + ${count}` })
+          .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+      } else {
+        await client.insert(userCards).values({ userId, cardId, count });
+      }
+
+      const completedSubcategories = await CardsDB.claimCompletionsForCardGain(client, userId, cardId, incomeInflationRate);
+      crossings.push({ userId, cardId, previousCount, newCount: previousCount + count, completedSubcategories });
+    };
+
+    for (const { cardId, count } of cardOfferA) await decrementCard(userAId, cardId, count);
+    for (const { cardId, count } of cardOfferB) await decrementCard(userBId, cardId, count);
+    for (const { entryId, count } of discoOfferA) await DiscotecaDB.decrementForTradeWithClient(client, userAId, entryId, count);
+    for (const { entryId, count } of discoOfferB) await DiscotecaDB.decrementForTradeWithClient(client, userBId, entryId, count);
+
+    for (const { cardId, count } of cardOfferA) await incrementCard(userBId, cardId, count);
+    for (const { cardId, count } of cardOfferB) await incrementCard(userAId, cardId, count);
+    for (const { entryId, count } of discoOfferA) await DiscotecaDB.incrementWithClient(client, userBId, entryId, count);
+    for (const { entryId, count } of discoOfferB) await DiscotecaDB.incrementWithClient(client, userAId, entryId, count);
+
+    const trade = await client
+      .insert(trades)
+      .values({
+        user1Id: userAId,
+        user2Id: userBId,
+        cardsUser1: cardOfferA.flatMap(o => Array(o.count).fill(o.cardId)),
+        cardsUser2: cardOfferB.flatMap(o => Array(o.count).fill(o.cardId)),
+        discotecaUser1: discoOfferA.flatMap(o => Array(o.count).fill(o.entryId)),
+        discotecaUser2: discoOfferB.flatMap(o => Array(o.count).fill(o.entryId)),
+      })
+      .returning()
+      .then(a => a?.[0]);
+
+    return { trade, crossings };
+  })
+
+  // Decrements one copy, deleting at 0 and clearing cativeiro customization below threshold - same shape as executeTrade's decrement(), standalone for AuditDB.revertDonation's one-card-at-a-time calls.
+  static async tryDecrementOneWithClient(client: DrizzleClient, userId: number, cardId: number): Promise<boolean> {
+    const [row] = await client
+      .update(userCards)
+      .set({ count: sql`${userCards.count} - 1` })
+      .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId), gte(userCards.count, 1)))
+      .returning();
+    if (!row) return false;
+
+    if (row.count === 0) {
+      await client.delete(userCards).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+      return true;
+    }
+
+    const [rarityRow] = await client
+      .select({ cativeiroThreshold: rarities.cativeiroThreshold })
+      .from(cards)
+      .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+      .where(eq(cards.id, cardId))
+      .limit(1);
+    if (rarityRow && row.count < rarityRow.cativeiroThreshold) {
+      await client
+        .update(userCards)
+        .set({ customEmoji: null, customMediaUrl: null, customMediaType: null })
+        .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+    }
+    return true;
+  }
+
+  static async getCardRarityIdWithClient(client: DrizzleClient, cardId: number): Promise<number | null> {
+    const [row] = await client.select({ rarityId: cards.rarityId }).from(cards).where(eq(cards.id, cardId)).limit(1);
+    return row?.rarityId ?? null;
+  }
+
+  // any card of rarityId userId owns - AuditDB.revertDonation's "same tier" fallback step.
+  static async findOwnedCardOfRarityWithClient(client: DrizzleClient, userId: number, rarityId: number): Promise<number | null> {
+    const [row] = await client
+      .select({ cardId: userCards.cardId })
+      .from(userCards)
+      .innerJoin(cards, eq(cards.id, userCards.cardId))
+      .where(and(eq(userCards.userId, userId), eq(cards.rarityId, rarityId), gte(userCards.count, 1)))
+      .orderBy(userCards.cardId)
+      .limit(1);
+    return row?.cardId ?? null;
+  }
+
   static getTradeStats = maybeTransaction('getTradeStats', async (client, userId: number) => {
     const [initiatedRow, receivedRow] = await Promise.all([
       client.select({ total: sql<string>`count(*)` }).from(trades).where(eq(trades.user1Id, userId)).then(r => r[0]),
@@ -978,20 +1158,21 @@ export class CardsDB {
       .where(inArray(cards.id, cardIds));
 
     const rarityIds = [...new Set(allCards.map(c => c.rarityId))];
-    const rarityEmojiById = new Map(
-      rarityIds.length === 0 ? [] :
-        (await client.select({ id: rarities.id, emoji: rarities.emoji }).from(rarities).where(inArray(rarities.id, rarityIds)))
-          .map(r => [r.id, r.emoji] as const)
-    );
+    const rarityRows = rarityIds.length === 0 ? [] :
+      await client.select({ id: rarities.id, emoji: rarities.emoji, weight: rarities.weight }).from(rarities).where(inArray(rarities.id, rarityIds));
+    const rarityEmojiById = new Map(rarityRows.map(r => [r.id, r.emoji] as const));
+    const rarityWeightById = new Map(rarityRows.map(r => [r.id, r.weight] as const));
 
-    const cardsBySubcategory = new Map<number, { id: number; name: string; rarityEmoji: string }[]>();
+    const cardsBySubcategory = new Map<number, { id: number; name: string; rarityEmoji: string; rarityWeight: number }[]>();
     for (const c of allCards) {
       const subcategoryId = subcategoryIdByCardId.get(c.id);
       if (subcategoryId === undefined) continue;
       const list = cardsBySubcategory.get(subcategoryId) ?? [];
-      list.push({ id: c.id, name: c.name, rarityEmoji: rarityEmojiById.get(c.rarityId) ?? '' });
+      list.push({ id: c.id, name: c.name, rarityEmoji: rarityEmojiById.get(c.rarityId) ?? '', rarityWeight: rarityWeightById.get(c.rarityId) ?? 0 });
       cardsBySubcategory.set(subcategoryId, list);
     }
+    // lower weight = rarer (RARITY_RANK_SQL in gacha.ts)
+    for (const list of cardsBySubcategory.values()) list.sort((a, b) => a.rarityWeight - b.rarityWeight || a.id - b.id);
 
     return claimedSubcategories.map(s => ({
       id: s.id,
@@ -999,7 +1180,7 @@ export class CardsDB {
       categoryEmoji: categoryEmojiById.get(s.categoryId) ?? '🏷️',
       imageUrl: s.imageUrl,
       createdAt: s.createdAt,
-      cards: cardsBySubcategory.get(s.id) ?? [],
+      cards: (cardsBySubcategory.get(s.id) ?? []).map(({ id, name, rarityEmoji }) => ({ id, name, rarityEmoji })),
     }));
   })
 
@@ -1031,7 +1212,8 @@ export class CardsDB {
       .innerJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
       .innerJoin(categories, eq(categories.id, subcategories.categoryId))
       .where(inArray(cards.id, claimed.map(c => c.id)))
-      .orderBy(subcategories.id, desc(cards.rarityId), cards.id);
+      // lower weight = rarer (RARITY_RANK_SQL in gacha.ts)
+      .orderBy(subcategories.id, rarities.weight, cards.id);
   })
 
   static getCardsInSubcategoryForUser = maybeTransaction('getCardsInSubcategoryForUser', async (client, subcategoryId: number, userId: number) => {
@@ -1059,9 +1241,15 @@ export class CardsDB {
     client, subcategoryId: number, userId: number,
     opts: { ownedFilter?: 'owned' | 'missing'; rarityName?: string; limit: number; offset: number },
   ) => {
+    // a card the user is currently /leiloar-ing still counts as "owned" here, even though its
+    // stock physically left userCards for the duration - see docs/agent/02-architecture.md's
+    // note on the 📣 in-auction marker.
+    const inAuctionExpr = sql`EXISTS (SELECT 1 FROM ${auctions} WHERE ${auctions.sellerId} = ${userId} AND ${auctions.cardId} = ${cards.id} AND ${auctions.status} = 'active')`;
+    const ownedCondition = sql`(COALESCE(${userCards.count}, 0) > 0 OR ${inAuctionExpr})`;
+
     const conditions = [eq(cardSubcategories.subcategoryId, subcategoryId)];
-    if (opts.ownedFilter === 'owned') conditions.push(sql`COALESCE(${userCards.count}, 0) > 0`);
-    if (opts.ownedFilter === 'missing') conditions.push(sql`COALESCE(${userCards.count}, 0) = 0`);
+    if (opts.ownedFilter === 'owned') conditions.push(ownedCondition);
+    if (opts.ownedFilter === 'missing') conditions.push(sql`NOT ${ownedCondition}`);
     if (opts.rarityName) conditions.push(eq(rarities.name, opts.rarityName));
 
     return await client
@@ -1074,6 +1262,7 @@ export class CardsDB {
         categoryEmoji: categories.emoji,
         ownedCount: sql<number>`CAST(COALESCE(${userCards.count}, 0) AS INTEGER)`,
         tradable: sql<boolean>`COALESCE(${userCards.tradable}, false)`,
+        inAuction: sql<boolean>`${inAuctionExpr}`,
       })
       .from(cardSubcategories)
       .innerJoin(cards, eq(cards.id, cardSubcategories.cardId))
@@ -1091,16 +1280,19 @@ export class CardsDB {
     client, subcategoryId: number, userId: number,
     opts: { ownedFilter?: 'owned' | 'missing'; rarityName?: string },
   ) => {
+    const inAuctionExpr = sql`EXISTS (SELECT 1 FROM ${auctions} WHERE ${auctions.sellerId} = ${userId} AND ${auctions.cardId} = ${cards.id} AND ${auctions.status} = 'active')`;
+    const ownedCondition = sql`(COALESCE(${userCards.count}, 0) > 0 OR ${inAuctionExpr})`;
+
     const filterConditions = [];
-    if (opts.ownedFilter === 'owned') filterConditions.push(sql`COALESCE(${userCards.count}, 0) > 0`);
-    if (opts.ownedFilter === 'missing') filterConditions.push(sql`COALESCE(${userCards.count}, 0) = 0`);
+    if (opts.ownedFilter === 'owned') filterConditions.push(ownedCondition);
+    if (opts.ownedFilter === 'missing') filterConditions.push(sql`NOT ${ownedCondition}`);
     if (opts.rarityName) filterConditions.push(eq(rarities.name, opts.rarityName));
     const filterWhere = filterConditions.length > 0 ? and(...filterConditions) : sql`true`;
 
     const [row] = await client
       .select({
         total: sql<number>`CAST(COUNT(*) AS INTEGER)`,
-        owned: sql<number>`CAST(COUNT(*) FILTER (WHERE COALESCE(${userCards.count}, 0) > 0) AS INTEGER)`,
+        owned: sql<number>`CAST(COUNT(*) FILTER (WHERE ${ownedCondition}) AS INTEGER)`,
         filteredTotal: sql<number>`CAST(COUNT(*) FILTER (WHERE ${filterWhere}) AS INTEGER)`,
       })
       .from(cardSubcategories)
@@ -1112,8 +1304,12 @@ export class CardsDB {
   })
 
   static getUserCardsCount = maybeTransaction('getUserCardsCount', async (client, userId: number): Promise<number> => {
+    // a card currently in this user's own active /leiloar is physically out of userCards - see
+    // getCardsInSubcategoryForUserFiltered's note - so it's added back in separately here.
     const result = await client
-      .select({ total: sql<number>`CAST(COALESCE(SUM(${userCards.count}), 0) AS INTEGER)` })
+      .select({
+        total: sql<number>`CAST(COALESCE(SUM(${userCards.count}), 0) AS INTEGER) + (SELECT CAST(COUNT(*) AS INTEGER) FROM ${auctions} WHERE ${auctions.sellerId} = ${userId} AND ${auctions.status} = 'active')`,
+      })
       .from(userCards)
       .where(eq(userCards.userId, userId))
       .then(a => a?.[0]);
@@ -1121,6 +1317,13 @@ export class CardsDB {
   })
 
   static getUserOwnedCards = maybeTransaction('getUserOwnedCards', async (client, userId: number) => {
+    // same reasoning as getCardsInSubcategoryForUserFiltered: a card currently in this user's
+    // own active /leiloar is physically out of userCards for the duration, so membership is a
+    // union of "physically owned" and "currently auctioned by this user" instead of a plain
+    // userCards scan - otherwise it'd vanish from this list while the auction is live.
+    const inAuctionExpr = sql`EXISTS (SELECT 1 FROM ${auctions} WHERE ${auctions.sellerId} = ${userId} AND ${auctions.cardId} = ${cards.id} AND ${auctions.status} = 'active')`;
+    const ownedOrAuctionedCardIds = sql`(SELECT ${userCards.cardId} FROM ${userCards} WHERE ${userCards.userId} = ${userId} AND ${userCards.count} > 0 UNION SELECT ${auctions.cardId} FROM ${auctions} WHERE ${auctions.sellerId} = ${userId} AND ${auctions.status} = 'active')`;
+
     return await client
       .select({
         id: cards.id,
@@ -1130,15 +1333,16 @@ export class CardsDB {
         categoryEmoji: categories.emoji,
         categoryName: categories.name,
         subcategoryName: subcategories.name,
-        ownedCount: userCards.count,
+        ownedCount: sql<number>`CAST(COALESCE(${userCards.count}, 0) AS INTEGER)`,
+        inAuction: sql<boolean>`${inAuctionExpr}`,
       })
-      .from(userCards)
-      .innerJoin(cards, eq(cards.id, userCards.cardId))
+      .from(cards)
       .innerJoin(rarities, eq(rarities.id, cards.rarityId))
       .leftJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.isMain, true)))
       .leftJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
       .leftJoin(categories, eq(categories.id, subcategories.categoryId))
-      .where(eq(userCards.userId, userId))
+      .leftJoin(userCards, and(eq(userCards.cardId, cards.id), eq(userCards.userId, userId)))
+      .where(sql`${cards.id} IN ${ownedOrAuctionedCardIds}`)
       .orderBy(desc(cards.rarityId), cards.id);
   })
 
@@ -1660,7 +1864,10 @@ export class CardsDB {
     const PREVIEW_CAP = 10;
     const { query, limit = 10, offset = 0 } = opts;
     const cardMatch = query ? ilike(cards.name, `%${query}%`) : undefined;
-    const where = cardMatch ? and(eq(userCards.userId, userId), cardMatch) : eq(userCards.userId, userId);
+    // ownership is "physically owned OR currently auctioned by this user", so a card doesn't vanish while its /leiloar is live - requires starting FROM cards (left-joined to userCards) so a zero-userCards row still appears.
+    const inAuctionExpr = sql`EXISTS (SELECT 1 FROM ${auctions} WHERE ${auctions.sellerId} = ${userId} AND ${auctions.cardId} = ${cards.id} AND ${auctions.status} = 'active')`;
+    const ownedCondition = sql`(COALESCE(${userCards.count}, 0) > 0 OR ${inAuctionExpr})`;
+    const where = cardMatch ? and(ownedCondition, cardMatch) : ownedCondition;
 
     const [subcategoryRows, totalSubcategories] = await Promise.all([
       client
@@ -1671,8 +1878,8 @@ export class CardsDB {
           categoryName: categories.name,
           total: sql<number>`CAST(COUNT(*) AS INTEGER)`,
         })
-        .from(userCards)
-        .innerJoin(cards, eq(cards.id, userCards.cardId))
+        .from(cards)
+        .leftJoin(userCards, and(eq(userCards.cardId, cards.id), eq(userCards.userId, userId)))
         .innerJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.isMain, true)))
         .innerJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
         .innerJoin(categories, eq(categories.id, subcategories.categoryId))
@@ -1683,8 +1890,8 @@ export class CardsDB {
         .offset(offset),
       client
         .select({ total: sql<number>`CAST(COUNT(DISTINCT ${subcategories.id}) AS INTEGER)` })
-        .from(userCards)
-        .innerJoin(cards, eq(cards.id, userCards.cardId))
+        .from(cards)
+        .leftJoin(userCards, and(eq(userCards.cardId, cards.id), eq(userCards.userId, userId)))
         .innerJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.isMain, true)))
         .innerJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
         .where(where)
@@ -1693,15 +1900,15 @@ export class CardsDB {
 
     type CardRow = {
       subcategoryId: number; id: number; name: string; imageUrl: string | null;
-      rarityName: string; rarityEmoji: string; ownedCount: number; tradable: boolean;
+      rarityName: string; rarityEmoji: string; ownedCount: number; tradable: boolean; inAuction: boolean;
     };
     const subcategoryIds = subcategoryRows.map(r => r.subcategoryId);
     const cardsBySubcategory = new Map<number, CardRow[]>();
 
     if (subcategoryIds.length > 0) {
       const cardWhere = cardMatch
-        ? and(eq(userCards.userId, userId), inArray(subcategories.id, subcategoryIds), cardMatch)
-        : and(eq(userCards.userId, userId), inArray(subcategories.id, subcategoryIds));
+        ? and(ownedCondition, inArray(subcategories.id, subcategoryIds), cardMatch)
+        : and(ownedCondition, inArray(subcategories.id, subcategoryIds));
 
       const cardRows = await client
         .select({
@@ -1711,11 +1918,12 @@ export class CardsDB {
           imageUrl: cards.imageUrl,
           rarityName: rarities.name,
           rarityEmoji: rarities.emoji,
-          ownedCount: userCards.count,
-          tradable: userCards.tradable,
+          ownedCount: sql<number>`CAST(COALESCE(${userCards.count}, 0) AS INTEGER)`,
+          tradable: sql<boolean>`COALESCE(${userCards.tradable}, false)`,
+          inAuction: sql<boolean>`${inAuctionExpr}`,
         })
-        .from(userCards)
-        .innerJoin(cards, eq(cards.id, userCards.cardId))
+        .from(cards)
+        .leftJoin(userCards, and(eq(userCards.cardId, cards.id), eq(userCards.userId, userId)))
         .innerJoin(rarities, eq(rarities.id, cards.rarityId))
         .innerJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.isMain, true)))
         .innerJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
@@ -1746,7 +1954,9 @@ export class CardsDB {
   ) => {
     const { query, limit = 20, offset = 0, sortBy = 'default', completionFilter = 'all' } = opts;
     const where = query ? ilike(subcategories.name, `%${query}%`) : undefined;
-    const ownedExpr = sql`COUNT(DISTINCT CASE WHEN ${userCards.count} > 0 THEN ${cardSubcategories.cardId} END)`;
+    // same reasoning as getUserOwnedCardsBySubcategory - a card still counts as "owned" while auctioned, so a collection doesn't visibly regress just from listing one of its cards.
+    const inAuctionExpr = sql`EXISTS (SELECT 1 FROM ${auctions} WHERE ${auctions.sellerId} = ${userId} AND ${auctions.cardId} = ${cardSubcategories.cardId} AND ${auctions.status} = 'active')`;
+    const ownedExpr = sql`COUNT(DISTINCT CASE WHEN (${userCards.count} > 0 OR ${inAuctionExpr}) THEN ${cardSubcategories.cardId} END)`;
     const totalExpr = sql`COUNT(DISTINCT ${cardSubcategories.cardId})`;
     const having = completionFilter === 'incomplete' ? sql`${ownedExpr} < ${totalExpr}`
       : completionFilter === 'completed' ? sql`${ownedExpr} = ${totalExpr}`

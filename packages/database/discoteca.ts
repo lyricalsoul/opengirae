@@ -1,4 +1,5 @@
 import { maybeTransaction } from "./decorators";
+import type { DrizzleClient } from "./decorators";
 import {
   discotecaGenres,
   discotecaGenreAliases,
@@ -11,9 +12,17 @@ import {
   discotecaAlbumTracks,
   userDiscoteca,
 } from "./schemas/discoteca";
-import { userProfiles } from "./schemas/users";
+import { users, userProfiles } from "./schemas/users";
 import { cards, categories, subcategories, cardSubcategories, rarities } from "./schemas/cards";
-import { eq, and, or, sql, gt, isNull, inArray } from "drizzle-orm";
+import { eq, and, or, sql, gt, gte, isNull, inArray } from "drizzle-orm";
+import { calculateCardDiscardReward } from "./constants";
+import { EconomyDB } from "./economy";
+
+export class InsufficientDiscotecaEntryError extends Error {
+  constructor(public userId: number, public entryId: number) {
+    super(`user ${userId} does not have enough copies of discoteca entry ${entryId}`);
+  }
+}
 
 export interface CreateDiscotecaEntryData {
   name: string;
@@ -349,6 +358,11 @@ export class DiscotecaDB {
     return await client.select().from(discotecaArtists).where(eq(discotecaArtists.id, id)).limit(1).then(a => a?.[0]);
   })
 
+  static getArtistsByIds = maybeTransaction('getArtistsByIds', async (client, ids: number[]) => {
+    if (ids.length === 0) return [];
+    return await client.select().from(discotecaArtists).where(inArray(discotecaArtists.id, ids));
+  })
+
   static getArtistByCardId = maybeTransaction('getArtistByCardId', async (client, cardId: number) => {
     return await client.select().from(discotecaArtists).where(eq(discotecaArtists.cardId, cardId)).limit(1).then(a => a?.[0]);
   })
@@ -532,6 +546,198 @@ export class DiscotecaDB {
       })
       .returning({ count: userDiscoteca.count })
       .then(a => a?.[0]?.count);
+  })
+
+  // discoteca leg of CardsDB.executeMixedTrade - mirrors executeTrade's decrement, minus cativeiro clearing (no customization columns here).
+  static async decrementForTradeWithClient(client: DrizzleClient, userId: number, entryId: number, count: number): Promise<void> {
+    // tradable=true is in the WHERE itself - closes the TOCTOU gap vs a trade finalizing after the entry was marked non-tradable.
+    const [row] = await client
+      .update(userDiscoteca)
+      .set({ count: sql`${userDiscoteca.count} - ${count}` })
+      .where(and(
+        eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId),
+        gte(userDiscoteca.count, count), eq(userDiscoteca.tradable, true),
+      ))
+      .returning();
+    if (!row) throw new InsufficientDiscotecaEntryError(userId, entryId);
+    if (row.count === 0) {
+      await client.delete(userDiscoteca).where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId)));
+    }
+  }
+
+  static async incrementWithClient(client: DrizzleClient, userId: number, entryId: number, count: number): Promise<void> {
+    const existing = await client
+      .select()
+      .from(userDiscoteca)
+      .where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId)))
+      .limit(1)
+      .then(a => a?.[0]);
+
+    if (existing) {
+      await client
+        .update(userDiscoteca)
+        .set({ count: sql`${userDiscoteca.count} + ${count}` })
+        .where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId)));
+    } else {
+      await client.insert(userDiscoteca).values({ userId, entryId, count });
+    }
+  }
+
+  static getOwnedEntryQuantities = maybeTransaction('getOwnedEntryQuantities', async (client, userId: number, entryIds: number[]) => {
+    if (entryIds.length === 0) return [];
+    return await client
+      .select({ entryId: userDiscoteca.entryId, count: userDiscoteca.count })
+      .from(userDiscoteca)
+      .where(and(eq(userDiscoteca.userId, userId), inArray(userDiscoteca.entryId, entryIds), gte(userDiscoteca.count, 1)));
+  })
+
+  static getEntriesByIds = maybeTransaction('getEntriesByIds', async (client, ids: number[]) => {
+    if (ids.length === 0) return [];
+    return await client
+      .select({ id: discotecaEntries.id, name: discotecaEntries.name, type: discotecaEntries.type, rarityEmoji: rarities.emoji, rarityName: rarities.name })
+      .from(discotecaEntries)
+      .innerJoin(rarities, eq(rarities.id, discotecaEntries.rarityId))
+      .where(inArray(discotecaEntries.id, ids));
+  })
+
+  // /doardisco's `*` case - mirrors CardsDB.getAllOwnedCardIds.
+  static getAllOwnedEntryIds = maybeTransaction('getAllOwnedEntryIds', async (client, userId: number) => {
+    return await client
+      .select({ entryId: userDiscoteca.entryId, count: userDiscoteca.count })
+      .from(userDiscoteca)
+      .where(and(eq(userDiscoteca.userId, userId), gt(userDiscoteca.count, 0)));
+  })
+
+  // deliberately NOT gated on tradable, unlike decrementForTradeWithClient - donations bypass the trade-only flag, same as CardsDB.executeTrade's card decrement.
+  static async decrementForDonationWithClient(client: DrizzleClient, userId: number, entryId: number, count: number): Promise<void> {
+    const [row] = await client
+      .update(userDiscoteca)
+      .set({ count: sql`${userDiscoteca.count} - ${count}` })
+      .where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId), gte(userDiscoteca.count, count)))
+      .returning();
+    if (!row) throw new InsufficientDiscotecaEntryError(userId, entryId);
+    if (row.count === 0) {
+      await client.delete(userDiscoteca).where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId)));
+    }
+  }
+
+  // one-sided transfer (recipient offer empty) - stays here rather than CardsDB.executeMixedTrade, which would wrongly require tradable.
+  static executeDonation = maybeTransaction('executeDonation', async (client, donorId: number, offer: { entryId: number; count: number }[], recipientId: number) => {
+    if (donorId === recipientId) throw new Error('executeDonation: donorId and recipientId must differ');
+    const ids = offer.map(o => o.entryId);
+    if (new Set(ids).size !== ids.length) throw new Error('executeDonation: an offer must not list the same discoteca entry twice');
+    if (offer.some(o => o.count <= 0)) throw new Error('executeDonation: offer counts must be positive');
+
+    for (const { entryId, count } of offer) await DiscotecaDB.decrementForDonationWithClient(client, donorId, entryId, count);
+    for (const { entryId, count } of offer) await DiscotecaDB.incrementWithClient(client, recipientId, entryId, count);
+  })
+
+  // mirrors CardsDB.tryDecrementOneWithClient, minus cativeiro clearing - used by AuditDB.revertDiscotecaDonation.
+  static async tryDecrementOneWithClient(client: DrizzleClient, userId: number, entryId: number): Promise<boolean> {
+    const [row] = await client
+      .update(userDiscoteca)
+      .set({ count: sql`${userDiscoteca.count} - 1` })
+      .where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId), gte(userDiscoteca.count, 1)))
+      .returning();
+    if (!row) return false;
+    if (row.count === 0) {
+      await client.delete(userDiscoteca).where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId)));
+    }
+    return true;
+  }
+
+  static async getEntryRarityIdWithClient(client: DrizzleClient, entryId: number): Promise<number | null> {
+    const [row] = await client.select({ rarityId: discotecaEntries.rarityId }).from(discotecaEntries).where(eq(discotecaEntries.id, entryId)).limit(1);
+    return row?.rarityId ?? null;
+  }
+
+  // any discoteca entry of rarityId userId owns - AuditDB.revertDiscotecaDonation's "same tier" fallback step.
+  static async findOwnedEntryOfRarityWithClient(client: DrizzleClient, userId: number, rarityId: number): Promise<number | null> {
+    const [row] = await client
+      .select({ entryId: userDiscoteca.entryId })
+      .from(userDiscoteca)
+      .innerJoin(discotecaEntries, eq(discotecaEntries.id, userDiscoteca.entryId))
+      .where(and(eq(userDiscoteca.userId, userId), eq(discotecaEntries.rarityId, rarityId), gte(userDiscoteca.count, 1)))
+      .limit(1);
+    return row?.entryId ?? null;
+  }
+
+  // mirrors CardsDB.discardUserCards/discardUserCardsTx, reusing the same rarity-keyed reward table - no tradable check since selling only touches the seller's own copy.
+  static sellUserDiscoteca = async (userId: number, entryIds: number[]) => {
+    const incomeInflationRate = await EconomyDB.getIncomeInflationRate();
+    try {
+      return await DiscotecaDB.sellUserDiscotecaTx(userId, entryIds, incomeInflationRate);
+    } catch (e) {
+      if (e instanceof InsufficientDiscotecaEntryError) return { ok: false as const, reason: 'missing_or_not_owned' as const, entryId: e.entryId };
+      throw e;
+    }
+  }
+
+  private static sellUserDiscotecaTx = maybeTransaction('sellUserDiscoteca', async (client, userId: number, entryIds: number[], incomeInflationRate: number) => {
+    const requestedQty = new Map<number, number>();
+    for (const id of entryIds) requestedQty.set(id, (requestedQty.get(id) ?? 0) + 1);
+    const uniqueIds = [...requestedQty.keys()];
+    if (uniqueIds.length === 0) return { ok: true as const, results: [], totalCoinsAwarded: 0 };
+
+    const owned = await client
+      .select({ entryId: userDiscoteca.entryId, count: userDiscoteca.count, rarityName: rarities.name })
+      .from(userDiscoteca)
+      .innerJoin(discotecaEntries, eq(discotecaEntries.id, userDiscoteca.entryId))
+      .innerJoin(rarities, eq(rarities.id, discotecaEntries.rarityId))
+      .where(and(eq(userDiscoteca.userId, userId), inArray(userDiscoteca.entryId, uniqueIds)));
+
+    const ownedById = new Map(owned.map(o => [o.entryId, o]));
+
+    for (const [entryId, qty] of requestedQty) {
+      const row = ownedById.get(entryId);
+      if (!row || row.count < qty) return { ok: false as const, reason: 'missing_or_not_owned' as const, entryId };
+    }
+
+    const results: { entryId: number; remainingCount: number; coinsAwarded: number }[] = [];
+    let totalCoinsAwarded = 0;
+
+    for (const [entryId, qty] of requestedQty) {
+      const row = ownedById.get(entryId)!;
+      const reward = calculateCardDiscardReward(row.rarityName, qty, incomeInflationRate);
+
+      const [updated] = await client
+        .update(userDiscoteca)
+        .set({ count: sql`${userDiscoteca.count} - ${qty}` })
+        .where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId), gte(userDiscoteca.count, qty)))
+        .returning();
+      if (!updated) throw new InsufficientDiscotecaEntryError(userId, entryId);
+
+      if (updated.count === 0) {
+        await client.delete(userDiscoteca).where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId)));
+      }
+
+      results.push({ entryId, remainingCount: updated.count, coinsAwarded: reward });
+      totalCoinsAwarded += reward;
+    }
+
+    if (totalCoinsAwarded > 0) {
+      await client.update(users).set({ coins: sql`${users.coins} + ${totalCoinsAwarded}` }).where(eq(users.id, userId));
+    }
+
+    return { ok: true as const, results, totalCoinsAwarded };
+  })
+
+  static setEntryTradable = maybeTransaction('setEntryTradable', async (client, userId: number, entryId: number, tradable: boolean) => {
+    return await client
+      .update(userDiscoteca)
+      .set({ tradable })
+      .where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId)))
+      .returning()
+      .then(a => a?.[0]);
+  })
+
+  static isEntryTradable = maybeTransaction('isEntryTradable', async (client, userId: number, entryId: number) => {
+    return await client
+      .select({ tradable: userDiscoteca.tradable })
+      .from(userDiscoteca)
+      .where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId)))
+      .limit(1)
+      .then(a => a?.[0]?.tradable ?? false);
   })
 
   static setFavoriteAlbum = maybeTransaction('setFavoriteAlbum', async (client, userId: number, entryId: number) => {

@@ -6,6 +6,7 @@ import { EconomyDB } from '@girae/database/economy'
 import { GachaLogic } from '@girae/database/gacha'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
+import { EMOJI } from '../../constants'
 import { addHours, formatDistanceToNow, startOfHour } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { claimGirar, releaseGirar } from '../../services/gacha/girarClaim'
@@ -71,7 +72,7 @@ export default class GirarAutoCommand extends Command {
       favoriteSubcategoryIds = new Set(goals.filter(g => g.categoryId === category.id).map(g => g.subcategoryId));
     } else {
       if (goals.length === 0) {
-        await reply(ctx, 'Você ainda não marcou nenhuma coleção como favorita. Use `/quero id ou nome` ou marque pelo site (`/cols`) antes de usar `/girarauto`. ⭐');
+        await reply(ctx, `Você ainda não marcou nenhuma coleção como favorita. Use \`/quero id ou nome\` ou marque pelo site (\`/cols\`) antes de usar \`/girarauto\`. ${EMOJI.goal}`);
         return;
       }
 
@@ -79,7 +80,7 @@ export default class GirarAutoCommand extends Command {
       const categoriesById = new Map(categories.map(c => [c.id, c]));
       goalCategoryIds = [...new Set(goals.map(g => g.categoryId))].filter(id => !categoriesById.get(id)?.isHidden);
       if (goalCategoryIds.length === 0) {
-        await reply(ctx, 'Suas coleções favoritas estão em categorias indisponíveis no momento. Marque outras com `/quero` antes de usar `/girarauto`. ⭐');
+        await reply(ctx, `Suas coleções favoritas estão em categorias indisponíveis no momento. Marque outras com \`/quero\` antes de usar \`/girarauto\`. ${EMOJI.goal}`);
         return;
       }
       favoriteSubcategoryIds = new Set(goals.map(g => g.subcategoryId));

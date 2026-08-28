@@ -1,7 +1,7 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
 import { CommandArgumentType, type CommandArgumentSpec } from "@girae/common/commands";
 import type { IncomingCommand } from "@girae/common/commands/types";
-import { splitPositionalTokens, parseCommandArguments, resolveCommandArguments, resolveSubcategoryByIdOrName, resolveCategoryByIdOrName } from "../../services/commandArguments";
+import { splitPositionalTokens, parseCommandArguments, resolveCommandArguments, resolveSubcategoryByIdOrName, resolveCategoryByIdOrName, resolveCardByIdOrName } from "../../services/commandArguments";
 import { db } from "@girae/database/index";
 import { categories } from "@girae/database/schemas/cards";
 import { CardsDB } from "@girae/database/cards";
@@ -463,6 +463,29 @@ describe("SUBCATEGORY resolution success paths (parseSubcategory, via resolveSub
   test("a name starting with digits (e.g. '2ne1') is treated as a name search, not truncated to a numeric ID", async () => {
     const digitPrefixed = await resolveSubcategoryByIdOrName(`${uniqueId}zzz-not-a-real-name`);
     expect(digitPrefixed).toEqual({ ok: false, message: 'Não encontrei uma subcategoria com esse nome.' });
+  });
+});
+
+describe("CARD resolution by alias (parseCard, via resolveCardByIdOrName)", () => {
+  const fx = new TestFixtures();
+  let aliasedCardId: number;
+
+  beforeAll(async () => {
+    aliasedCardId = (await fx.card({ name: `Test Parsing Aliased Card ${Date.now()}` })).id;
+    await CardsDB.addCardAlias(aliasedCardId, 'tpcalias');
+  });
+
+  afterAll(() => fx.cleanup());
+
+  test("resolves by alias, case-insensitively, before falling back to a name search", async () => {
+    const result = await resolveCardByIdOrName('TPCAlias');
+    expect(result.ok).toBe(true);
+    if (result.ok) expect((result.value as { id: number }).id).toBe(aliasedCardId);
+  });
+
+  test("an alias nobody set falls through to the by-name not-found message", async () => {
+    const result = await resolveCardByIdOrName('zzzznonexistentcardaliaszzzz');
+    expect(result).toEqual({ ok: false, message: 'Não encontrei um personagem com esse nome.' });
   });
 });
 

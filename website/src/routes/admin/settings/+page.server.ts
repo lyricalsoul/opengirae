@@ -4,6 +4,6 @@ import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
 	const caller = createCaller(await createContext(event));
-	const state = await caller.settings.get();
-	return { state };
+	const [state, economyState] = await Promise.all([caller.settings.get(), caller.economy.get()]);
+	return { state, economyState };
 };

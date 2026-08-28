@@ -1,6 +1,7 @@
 import { t } from '$lib/trpc/t';
 import { adminProcedure } from '$lib/trpc/middleware/auth';
 import { UsersDB } from '@girae/database/users';
+import { AuditDB } from '@girae/database/audit';
 import { z } from 'zod';
 
 export const usersRouter = t.router({
@@ -15,6 +16,17 @@ export const usersRouter = t.router({
 			})
 		)
 		.query(({ input }) => UsersDB.listUsers(input)),
+
+	// read-only - reverting only happens via the /doacaocancelar bot command.
+	donationHistory: adminProcedure
+		.input(
+			z.object({
+				userId: z.number(),
+				limit: z.number().min(1).max(100).default(20),
+				offset: z.number().min(0).default(0)
+			})
+		)
+		.query(({ input }) => AuditDB.getDonationHistory(input.userId, input)),
 
 	setBanned: adminProcedure
 		.input(z.object({ userId: z.number(), isBanned: z.boolean(), banMessage: z.string().optional() }))

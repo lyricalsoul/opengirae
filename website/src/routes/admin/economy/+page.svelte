@@ -152,6 +152,29 @@
 			syncing = false;
 		}
 	}
+
+	// --- /leilao sale fee (kill switch lives on the Configurações page, alongside Discoteca's) ---
+
+	let saleFeePercent = $state(String(data.state.auctionSaleFeeRate * 100));
+	let savingAuctionFee = $state(false);
+
+	async function saveAuctionFee() {
+		const percent = Number(saleFeePercent);
+		if (isNaN(percent)) {
+			toast.error('Valor inválido');
+			return;
+		}
+		savingAuctionFee = true;
+		try {
+			const updated = await trpc().economy.setAuctionSaleFeeRate.mutate({ rate: percent / 100 });
+			saleFeePercent = String(updated.auctionSaleFeeRate * 100);
+			toast.success('Taxa de venda do leilão atualizada');
+		} catch {
+			toast.error('Falha ao atualizar a taxa de venda do leilão');
+		} finally {
+			savingAuctionFee = false;
+		}
+	}
 </script>
 
 <h1 class="text-ink mb-6 text-2xl font-bold">Economia</h1>
@@ -265,6 +288,20 @@
 			{/each}
 		</tbody>
 	</table>
+</div>
+
+<div class="border-line bg-panel mt-6 max-w-3xl rounded-xl border p-5">
+	<h2 class="text-ink mb-3 text-sm font-semibold">Leilões (/leilao)</h2>
+	<label class="text-ink-dim text-xs" for="saleFee">
+		Taxa de venda (cobrada do vendedor sobre o valor recebido, só quando o leilão vende - criar um leilão é grátis)
+		<div class="relative mt-1 w-24">
+			<input id="saleFee" type="text" inputmode="decimal" bind:value={saleFeePercent} class="field pr-6" />
+			<span class="text-ink-dim pointer-events-none absolute inset-y-0 right-3 flex items-center">%</span>
+		</div>
+	</label>
+	<div>
+		<button class="btn btn-default mt-4" disabled={savingAuctionFee} onclick={saveAuctionFee}>Salvar</button>
+	</div>
 </div>
 
 <Modal bind:open={treasuryModalOpen} title="Editar tesouro">
