@@ -4,9 +4,11 @@ import type { IncomingCommand } from "@girae/common/commands/types"
 
 type Guard = (cmd: IncomingCommand) => Promise<boolean>
 
+const STAFF_GROUP_CHAT_ID = '-1004377125716'
+
 export const guards: Record<string, Guard> = {
   isAdmin: async (cmd) => {
-    if (cmd.message.chat.id == '-1004377125716') return true
+    if (cmd.message.chat.id == STAFF_GROUP_CHAT_ID) return true
 
     const user = await getUserByPlatformAccountCached(cmd.message.platform as 'telegram' | 'discord', cmd.message.author.id)
     if (!user?.isAdmin) {
@@ -17,7 +19,9 @@ export const guards: Record<string, Guard> = {
   isSpecial: async (cmd) => {
     const user = await getUserByPlatformAccountCached(cmd.message.platform as 'telegram' | 'discord', cmd.message.author.id)
     return !!user?.specialUser
-  }
+  },
+  // unlike isAdmin, ignores the isAdmin flag entirely - only the physical staff chat passes.
+  staffGroupOnly: async (cmd) => cmd.message.chat.id == STAFF_GROUP_CHAT_ID,
 }
 
 export async function passesGuards(guardNames: string[], cmd: IncomingCommand): Promise<boolean> {

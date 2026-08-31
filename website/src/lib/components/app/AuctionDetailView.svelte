@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Page, Navbar, Block, BlockTitle, Preloader, Button } from 'konsta/svelte';
+	import { Page, Navbar, Block, BlockTitle, Preloader, Button, Dialog, DialogButton } from 'konsta/svelte';
 	import { telegramTrpc } from '$lib/trpc/telegramClient';
 	import AuctionBalanceBadge from './AuctionBalanceBadge.svelte';
 
@@ -30,6 +30,7 @@
 	let loading = $state(true);
 	let bidding = $state(false);
 	let customAmount = $state('');
+	let pendingBidAmount = $state<number | null>(null);
 	let error = $state<string | null>(null);
 	let brokenAvatars = $state(new Set<number>());
 	let now = $state(Date.now());
@@ -93,16 +94,23 @@
 		}
 	}
 
-	async function bid(amount: number) {
+	function requestBid(amount: number) {
 		if (!amount || amount <= 0) return;
 		error = null;
 		if (!Number.isInteger(amount) || amount % (details?.auction.bidIncrement ?? 500) !== 0) {
 			error = bidErrorMessage('not_a_valid_step');
 			return;
 		}
+		pendingBidAmount = amount;
+	}
+
+	async function confirmBid() {
+		const amount = pendingBidAmount;
+		if (amount === null) return;
 		bidding = true;
 		const result = await telegramTrpc.telegram.auctions.bid.mutate({ auctionId, amount });
 		bidding = false;
+		pendingBidAmount = null;
 		if (!result.ok) {
 			error = bidErrorMessage(result.reason);
 			return;
@@ -173,7 +181,7 @@
 
 		{#if details.auction.status === 'active'}
 			<Block>
-				<Button rounded disabled={bidding} onClick={() => bid(minimumBid())}>
+				<Button rounded disabled={bidding} onClick={() => requestBid(minimumBid())}>
 					{#if bidding}
 						<Preloader colors={{ iconIos: 'text-white', iconMaterial: 'text-white' }} class="h-4 w-4" />
 					{:else}
@@ -196,7 +204,7 @@
 			</Block>
 
 			<Block class="mt-3">
-				<Button rounded disabled={bidding || !customAmount} onClick={() => bid(Number(customAmount))}>
+				<Button rounded disabled={bidding || !customAmount} onClick={() => requestBid(Number(customAmount))}>
 					<span class="w-full text-center text-lg">Lance</span>
 				</Button>
 			</Block>
@@ -240,3 +248,14 @@
 		{/if}
 	{/if}
 </Page>
+
+<Dialog opened={pendingBidAmount !== null} onBackdropClick={bidding ? undefined : () => (pendingBidAmount = null)}>
+	{#snippet title()}Confirmar lance{/snippet}
+	Dar um lance de <strong>{(pendingBidAmount ?? 0).toLocaleString('en-US')}</strong> moedas neste leilão?
+	{#snippet buttons()}
+		<DialogButton disabled={bidding} onClick={() => (pendingBidAmount = null)}>Cancelar</DialogButton>
+		<DialogButton strong disabled={bidding} onClick={confirmBid}>
+			{#if bidding}<Preloader class="h-4 w-4" />{:else}Confirmar{/if}
+		</DialogButton>
+	{/snippet}
+</Dialog>

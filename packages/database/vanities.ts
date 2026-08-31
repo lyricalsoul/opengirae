@@ -2,9 +2,11 @@ import { maybeTransaction } from "./decorators";
 import { storeItems, boughtItems, type storeItemTypes } from "./schemas/vanities";
 import { users, userProfiles } from "./schemas/users";
 import { EconomyDB } from "./economy";
-import { and, desc, eq, gte, ilike, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 
 type StoreItemType = (typeof storeItemTypes.enumValues)[number]
+
+export const REFUND_WINDOW_MS = 60 * 60 * 1000
 
 export class VanitiesDB {
   static listAllStoreItems = maybeTransaction('listAllStoreItems', async (client) => {
@@ -166,7 +168,7 @@ export class VanitiesDB {
     const ok = await EconomyDB.deductCoinsToTreasury(client, userId, price);
     if (!ok) return { ok: false as const, reason: 'insufficient_funds' as const };
 
-    const item = await client.insert(boughtItems).values({ userId, itemId }).returning().then(a => a?.[0]);
+    const item = await client.insert(boughtItems).values({ userId, itemId, pricePaid: price }).returning().then(a => a?.[0]);
     return { ok: true as const, item };
   })
 
@@ -198,6 +200,51 @@ export class VanitiesDB {
     const field = type === 'background' ? 'equipedBackgroundId' : 'equipedStickerId';
     await client.update(userProfiles).set({ [field]: itemId }).where(eq(userProfiles.userId, userId));
     return { ok: true, title: item.title };
+  })
+
+  // items bought within REFUND_WINDOW_MS with a known pricePaid - older rows never have one, so aren't refundable
+  static getRefundableItems = maybeTransaction('getRefundableItems', async (client, userId: number) => {
+    const cutoff = new Date(Date.now() - REFUND_WINDOW_MS);
+    return await client
+      .select({
+        id: storeItems.id, title: storeItems.title, type: storeItems.type,
+        pricePaid: boughtItems.pricePaid, boughtAt: boughtItems.boughtAt,
+      })
+      .from(boughtItems)
+      .innerJoin(storeItems, eq(storeItems.id, boughtItems.itemId))
+      .where(and(eq(boughtItems.userId, userId), gte(boughtItems.boughtAt, cutoff), isNotNull(boughtItems.pricePaid)))
+      .orderBy(desc(boughtItems.boughtAt));
+  })
+
+  // TOCTOU-safe: the window check and the delete are the same conditional DELETE - see 00-overview.md's TOCTOU section.
+  static refundItem = maybeTransaction('refundItem', async (client, userId: number, itemId: number): Promise<
+    { ok: true; title: string; refundedPrice: number } | { ok: false; reason: 'not_refundable' }
+  > => {
+    const cutoff = new Date(Date.now() - REFUND_WINDOW_MS);
+    const [deleted] = await client
+      .delete(boughtItems)
+      .where(and(
+        eq(boughtItems.userId, userId),
+        eq(boughtItems.itemId, itemId),
+        gte(boughtItems.boughtAt, cutoff),
+        isNotNull(boughtItems.pricePaid),
+      ))
+      .returning();
+    if (!deleted || deleted.pricePaid == null) return { ok: false, reason: 'not_refundable' };
+
+    const [item] = await client.select().from(storeItems).where(eq(storeItems.id, itemId)).limit(1);
+    // defensive narrowing only - buyItem never lets a 'profile'-type item into boughtItems
+    if (!item || (item.type !== 'background' && item.type !== 'sticker')) return { ok: false, reason: 'not_refundable' };
+
+    await EconomyDB.refundCoinsFromTreasury(client, userId, deleted.pricePaid);
+
+    if (item.type === 'background') {
+      await client.update(userProfiles).set({ equipedBackgroundId: null }).where(and(eq(userProfiles.userId, userId), eq(userProfiles.equipedBackgroundId, itemId)));
+    } else {
+      await client.update(userProfiles).set({ equipedStickerId: null }).where(and(eq(userProfiles.userId, userId), eq(userProfiles.equipedStickerId, itemId)));
+    }
+
+    return { ok: true, title: item.title, refundedPrice: deleted.pricePaid };
   })
 
   // bulk ownership lookup - avoids one hasBought() call per item when rendering a browse list

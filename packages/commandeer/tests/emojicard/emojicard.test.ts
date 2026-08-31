@@ -72,7 +72,7 @@ describe("/emojicard", () => {
     const otherCardId = (await fx.card({ name: "Test Emojicard Unowned Card" })).id;
     const otherCard = (await CardsDB.getCardWithDetails(otherCardId))!;
     const ctx = fakeCtx({ name: 'emojicard', authorId, args: ['remover', String(otherCardId)] });
-    await expect(EmojicardCommand.remover(ctx, { card: otherCard })).resolves.toBeUndefined();
+    await EmojicardCommand.remover(ctx, { card: otherCard }); // no throw = pass; see 03-commands.md on why not `expect(promise).resolves...`
   });
 
   test("real dispatch: '/emojicard remover <id>' resolves the card ID through the CARD argument type and clears it", async () => {

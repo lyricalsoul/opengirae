@@ -207,7 +207,7 @@ describe("/leilao", () => {
       expect(await getCoins(bidderId)).toBe(1_000_000 - auction.startingBid);
     });
 
-    test("omitting the amount defaults to the current minimum bid, no confirmation needed", async () => {
+    test("omitting the amount (button click) asks for confirmation before placing the minimum bid", async () => {
       const auction = await freshAuction("Test Leilao Cmd Card Default");
       const platformId = 'test-leilao-cmd-lance-default';
       const bidderId = (await fx.user({ displayName: "Test Leilao Cmd Bidder Default", platform: 'telegram', platformId })).id;
@@ -215,10 +215,32 @@ describe("/leilao", () => {
 
       const workflowID = `test-leilao-lance-default-${Bun.randomUUIDv7()}`;
       const ctx = fakeCtx({ name: 'leilao', authorId: platformId, args: ['lance', String(auction.id)], platform: 'telegram', workflowID });
-      await run(workflowID, ctx, `lance ${auction.id}`).then(h => h.getResult());
+      const handle = await run(workflowID, ctx, `lance ${auction.id}`);
+
+      await new Promise(r => setTimeout(r, 500));
+      await DBOS.send(workflowID, { value: true }, 'leilao:confirm');
+      await handle.getResult();
 
       const row = await db.select().from(auctions).where(eq(auctions.id, auction.id)).then(r => r[0]);
       expect(row?.currentBid).toBe(auction.startingBid);
+    });
+
+    test("omitting the amount (button click); declining the confirmation leaves the auction untouched", async () => {
+      const auction = await freshAuction("Test Leilao Cmd Card Default Decline");
+      const platformId = 'test-leilao-cmd-lance-default-decline';
+      const bidderId = (await fx.user({ displayName: "Test Leilao Cmd Bidder Default Decline", platform: 'telegram', platformId })).id;
+      await setCoins(bidderId, 1_000_000);
+
+      const workflowID = `test-leilao-lance-default-decline-${Bun.randomUUIDv7()}`;
+      const ctx = fakeCtx({ name: 'leilao', authorId: platformId, args: ['lance', String(auction.id)], platform: 'telegram', workflowID });
+      const handle = await run(workflowID, ctx, `lance ${auction.id}`);
+
+      await new Promise(r => setTimeout(r, 500));
+      await DBOS.send(workflowID, { value: false }, 'leilao:confirm');
+      await handle.getResult();
+
+      const row = await db.select().from(auctions).where(eq(auctions.id, auction.id)).then(r => r[0]);
+      expect(row?.currentBid).toBeNull();
     });
 
     test("a below-minimum amount offers the minimum bid; declining leaves the auction untouched", async () => {

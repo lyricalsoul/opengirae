@@ -74,3 +74,55 @@ describe("/cts favorite card media - long page", () => {
     expect(page?.isVideo).toBeUndefined();
   });
 });
+
+describe("/cts category filter", () => {
+  const fx = new TestFixtures();
+  const platformId = `test-cts-category-${Date.now()}`;
+  let userId: number;
+  let categoryAId: number, categoryBId: number;
+
+  beforeAll(async () => {
+    userId = (await fx.user({ displayName: "Test Cts Category", platform: 'telegram', platformId })).id;
+
+    const catA = await fx.category({ name: `Test Cts Cat A ${Date.now()}`, emoji: '🅰️' });
+    categoryAId = catA.id;
+    const subA = await fx.subcategory({ categoryId: categoryAId, name: `Test Cts Cat A Sub ${Date.now()}` });
+    const cardAId = (await fx.card({ name: "Test Cts Cat A Card", subcategoryId: subA.id })).id;
+
+    const catB = await fx.category({ name: `Test Cts Cat B ${Date.now()}`, emoji: '🅱️' });
+    categoryBId = catB.id;
+    const subB = await fx.subcategory({ categoryId: categoryBId, name: `Test Cts Cat B Sub ${Date.now()}` });
+    const cardBId = (await fx.card({ name: "Test Cts Cat B Card", subcategoryId: subB.id })).id;
+
+    await db.insert(userCards).values([
+      { userId, cardId: cardAId, count: 1 },
+      { userId, cardId: cardBId, count: 1 },
+    ]);
+
+    fx.onCleanup(async () => { await db.delete(userCards).where(eq(userCards.userId, userId)); });
+  });
+
+  afterAll(() => fx.cleanup());
+
+  test("with no category selected, shows cards from every category and a button per category", async () => {
+    const page = await renderPage('', 0, platformId, 'telegram');
+    expect(page?.content).toContain('Test Cts Cat A Card');
+    expect(page?.content).toContain('Test Cts Cat B Card');
+    const categoryRow = page?.extraRows[1];
+    expect(categoryRow?.map(b => b.text).sort()).toEqual(['🅰️', '🅱️']);
+  });
+
+  test("selecting a category narrows the list to just that category's card", async () => {
+    const page = await renderPage(`:${categoryAId}`, 0, platformId, 'telegram');
+    expect(page?.content).toContain('Test Cts Cat A Card');
+    expect(page?.content).not.toContain('Test Cts Cat B Card');
+    expect(page?.content).toContain('Mostrando apenas cards de');
+  });
+
+  test("clicking the already-selected category's button again clears the filter", async () => {
+    // toggling arg is what clicking ✅ produces: buildFilterArg(active, '') - no category suffix
+    const page = await renderPage('', 0, platformId, 'telegram');
+    expect(page?.content).toContain('Test Cts Cat A Card');
+    expect(page?.content).toContain('Test Cts Cat B Card');
+  });
+});

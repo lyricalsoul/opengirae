@@ -3,8 +3,9 @@ import { DBOS } from '@dbos-inc/dbos-sdk'
 import { reply, deleteMsg } from '@girae/common/dbos/messaging'
 import { UsersDB } from '@girae/database/users'
 import { AuditDB } from '@girae/database/audit'
-import { DONATION_REVERT_PENALTY_COINS } from '@girae/database/cards'
-import type { IncomingCommand } from '@girae/common/commands/types'
+import { CardsDB, DONATION_REVERT_PENALTY_COINS } from '@girae/database/cards'
+import { buildCtx } from '../../services/syntheticCtx'
+import type { IncomingCommand, Platform } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 
 const CONFIRM_EVENT = 'doacaocancelar:confirm'
@@ -65,6 +66,28 @@ export default class DoacaoCancelarCommand extends Command {
     const summary = [...countByPenalty.entries()]
       .map(([penalty, count]) => `${count}x ${PENALTY_LABEL[penalty] ?? penalty}`)
       .join(', ')
+
+    // the donor always gets the exact card(s) they donated back, regardless of the recipient's penalty.
+    const returnedQtyByCardId = new Map<number, number>()
+    for (const outcome of result.unitOutcomes) {
+      returnedQtyByCardId.set(outcome.donatedCardId, (returnedQtyByCardId.get(outcome.donatedCardId) ?? 0) + 1)
+    }
+    const returnedCardsById = new Map((await CardsDB.getCardsByIds([...returnedQtyByCardId.keys()])).map(c => [c.id, c]))
+    const returnedList = [...returnedQtyByCardId.entries()]
+      .map(([cardId, qty]) => {
+        const c = returnedCardsById.get(cardId)
+        return c ? `${c.rarityEmoji}. **${escapeMarkdown(c.name)}** (${qty})` : `\`${cardId}\` (${qty})`
+      })
+      .join(', ')
+
+    if (donor) {
+      for (const platform of ['telegram', 'discord'] as Platform[]) {
+        const donorPlatformId = await UsersDB.getPlatformIdForUser(donor.id, platform)
+        if (!donorPlatformId) continue
+        await reply(buildCtx(platform, donorPlatformId, donor.displayName, donorPlatformId), `Um administrador reverteu a sua doação, você recebeu de volta ${returnedList}.`)
+        break
+      }
+    }
 
     await reply(
       ctx,

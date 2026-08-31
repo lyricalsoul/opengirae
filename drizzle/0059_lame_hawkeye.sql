@@ -1,0 +1,1 @@
+ALTER TABLE "bought_items" ADD COLUMN "pricePaid" integer;

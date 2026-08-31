@@ -10,6 +10,13 @@ import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { mention } from '@girae/common/utilities/mention'
 
 const CONFIRM_EVENT = 'doarclcdisco:confirm'
+const CONFIRM_LIST_LIMIT = 20
+
+// caps a rendered entry list so messages can't blow past Telegram's ~4096 char limit
+function renderEntryList(lines: string[]): string {
+  if (lines.length <= CONFIRM_LIST_LIMIT) return lines.join('\n');
+  return `${lines.slice(0, CONFIRM_LIST_LIMIT).join('\n')}\n…e mais ${lines.length - CONFIRM_LIST_LIMIT}`;
+}
 
 export default class DoarClcDiscoCommand extends Command {
   static override info = {
@@ -58,11 +65,11 @@ export default class DoarClcDiscoCommand extends Command {
 
     const offerA = owned.map(e => ({ entryId: e.id, count: e.ownedCount }))
     const totalQty = offerA.reduce((sum, o) => sum + o.count, 0)
-    const list = owned.map(e => {
+    const list = renderEntryList(owned.map(e => {
       const qtySuffix = e.ownedCount > 1 ? ` (\`${e.ownedCount}x\`)` : ''
       const icon = e.type === 'album' ? '💽' : '🎵'
       return `${icon} \`${e.id}\`. **${escapeMarkdown(e.name)}**${qtySuffix}`
-    }).join('\n')
+    }))
 
     const confirmContent = `Doar toda a sua discografia de **${escapeMarkdown(args.artist.name)}** (**${totalQty}** item(ns)) para **${escapeMarkdown(recipient.displayName)}**?\n\n${list}`
 

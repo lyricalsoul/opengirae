@@ -67,7 +67,7 @@ describe("/privacy toggles privacyMode, and gates viewing other users' profiles"
 
   test("ProfileCommand.execute's privacy check reaches the block branch for a private target (no throw, resolves)", async () => {
     await UsersDB.setPrivacyMode(targetId, true);
-    await expect(ProfileCommand.execute(ctx(viewerPlatformId), { target: targetPlatformId })).resolves.toBeUndefined();
+    await ProfileCommand.execute(ctx(viewerPlatformId), { target: targetPlatformId }); // no throw = pass; see 03-commands.md on why not `expect(promise).resolves...`
     await UsersDB.setPrivacyMode(targetId, false);
   });
 });

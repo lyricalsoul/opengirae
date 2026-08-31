@@ -287,9 +287,18 @@ export class GachaLogic {
       .where(and(eq(userCards.userId, userId), inArray(userCards.cardId, drawnCardIds)));
     const previousCountByCard = new Map(existingCounts.map(r => [r.cardId, r.count]));
 
+    // only applies on insert - onConflictDoUpdate's set doesn't touch tradable, so existing cards keep their flag.
+    const drawingUser = await client
+      .select({ makeCardsTradeableByDefault: users.makeCardsTradeableByDefault })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+      .then(a => a?.[0]);
+    const defaultTradable = drawingUser?.makeCardsTradeableByDefault ?? false;
+
     await client
       .insert(userCards)
-      .values([...countByCard.entries()].map(([cardId, count]) => ({ userId, cardId, count })))
+      .values([...countByCard.entries()].map(([cardId, count]) => ({ userId, cardId, count, tradable: defaultTradable })))
       .onConflictDoUpdate({
         target: [userCards.userId, userCards.cardId],
         set: { count: sql`${userCards.count} + excluded.${sql.identifier(userCards.count.name)}` },

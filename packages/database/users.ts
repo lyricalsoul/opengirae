@@ -156,6 +156,16 @@ export class UsersDB {
       .then(rows => rows[0]);
   })
 
+  // unlike spendCoins, doesn't touch the treasury or treasuryContributed - this is a confiscation, not a purchase.
+  static removeCoins = maybeTransaction('removeCoins', async (client, userId: number, amount: number): Promise<boolean> => {
+    const [updated] = await client
+      .update(users)
+      .set({ coins: sql`${users.coins} - ${amount}` })
+      .where(and(eq(users.id, userId), gte(users.coins, amount)))
+      .returning();
+    return !!updated;
+  })
+
   static spendCoins = maybeTransaction('spendCoins', async (client, userId: number, amount: number): Promise<boolean> => {
     return await EconomyDB.deductCoinsToTreasury(client, userId, amount);
   })
@@ -378,6 +388,16 @@ export class UsersDB {
     return await client
       .update(users)
       .set({ usedDraws: sql`${users.usedDraws} - ${amount}` })
+      .where(eq(users.id, userId))
+      .returning()
+      .then(rows => rows[0]);
+  })
+
+  // clamped at maxDraws so remaining draws (maxDraws - usedDraws) never goes negative.
+  static takeTemporaryDraws = maybeTransaction('takeTemporaryDraws', async (client, userId: number, amount: number) => {
+    return await client
+      .update(users)
+      .set({ usedDraws: sql`LEAST(${users.usedDraws} + ${amount}, ${users.maxDraws})` })
       .where(eq(users.id, userId))
       .returning()
       .then(rows => rows[0]);

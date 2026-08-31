@@ -154,3 +154,21 @@ export const userDiscoteca = pgTable(
     index("user_discoteca_entry_idx").on(table.entryId),
   ],
 );
+
+export const discotecaWishlist = pgTable(
+  "discoteca_wishlist",
+  {
+    userId: integer()
+      .notNull()
+      .references(() => users.id),
+    entryId: integer()
+      .notNull()
+      .references(() => discotecaEntries.id),
+    position: integer().notNull().default(0),
+    createdAt: timestamp().notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.entryId] }),
+    index("discoteca_wishlist_entry_idx").on(table.entryId),
+  ],
+);

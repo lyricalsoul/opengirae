@@ -36,6 +36,8 @@ export const boughtItems = pgTable("bought_items", {
     userId: integer().notNull().references(() => users.id),
     itemId: integer().notNull().references(() => storeItems.id, { onDelete: "cascade" }),
     boughtAt: timestamp().notNull().defaultNow(),
+    // the inflation-adjusted amount actually charged - storeItems.price can drift after purchase, so this is the source of truth for a refund
+    pricePaid: integer(),
 }, (table) => [
     unique().on(table.userId, table.itemId),
     // /loja's purchaseCount join filters by itemId

@@ -71,7 +71,12 @@ bug class here. Concretely, in this codebase:
   bought); `UsersDB.transferCoins` (`/pix`) is the sibling for a direct
   player-to-player move that must **not** touch the treasury, same
   conditional-`UPDATE` shape on the sender's row, then a plain credit to the
-  recipient, both in the same `maybeTransaction`. Don't reuse `spendCoins`
+  recipient, both in the same `maybeTransaction`. `EconomyDB.refundCoinsFromTreasury`
+  is the reverse of `deductCoinsToTreasury` — for undoing a purchase within a
+  refund window (`VanitiesDB.refundItem`, `/reembolsar`'s 1h store-refund
+  window); unlike the spend side it's unconditional, since the treasury/
+  contributed credit being reversed is only just being un-done, not raced
+  against. Don't reuse `spendCoins`
   for a transfer just because the atomicity shape matches — check which one
   actually fits before copying.
 - **"Already exists" / "already owned" checks**: an app-level

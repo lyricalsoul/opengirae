@@ -1,6 +1,7 @@
 import { Command, Page, CommandArgument, CommandArgumentType } from '@girae/common/commands'
 import { reply, pageNavRow } from '@girae/common/dbos/messaging'
 import { CardsDB } from '@girae/database/cards'
+import { SettingsDB } from '@girae/database/settings'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { EMOJI } from '../../constants'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
@@ -32,8 +33,10 @@ ${pageInfo}${EMOJI.browse} Para ver uma dessas subcategorias, use \`/clc id\`.`
 
 async function replyAllCategories(ctx: IncomingCommand, header: string) {
   const categories = await CardsDB.getCategories()
-  const list = categories.map(c => `${c.emoji} \`${c.id}\`. **${escapeMarkdown(c.name)}**`).join('\n')
-  await reply(ctx, `${header}\n\n${list}`)
+  const discotecaEnabled = await SettingsDB.isDiscotecaEnabled()
+  const lines = categories.map(c => `${c.emoji} \`${c.id}\`. **${escapeMarkdown(c.name)}**`)
+  if (discotecaEnabled) lines.push('💽 **Discoteca**')
+  await reply(ctx, `${header}\n\n${lines.join('\n')}`)
 }
 
 export default class CategoryCommand extends Command {

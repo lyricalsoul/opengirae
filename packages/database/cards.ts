@@ -710,6 +710,63 @@ export class CardsDB {
     return await CardsDB.addUserCardWithClient(client, userId, cardId, incomeInflationRate);
   })
 
+  // grants `count` copies in one write instead of addUserCard's +1 looped N times.
+  static grantUserCards = maybeTransaction('grantUserCards', async (client, userId: number, cardId: number, count: number, incomeInflationRate: number) => {
+    const existing = await client
+      .select({ count: userCards.count })
+      .from(userCards)
+      .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)))
+      .limit(1)
+      .then(a => a?.[0]);
+    const previousCount = existing?.count ?? 0;
+
+    const user = await client
+      .select({ makeCardsTradeableByDefault: users.makeCardsTradeableByDefault })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+      .then(a => a?.[0]);
+
+    await client.insert(userCards)
+      .values({ userId, cardId, count, tradable: user?.makeCardsTradeableByDefault ?? false })
+      .onConflictDoUpdate({ target: [userCards.userId, userCards.cardId], set: { count: sql`${userCards.count} + ${count}` } });
+
+    const completedSubcategories = await CardsDB.claimCompletionsForCardGain(client, userId, cardId, incomeInflationRate);
+    return { previousCount, newCount: previousCount + count, completedSubcategories };
+  })
+
+  // unlike discardUserCards, awards no coins - this is a confiscation, not a voluntary discard.
+  static removeUserCards = maybeTransaction('removeUserCards', async (client, userId: number, cardId: number, count: number): Promise<
+    { ok: true; remainingCount: number } | { ok: false }
+  > => {
+    const cardRow = await client
+      .select({ cativeiroThreshold: rarities.cativeiroThreshold })
+      .from(cards)
+      .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+      .where(eq(cards.id, cardId))
+      .limit(1)
+      .then(a => a?.[0]);
+    if (!cardRow) return { ok: false };
+
+    const [updated] = await client
+      .update(userCards)
+      .set({ count: sql`${userCards.count} - ${count}` })
+      .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId), gte(userCards.count, count)))
+      .returning();
+    if (!updated) return { ok: false };
+
+    if (updated.count === 0) {
+      await client.delete(userCards).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+    } else if (updated.count < cardRow.cativeiroThreshold) {
+      await client
+        .update(userCards)
+        .set({ customEmoji: null, customMediaUrl: null, customMediaType: null })
+        .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+    }
+
+    return { ok: true, remainingCount: updated.count };
+  })
+
   static executeTrade = maybeTransaction('executeTrade', async (
     client,
     userAId: number, offerA: { cardId: number; count: number }[],
@@ -985,6 +1042,7 @@ export class CardsDB {
     return await client
       .select()
       .from(categories)
+      .orderBy(categories.id)
   })
 
   static getRarities = maybeTransaction('getRarities', async (client) => {
@@ -1330,6 +1388,7 @@ export class CardsDB {
         name: cards.name,
         rarityName: rarities.name,
         rarityEmoji: rarities.emoji,
+        categoryId: categories.id,
         categoryEmoji: categories.emoji,
         categoryName: categories.name,
         subcategoryName: subcategories.name,
@@ -1811,6 +1870,24 @@ export class CardsDB {
     return result.length
   })
 
+  // used by /trococat and /naotrococat, the collection-wide sibling of /troco and /naotroco.
+  static setSubcategoryCardsTradable = maybeTransaction('setSubcategoryCardsTradable', async (client, userId: number, subcategoryId: number, tradable: boolean) => {
+    const owned = await client
+      .select({ cardId: userCards.cardId })
+      .from(cardSubcategories)
+      .innerJoin(userCards, and(eq(userCards.cardId, cardSubcategories.cardId), eq(userCards.userId, userId)))
+      .where(eq(cardSubcategories.subcategoryId, subcategoryId))
+    const cardIds = owned.map(o => o.cardId)
+    if (cardIds.length === 0) return []
+
+    const result = await client
+      .update(userCards)
+      .set({ tradable })
+      .where(and(eq(userCards.userId, userId), inArray(userCards.cardId, cardIds)))
+      .returning({ cardId: userCards.cardId })
+    return result.map(r => r.cardId)
+  })
+
   static getUserTradableCards = maybeTransaction('getUserTradableCards', async (client, userId: number) => {
     return await client
       .select({
@@ -1819,6 +1896,8 @@ export class CardsDB {
         imageUrl: cards.imageUrl,
         rarityName: rarities.name,
         rarityEmoji: rarities.emoji,
+        categoryId: categories.id,
+        categoryName: categories.name,
         categoryEmoji: categories.emoji,
         subcategoryName: subcategories.name,
         ownedCount: userCards.count,

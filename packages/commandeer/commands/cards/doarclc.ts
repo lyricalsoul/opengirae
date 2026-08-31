@@ -12,6 +12,13 @@ import { mention } from '@girae/common/utilities/mention'
 import { emitCardsNew } from '../../loaders/hooks'
 
 const CONFIRM_EVENT = 'doarclc:confirm'
+const CONFIRM_LIST_LIMIT = 20
+
+// caps a rendered card list so messages can't blow past Telegram's ~4096 char limit
+function renderCardList(lines: string[]): string {
+  if (lines.length <= CONFIRM_LIST_LIMIT) return lines.join('\n');
+  return `${lines.slice(0, CONFIRM_LIST_LIMIT).join('\n')}\n…e mais ${lines.length - CONFIRM_LIST_LIMIT}`;
+}
 
 export default class DoarClcCommand extends Command {
   static override info = {
@@ -60,10 +67,10 @@ export default class DoarClcCommand extends Command {
 
     const offerA = owned.map(c => ({ cardId: c.id, count: c.ownedCount }))
     const totalQty = offerA.reduce((sum, o) => sum + o.count, 0)
-    const list = owned.map(c => {
+    const list = renderCardList(owned.map(c => {
       const qtySuffix = c.ownedCount > 1 ? ` (\`${c.ownedCount}x\`)` : ''
       return `${c.rarityEmoji} \`${c.id}\`. **${escapeMarkdown(c.name)}**${qtySuffix}`
-    }).join('\n')
+    }))
 
     const confirmContent = `Doar toda a sua coleção **${escapeMarkdown(args.subcategory.name)}** (**${totalQty}** carta(s)) para **${escapeMarkdown(recipient.displayName)}**?\n\n${list}`
 

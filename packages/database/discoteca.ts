@@ -11,6 +11,7 @@ import {
   discotecaArtistAppleIds,
   discotecaAlbumTracks,
   userDiscoteca,
+  discotecaWishlist,
 } from "./schemas/discoteca";
 import { users, userProfiles } from "./schemas/users";
 import { cards, categories, subcategories, cardSubcategories, rarities } from "./schemas/cards";
@@ -771,5 +772,63 @@ export class DiscotecaDB {
       .update(discotecaEntries)
       .set({ telegramFileId: fileId, telegramFileUniqueId: fileUniqueId })
       .where(eq(discotecaEntries.id, entryId));
+  })
+
+  static addToWishlist = maybeTransaction('addToWishlist', async (client, userId: number, entryId: number) => {
+    const nextPosition = await client
+      .select({ max: sql<number>`COALESCE(MAX(${discotecaWishlist.position}), -1) + 1` })
+      .from(discotecaWishlist)
+      .where(eq(discotecaWishlist.userId, userId))
+      .then(a => a?.[0]?.max ?? 0);
+
+    await client.insert(discotecaWishlist).values({ userId, entryId, position: nextPosition }).onConflictDoNothing();
+  })
+
+  static removeFromWishlist = maybeTransaction('removeFromWishlist', async (client, userId: number, entryId: number) => {
+    await client.delete(discotecaWishlist).where(and(eq(discotecaWishlist.userId, userId), eq(discotecaWishlist.entryId, entryId)));
+  })
+
+  static isOnWishlist = maybeTransaction('isOnWishlist', async (client, userId: number, entryId: number) => {
+    return !!(await client
+      .select()
+      .from(discotecaWishlist)
+      .where(and(eq(discotecaWishlist.userId, userId), eq(discotecaWishlist.entryId, entryId)))
+      .limit(1)
+      .then(a => a?.[0]));
+  })
+
+  static getWishlist = maybeTransaction('getWishlist', async (
+    client, userId: number, opts: { limit?: number; offset?: number } = {},
+  ) => {
+    const { limit = 20, offset = 0 } = opts;
+
+    const [rows, totalRow] = await Promise.all([
+      client
+        .select({
+          id: discotecaEntries.id,
+          name: discotecaEntries.name,
+          type: discotecaEntries.type,
+          artistName: discotecaArtists.name,
+          categoryEmoji: categories.emoji,
+          rarityEmoji: rarities.emoji,
+          ownedCount: sql<number>`coalesce(${userDiscoteca.count}, 0)::int`,
+        })
+        .from(discotecaWishlist)
+        .innerJoin(discotecaEntries, eq(discotecaEntries.id, discotecaWishlist.entryId))
+        .innerJoin(discotecaArtists, eq(discotecaArtists.id, discotecaEntries.artistId))
+        .innerJoin(rarities, eq(rarities.id, discotecaEntries.rarityId))
+        .leftJoin(userDiscoteca, and(eq(userDiscoteca.entryId, discotecaEntries.id), eq(userDiscoteca.userId, userId)))
+        .leftJoin(cards, eq(cards.id, discotecaArtists.cardId))
+        .leftJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.isMain, true)))
+        .leftJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
+        .leftJoin(categories, eq(categories.id, subcategories.categoryId))
+        .where(eq(discotecaWishlist.userId, userId))
+        .orderBy(discotecaWishlist.position)
+        .limit(limit)
+        .offset(offset),
+      client.select({ total: sql<number>`count(*)::int` }).from(discotecaWishlist).where(eq(discotecaWishlist.userId, userId)).then(a => a?.[0]),
+    ]);
+
+    return { rows, total: totalRow?.total ?? 0 };
   })
 }

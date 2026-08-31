@@ -23,7 +23,7 @@ const CREATE_FAILURE_MESSAGES: Record<string, string> = {
   auctions_disabled: `${EMOJI.auction} Os leilões estão temporariamente desativados. Tenta mais tarde.`,
   daily_limit: `${EMOJI.auction} Você já criou o **máximo de 3** leilões hoje. Tenta amanhã!`,
   rarity_not_configured: '😅 Essa raridade ainda não está configurada pra leilão. Fala com a staff.',
-  not_owned: '😂 Leiloa o quê? Você não tem esse card marcado como trocável (ou não tem ele).',
+  not_owned: '😂 Leiloar o quê? Você não tem esse card marcado como trocável (ou não tem ele).',
   // cooldown is handled dynamically below (needs the actual time remaining), not from this map.
   already_active: `${EMOJI.auction} **OPS!** Este card já está em um leilão ativo.`,
 }
@@ -207,45 +207,57 @@ export default class LeilaoCommand extends Command {
     if (details.auction.sellerId === user.id) { await reply(ctx, 'Você não pode dar lance no seu próprio leilão... Está tentando dar o golpe? 😂'); return }
 
     const minimum = computeMinimumBid(details.auction)
+    const noAmountGiven = amountRaw === undefined
 
-    // no amount given -> use the current minimum directly, no confirmation needed
+    // click-restriction alone doesn't say who's being asked in a group chat, so name them.
+    const bidderMention = mention(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id, user.displayName)
+
     let amount: number
-    if (amountRaw === undefined) {
+    let alreadyConfirmed = false
+    if (noAmountGiven) {
       amount = minimum
     } else if (!/^\d+$/.test(amountRaw.trim())) {
-      if (!await LeilaoCommand.confirm(ctx, `⚠️ **Valor invalido!** Quer que eu coloque o menor lance possível? (**${minimum} moedas**)`)) {
+      if (!await LeilaoCommand.confirm(ctx, `⚠️ **Valor invalido!** ${bidderMention}, quer que eu coloque o menor lance possível? (**${minimum} moedas**)`)) {
         await reply(ctx, '❌ **Lance cancelado!**')
         return
       }
       amount = minimum
+      alreadyConfirmed = true
     } else {
       amount = parseInt(amountRaw, 10)
     }
 
     // validate/correct the amount before the self-rebid confirm, so an invalid amount doesn't get quoted as a legitimate raise and then immediately re-flagged.
     if (amount % details.auction.bidIncrement !== 0 || amount < minimum) {
-      if (!await LeilaoCommand.confirm(ctx, `⚠️ **Valor invalido!** Quer que eu coloque o menor lance possível? (**${minimum} moedas**)`)) {
+      if (!await LeilaoCommand.confirm(ctx, `⚠️ **Valor invalido!** ${bidderMention}, quer que eu coloque o menor lance possível? (**${minimum} moedas**)`)) {
         await reply(ctx, '❌ **Lance cancelado!**')
         return
       }
       amount = minimum
+      alreadyConfirmed = true
     }
 
     if (amount > details.auction.capPrice) {
-      if (!await LeilaoCommand.confirm(ctx, `⚠️ **Valor Acima do Teto!** O valor máximo é de **${details.auction.capPrice} moedas**. Deseja ajustar o seu lance para o teto?`)) {
+      if (!await LeilaoCommand.confirm(ctx, `⚠️ **Valor Acima do Teto!** ${bidderMention}, o valor máximo é de **${details.auction.capPrice} moedas**. Deseja ajustar o seu lance para o teto?`)) {
         await reply(ctx, '❌ **Lance cancelado!**')
         return
       }
       amount = details.auction.capPrice
+      alreadyConfirmed = true
     }
 
     let allowSelfRebid = false
     if (details.auction.currentBidderId === user.id) {
-      if (!await LeilaoCommand.confirm(ctx, `💸 **Confirmar Lance Maior**\n\nVocê já é o maior licitante! Tem certeza de que quer pagar mais **${amount} moedas** neste leilão?`)) {
+      if (!await LeilaoCommand.confirm(ctx, `💸 **Confirmar Lance Maior**\n\n${bidderMention}, você já é o maior licitante! Tem certeza de que quer pagar mais **${amount} moedas** neste leilão?`)) {
         await reply(ctx, '❌ **Lance extra cancelado!**')
         return
       }
       allowSelfRebid = true
+    } else if (noAmountGiven && !alreadyConfirmed) {
+      if (!await LeilaoCommand.confirm(ctx, `💰 **Confirmar Lance**\n\n${bidderMention}, deseja dar um lance de **${amount} moedas** no leilão \`${auctionId}\` (${details.rarityEmoji} **${escapeMarkdown(details.cardName)}**)?`)) {
+        await reply(ctx, '❌ **Lance cancelado!**')
+        return
+      }
     }
 
     const result = await AuctionsDB.placeBid(auctionId, user.id, amount, { allowSelfRebid })
@@ -258,7 +270,7 @@ export default class LeilaoCommand extends Command {
       await reply(ctx, [
         '🚀 **Teto Atingido!**',
         '',
-        `🔨 Com o lance de **${amount} moedas**, você alcançou o valor máximo e arrematou o leilão \`${auctionId}\`!`,
+        `🔨 Com o lance de **${amount} moedas**, ${bidderMention} alcançou o valor máximo e arrematou o leilão \`${auctionId}\`!`,
         '',
         `🎉 **Parabéns!** ${details.rarityEmoji} **${escapeMarkdown(details.cardName)}** **agora é sua**!`,
       ].join('\n'))
@@ -268,9 +280,9 @@ export default class LeilaoCommand extends Command {
     await reply(ctx, [
       '🔨 **Lance Registrado!**',
       '',
-      `Você deu um lance de **${amount} moedas** no leilão \`${auctionId}\` (${details.rarityEmoji} **${escapeMarkdown(details.cardName)}**)!`,
+      `${bidderMention} deu um lance de **${amount} moedas** no leilão \`${auctionId}\` (${details.rarityEmoji} **${escapeMarkdown(details.cardName)}**)!`,
       '',
-      '🏆 **Você é o maior licitante agora.**',
+      `🏆 **${bidderMention} é o maior licitante agora.**`,
     ].join('\n'))
   }
 

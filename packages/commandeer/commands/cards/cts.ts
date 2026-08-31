@@ -4,7 +4,7 @@ import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { EMOJI, cativeiroEmoji } from '../../constants'
-import { applyFilters, filterAdviceText, filterButtonsRow, parseFilterArg, type FilterDef } from '@girae/common/utilities/pageFilters'
+import { applyFilters, filterAdviceText, filterButtonsRow, parseFilterArg, buildFilterArg, type FilterDef } from '@girae/common/utilities/pageFilters'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 
 const PAGE_SIZE = 10
@@ -20,6 +20,14 @@ const FILTERS: FilterDef<OwnedCardRow>[] = [
   { id: '3', emoji: '🥇', description: 'com raridade lendária', match: c => c.rarityName === 'Lendário' },
 ]
 
+const CATEGORY_BUTTONS_PER_ROW = 6
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const rows: T[][] = []
+  for (let i = 0; i < items.length; i += size) rows.push(items.slice(i, i + size))
+  return rows
+}
+
 async function resolveFavoriteCardMedia(userId: number, favoriteCardId: number | null): Promise<{ photoUrl?: string; isVideo?: boolean }> {
   if (!favoriteCardId) return {}
   const [card, owned] = await Promise.all([
@@ -31,13 +39,17 @@ async function resolveFavoriteCardMedia(userId: number, favoriteCardId: number |
 }
 
 export async function renderPage(rawArg: string, page: number, viewerTelegramId: string, platform: 'telegram' | 'discord') {
-  const { active } = parseFilterArg(rawArg)
+  const { active, rest } = parseFilterArg(rawArg)
+  const selectedCategoryId = rest ? parseInt(rest, 10) : undefined
 
   const viewer = await UsersDB.getUserByPlatformAccount(platform, viewerTelegramId)
   if (!viewer) return null
 
   const allCards = await CardsDB.getUserOwnedCards(viewer.id)
-  const cards = applyFilters(allCards, FILTERS, active)
+  const rarityFiltered = applyFilters(allCards, FILTERS, active)
+  const cards = selectedCategoryId === undefined
+    ? rarityFiltered
+    : rarityFiltered.filter(c => c.categoryId === selectedCategoryId)
   const totalPages = Math.max(1, Math.ceil(cards.length / PAGE_SIZE))
   const slice = cards.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
@@ -51,12 +63,16 @@ export async function renderPage(rawArg: string, page: number, viewerTelegramId:
     }).join('\n')
     : '_Nenhum card para mostrar._'
   const advice = filterAdviceText(FILTERS, active, cards.length, 'cards')
+  const selectedCategory = selectedCategoryId === undefined ? undefined : allCards.find(c => c.categoryId === selectedCategoryId)
+  const categoryAdvice = selectedCategory
+    ? `🔎 Mostrando apenas cards de **${escapeMarkdown(selectedCategory.categoryName ?? '?')}** (\`${cards.length}\` resultados)\n`
+    : ''
   const pageInfo = totalPages > 1 ? `${EMOJI.page} Página \`${page + 1}\` de **${totalPages}**\n` : ''
   const totalCopies = allCards.reduce((sum, c) => sum + c.ownedCount + (c.inAuction ? 1 : 0), 0)
 
   const content = `👤 \`${viewer.id}\`. Cards de **${escapeMarkdown(viewer.displayName)}**
 ${EMOJI.dice} \`${totalCopies}\` cards no total.
-${advice}
+${advice}${categoryAdvice}
 ${rows}
 
 ${pageInfo}${EMOJI.browse} Para ver um desses cards, use \`/card id\`.`
@@ -65,13 +81,25 @@ ${pageInfo}${EMOJI.browse} Para ver um desses cards, use \`/card id\`.`
     ? await resolveFavoriteCardMedia(viewer.id, viewer.favoriteCardId)
     : {}
 
+  // one button per owned category; same click-to-narrow/click-✅-to-clear shape as /troco.
+  const categoriesPresent = [...new Map(
+    allCards.filter((c): c is typeof c & { categoryId: number } => c.categoryId !== null)
+      .map(c => [c.categoryId, { id: c.categoryId, emoji: c.categoryEmoji ?? EMOJI.subcategory }]),
+  ).values()].sort((a, b) => a.id - b.id)
+
+  const categoryButtonRows = chunk(categoriesPresent, CATEGORY_BUTTONS_PER_ROW).map(row => row.map(cat => ({
+    text: selectedCategoryId === cat.id ? '✅' : cat.emoji,
+    arg: buildFilterArg(active, selectedCategoryId === cat.id ? '' : String(cat.id)),
+    page: 0,
+  })))
+
   return {
     content,
     photoUrl: media.photoUrl,
     isVideo: media.isVideo,
     hasNext: page < totalPages - 1,
     totalPages,
-    extraRows: [filterButtonsRow(FILTERS, active, '')],
+    extraRows: [filterButtonsRow(FILTERS, active, rest), ...categoryButtonRows],
   }
 }
 

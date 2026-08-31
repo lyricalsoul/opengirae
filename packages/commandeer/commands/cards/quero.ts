@@ -1,5 +1,5 @@
-import { Command } from '@girae/common/commands'
-import { reply } from '@girae/common/dbos/messaging'
+import { Command, Page } from '@girae/common/commands'
+import { reply, pageNavRow } from '@girae/common/dbos/messaging'
 import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import type { IncomingCommand } from '@girae/common/commands/types'
@@ -8,12 +8,40 @@ import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { EMOJI } from '../../constants'
 
 const MAX_IDS = 50
+const PAGE_SIZE = 10
+// caption cap is 1024 chars - same overflow guard as cts.ts
+const MAX_CONTENT_LENGTH_FOR_PHOTO = 950
+
+export async function renderPage(page: number, viewerTelegramId: string, platform: 'telegram' | 'discord') {
+  const viewer = await UsersDB.getUserByPlatformAccount(platform, viewerTelegramId)
+  if (!viewer) return null
+
+  const { rows, total } = await CardsDB.getGoals(viewer.id, { limit: PAGE_SIZE, offset: page * PAGE_SIZE })
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
+  const rowsText = rows.length > 0
+    ? rows.map(r => `${r.categoryEmoji} \`${r.subcategoryId}\`. **${escapeMarkdown(r.subcategoryName)}**`).join('\n')
+    : '_Nenhuma coleção encontrada._'
+  const pageInfo = totalPages > 1 ? `${EMOJI.page} Página \`${page + 1}\` de **${totalPages}**\n` : ''
+
+  const content = `${EMOJI.goal} Lista de coleções favoritas\n\n${rowsText}\n\n${pageInfo}${EMOJI.browse} Para adicionar ou remover, use \`/quero id\`.`
+
+  let photoUrl: string | undefined
+  if (content.length <= MAX_CONTENT_LENGTH_FOR_PHOTO) {
+    // first-ever favorite's banner, stable across page clicks
+    photoUrl = page === 0
+      ? (rows[0]?.imageUrl ?? undefined)
+      : ((await CardsDB.getGoals(viewer.id, { limit: 1, offset: 0 })).rows[0]?.imageUrl ?? undefined)
+  }
+
+  return { content, photoUrl, hasNext: page < totalPages - 1, totalPages }
+}
 
 export default class QueroCommand extends Command {
   static override info = {
     name: 'quero',
-    description: 'Marca ou desmarca uma coleção como favorita (usada pelo /girarauto)',
-    usage: '/quero <id ou nome da coleção>',
+    description: 'Marca ou desmarca uma coleção como favorita (usada pelo /girarauto), ou lista suas favoritas se usado sem argumentos',
+    usage: '/quero [id ou nome da coleção]',
   }
 
   static override async execute(ctx: IncomingCommand) {
@@ -22,7 +50,15 @@ export default class QueroCommand extends Command {
 
     const rawArgs = ctx.args.join(' ').trim()
     if (!rawArgs) {
-      await reply(ctx, `Uso: \`${QueroCommand.info.usage}\``)
+      const page = await renderPage(0, ctx.message.author.id, ctx.message.platform as 'telegram' | 'discord')
+      if (!page) return
+
+      const navRow = pageNavRow('quero', '', 0, page.hasNext, page.totalPages)
+      await reply(ctx, {
+        content: page.content,
+        photoUrl: page.photoUrl,
+        buttonRows: navRow.length ? [navRow] : undefined,
+      })
       return
     }
 
@@ -90,5 +126,10 @@ export default class QueroCommand extends Command {
     if (added.length > 0) parts.push(`${EMOJI.goal} **Adicionadas:**\n${added.join('\n')}`)
     if (removed.length > 0) parts.push(`💔 **Removidas:**\n${removed.join('\n')}`)
     await reply(ctx, parts.join('\n\n'))
+  }
+
+  @Page({ name: 'quero', restricted: true })
+  static async queroListPage(arg: string, page: number, authorId: string, platform: 'telegram' | 'discord') {
+    return renderPage(page, authorId, platform)
   }
 }

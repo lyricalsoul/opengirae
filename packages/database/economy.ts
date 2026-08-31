@@ -53,6 +53,13 @@ export class EconomyDB {
     return true;
   }
 
+  // reverses deductCoinsToTreasury - unconditional, since the credit being reversed was just added by the purchase being undone
+  static refundCoinsFromTreasury = async (client: DrizzleClient, userId: number, amount: number): Promise<void> => {
+    await client.update(users).set({ coins: sql`${users.coins} + ${amount}` }).where(eq(users.id, userId));
+    await client.update(economy).set({ treasuryBalance: sql`${economy.treasuryBalance} - ${amount}` });
+    await client.update(users).set({ treasuryContributed: sql`${users.treasuryContributed} - ${amount}` }).where(eq(users.id, userId));
+  }
+
   // unlike deductCoinsToTreasury, nothing is deducted from the seller - the fee is already withheld from the bid before payout.
   static chargeAuctionSaleFee = async (client: DrizzleClient, sellerId: number, feeAmount: number): Promise<void> => {
     if (feeAmount <= 0) return;

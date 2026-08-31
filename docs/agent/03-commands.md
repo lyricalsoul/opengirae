@@ -45,7 +45,14 @@ packages/commandeer/commands/<category>/<name>.ts
   must not reveal its own existence to unauthorized users wants: a
   non-passing user gets no response at all, indistinguishable from a
   typo'd command name. `/doar` is public (no guard) — donations aren't
-  gated to special users.
+  gated to special users. **`staffGroupOnly`** is the stricter sibling of
+  `isAdmin`: it checks the same hardcoded chat id but, unlike `isAdmin`,
+  never falls back to the `users.isAdmin` flag — a real admin typing from a
+  DM or any other chat does not pass. Reach for it (usually combined with
+  `isAdmin` in the same `guards` array, though `staffGroupOnly` alone already
+  implies it today) for a command whose blast radius is too high to trust
+  from anywhere but the physical staff room — `/dar`/`/tirar` (mint/confiscate
+  coins, giros, or cards for a user) are why it exists.
 - **Aliases**: pick names that read naturally in Portuguese first (this bot's
   primary audience), with an English alias where it helps (`/wish` /
   `/wishlist`). Don't be shy about silly/casual aliases either — `/girar`'s
