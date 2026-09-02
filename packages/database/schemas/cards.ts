@@ -346,6 +346,39 @@ export const auctionBids = pgTable(
   ],
 );
 
+// "/leilao wish" - distinct from `wishlist` above ("I want to own this" vs "tell me when this goes up for auction").
+export const auctionWatches = pgTable(
+  "auction_watches",
+  {
+    userId: integer()
+      .notNull()
+      .references(() => users.id),
+    cardId: integer()
+      .notNull()
+      .references(() => cards.id),
+    createdAt: timestamp().notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.cardId] }),
+    index("auction_watches_card_idx").on(table.cardId),
+  ],
+);
+
+// notification outbox for auctionWatches - see AuctionsDB/CronJobs.runAuctionSweep
+export const auctionWatchNotifications = pgTable(
+  "auction_watch_notifications",
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    auctionId: integer().notNull().references(() => auctions.id),
+    userId: integer().notNull().references(() => users.id),
+    createdAt: timestamp().notNull().defaultNow(),
+    notifiedAt: timestamp(),
+  },
+  (table) => [
+    index("auction_watch_notifications_pending_idx").on(table.notifiedAt),
+  ],
+);
+
 export const trades = pgTable(
   "trades",
   {

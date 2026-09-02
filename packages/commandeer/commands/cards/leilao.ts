@@ -1,6 +1,6 @@
-import { Command, CommandArgument, CommandArgumentType } from '@girae/common/commands'
+import { Command, CommandArgument, CommandArgumentType, Page } from '@girae/common/commands'
 import { DBOS } from '@dbos-inc/dbos-sdk'
-import { reply, deleteMsg } from '@girae/common/dbos/messaging'
+import { reply, deleteMsg, pageNavRow, toPageButton } from '@girae/common/dbos/messaging'
 import { UsersDB } from '@girae/database/users'
 import { AuctionsDB, computeMinimumBid } from '@girae/database/auctions'
 import { resolveCardByIdOrName } from '../../services/commandArguments'
@@ -9,13 +9,54 @@ import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { mention } from '@girae/common/utilities/mention'
 import { EMOJI } from '../../constants'
+import { parseFilterArg, buildFilterArg, applyFilters, filterAdviceText, filterButtonsRow, type FilterDef } from '@girae/common/utilities/pageFilters'
 
 const CONFIRM_EVENT = 'leilao:confirm'
+const WISH_PAGE_SIZE = 10
 
 const STATUS_LABEL: Record<string, string> = {
   sold: 'Vendido',
   expired: 'Expirado',
   cancelled: 'Cancelado',
+}
+
+type WishRow = Awaited<ReturnType<typeof AuctionsDB.getWatchlist>>[number]
+
+// same dimensions as /clc's FILTERS (cards/clc.ts) - own copy since the row shapes differ.
+const WISH_FILTERS: FilterDef<WishRow>[] = [
+  { id: '1', emoji: '☀', description: 'que você possui', match: c => c.ownedCount > 0 },
+  { id: '2', emoji: '🌙', description: 'que você não possui', match: c => c.ownedCount === 0 },
+  { id: '3', emoji: '🥉', description: 'com raridade comum', match: c => c.rarityName === 'Comum' },
+  { id: '4', emoji: '🥈', description: 'com raridade rara', match: c => c.rarityName === 'Raro' },
+  { id: '5', emoji: '🥇', description: 'com raridade lendária', match: c => c.rarityName === 'Lendário' },
+]
+
+async function renderWishPage(rawArg: string, page: number, viewer: { id: number; displayName: string }) {
+  const { active, rest } = parseFilterArg(rawArg)
+  const allRows = await AuctionsDB.getWatchlist(viewer.id)
+  const filteredRows = applyFilters(allRows, WISH_FILTERS, active)
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / WISH_PAGE_SIZE))
+  const pageRows = filteredRows.slice(page * WISH_PAGE_SIZE, page * WISH_PAGE_SIZE + WISH_PAGE_SIZE)
+
+  const advice = filterAdviceText(WISH_FILTERS, active, filteredRows.length, 'cards')
+  const cardLines = pageRows.length > 0
+    ? pageRows.map(c => `${c.categoryEmoji ?? EMOJI.subcategory} ${c.rarityEmoji} \`${c.id}\`. **${escapeMarkdown(c.name)}** — _${escapeMarkdown(c.subcategoryName ?? '?')}_`).join('\n')
+    : '_Nenhum card na lista._'
+  const pageInfo = totalPages > 1 ? `📃 Página \`${page + 1}\` de **${totalPages}**\n` : ''
+
+  const content = `${EMOJI.auction} \`${viewer.id}\`. Lista de desejos do leilão de **${escapeMarkdown(viewer.displayName)}**.
+${EMOJI.dice} \`${allRows.length}\` cards no total.
+${advice}
+${cardLines}
+
+${pageInfo}${EMOJI.browse} Para adicionar um card, use \`/leilao wish id ou nome\`.`
+
+  return {
+    content,
+    hasNext: page < totalPages - 1,
+    totalPages,
+    extraRows: [filterButtonsRow(WISH_FILTERS, active, rest)],
+  }
 }
 
 // mirrors AuctionsDB.createAuction's reason union.
@@ -51,12 +92,12 @@ export default class LeilaoCommand extends Command {
   static override info = {
     name: 'leilao',
     description: 'Cria, cancela, mostra ou dá lance em leilões de cards',
-    usage: '/leilao [<ID> | criar <id ou nome do card> | cancelar [ID] | lance <ID> [valor]]',
+    usage: '/leilao [<ID> | criar <id ou nome do card> | cancelar [ID] | lance <ID> [valor] | wish [id ou nome do card]]',
     useWorkflow: true,
   }
 
   @DBOS.workflow()
-  @CommandArgument([{ name: 'rest', type: CommandArgumentType.STRING, nullable: true, description: 'ID do leilão, ou "criar"/"cancelar"/"lance" + argumentos' }])
+  @CommandArgument([{ name: 'rest', type: CommandArgumentType.STRING, nullable: true, description: 'ID do leilão, ou "criar"/"cancelar"/"lance"/"wish" + argumentos' }])
   static override async execute(ctx: IncomingCommand, args: { rest?: string }) {
     const tokens = (args.rest ?? '').split(/\s+/).filter(Boolean)
     const first = tokens[0]?.toLowerCase()
@@ -65,9 +106,10 @@ export default class LeilaoCommand extends Command {
     if (first === 'criar') { await LeilaoCommand.handleCreate(ctx, tokens.slice(1)); return }
     if (first === 'cancelar') { await LeilaoCommand.handleCancel(ctx, tokens[1]); return }
     if (first === 'lance') { await LeilaoCommand.handleBid(ctx, tokens[1], tokens[2]); return }
+    if (first === 'wish') { await LeilaoCommand.handleWish(ctx, tokens.slice(1)); return }
     if (/^\d+$/.test(first)) { await LeilaoCommand.handleShow(ctx, parseInt(first, 10)); return }
 
-    await reply(ctx, 'Uso: `/leilao [<ID> | criar <id ou nome do card> | cancelar [ID] | lance <ID> [valor]>]`')
+    await reply(ctx, 'Uso: `/leilao [<ID> | criar <id ou nome do card> | cancelar [ID] | lance <ID> [valor] | wish [id ou nome do card]]`')
   }
 
   private static async handleLink(ctx: IncomingCommand) {
@@ -334,6 +376,63 @@ export default class LeilaoCommand extends Command {
     await reply(ctx, { content, photoUrl: cardImageUrl ?? undefined, buttons })
   }
 
+  private static async handleWish(ctx: IncomingCommand, tokens: string[]) {
+    const user = await UsersDB.getUserByPlatformAccount(ctx.message.platform as 'telegram' | 'discord', ctx.message.author.id)
+    if (!user) return
+
+    if (tokens.length === 0) {
+      const arg = buildFilterArg([], '')
+      const page = await renderWishPage(arg, 0, user)
+      const navRow = pageNavRow('leilaoWish', arg, 0, page.hasNext, page.totalPages)
+      await reply(ctx, {
+        content: page.content,
+        buttonRows: [
+          ...page.extraRows.map(row => row.map(b => toPageButton('leilaoWish', b))),
+          ...(navRow.length ? [navRow] : []),
+        ],
+      })
+      return
+    }
+
+    const outcome = await resolveCardByIdOrName(tokens.join(' '))
+    if (!outcome.ok) {
+      if (!outcome.handled) await reply(ctx, outcome.message ?? 'Uso: `/leilao wish <id ou nome do card>`')
+      return
+    }
+    const card = outcome.value as { id: number; name: string; rarityEmoji: string }
+
+    const alreadyWatching = await AuctionsDB.isWatchingCard(user.id, card.id)
+    if (alreadyWatching) {
+      await AuctionsDB.removeWatch(user.id, card.id)
+      await reply(ctx, `💔 O card ${card.rarityEmoji}. **${escapeMarkdown(card.name)}** foi retirado da wish`)
+      return
+    }
+
+    await AuctionsDB.addWatch(user.id, card.id)
+
+    const activeAuctions = await AuctionsDB.getActiveAuctionsForCard(card.id)
+    const base = `💝 Combinado! Vou avisar assim que ${card.rarityEmoji}. **${escapeMarkdown(card.name)}** for parar em leilão.`
+
+    if (activeAuctions.length === 0) {
+      await reply(ctx, base)
+      return
+    }
+
+    if (activeAuctions.length === 1) {
+      await reply(ctx, {
+        content: `${base}\n\n${EMOJI.inAuction} E olha só, esse card já está em leilão agora`,
+        buttons: [
+          { text: '👀 Ver leilão', runCommand: { name: 'leilao', args: [String(activeAuctions[0]!.id)] } },
+          { text: '💰 Dar lance', runCommand: { name: 'leilao', args: ['lance', String(activeAuctions[0]!.id)] } },
+        ],
+      })
+      return
+    }
+
+    const botUsername = await getBotUsername()
+    await reply(ctx, `${base}\n\n${EMOJI.inAuction} E olha só, esse card já tem **${activeAuctions.length} leilões ativos** agora! Dá uma olhada na [aba de Leilões](https://t.me/${botUsername}/leilao).`)
+  }
+
   private static async confirm(ctx: IncomingCommand, content: string): Promise<boolean> {
     await reply(ctx, {
       content,
@@ -344,5 +443,12 @@ export default class LeilaoCommand extends Command {
     const selection = await DBOS.recv<{ value: boolean, messageId?: string }>(CONFIRM_EVENT)
     if (selection?.messageId) await deleteMsg(ctx, selection.messageId)
     return selection?.value ?? false
+  }
+
+  @Page({ name: 'leilaoWish', restricted: true })
+  static async leilaoWishPage(arg: string, page: number, authorId: string, platform: 'telegram' | 'discord') {
+    const viewer = await UsersDB.getUserByPlatformAccount(platform, authorId)
+    if (!viewer) return null
+    return renderWishPage(arg, page, viewer)
   }
 }

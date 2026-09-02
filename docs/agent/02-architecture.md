@@ -155,7 +155,11 @@ Not just a BullMQ backend — also used directly for:
   captures the secondary user's platform ids *before* the merge and calls
   `invalidateCachedUserId` on each *after* — `mergeUsers` itself can't do
   this, since it lives in `@girae/database` and has no path to `common`'s
-  cache.
+  cache. `/unlink` (`commands/admin/unlink.ts`) is the reverse case: it
+  repoints those same `linkedAccounts` rows back off of the merged account,
+  so it invalidates the same way, using the `{platform, platformId}` pairs
+  `UsersDB.undoLastMergeForUser` returns in `movedLinkedAccounts` (it knows
+  which ones actually moved — some may not have, see `06-prod-operations.md`).
 
 ## Storage & third-party services (all optional locally, all fail safe)
 

@@ -3,12 +3,12 @@ import { TestFixtures } from "@girae/tests";
 import { db } from "../../index";
 import { users, userProfiles } from "../../schemas/users";
 import { userCards } from "../../schemas/cards";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { RankDB } from "../../rank";
 
 describe("RankDB", () => {
   const fx = new TestFixtures();
-  let highId: number, lowId: number, highPlatformId: string, cardId: number;
+  let highId: number, lowId: number, highPlatformId: string, cardId: number, catHighId: number, catLowId: number;
 
   beforeAll(async () => {
     highPlatformId = `test-rank-high-${Date.now()}`;
@@ -28,6 +28,18 @@ describe("RankDB", () => {
     await db.insert(userCards).values({ userId: highId, cardId, count: 999999 });
     fx.onCleanup(async () => {
       await db.delete(userCards).where(eq(userCards.userId, highId));
+    });
+
+    // dedicated users below, so these fixtures don't skew the exact card-count/reputation assertions above.
+    catHighId = (await fx.user({ displayName: "Test Rank Cativeiro High", platform: "telegram", platformId: `test-rank-cativeiro-high-${Date.now()}` })).id;
+    catLowId = (await fx.user({ displayName: "Test Rank Cativeiro Low", platform: "telegram", platformId: `test-rank-cativeiro-low-${Date.now()}` })).id;
+    const lowThresholdRarityId = (await fx.rarity({ name: `Test Rank Cativeiro Rarity ${Date.now()}`, cativeiroThreshold: 2 })).id;
+    const cativeiroCards = await Promise.all([1, 2, 3].map(n => fx.card({ name: `Test Rank Cativeiro Card ${n} ${Date.now()}`, subcategoryId, rarityId: lowThresholdRarityId })));
+    // catHighId clears the threshold (2) on all 3 cards; catLowId owns one card but stays under threshold
+    await db.insert(userCards).values(cativeiroCards.map(c => ({ userId: catHighId, cardId: c.id, count: 2 })));
+    await db.insert(userCards).values({ userId: catLowId, cardId: cativeiroCards[0]!.id, count: 1 });
+    fx.onCleanup(async () => {
+      await db.delete(userCards).where(inArray(userCards.cardId, cativeiroCards.map(c => c.id)));
     });
   });
 
@@ -76,6 +88,17 @@ describe("RankDB", () => {
 
   test("getCativeiroPosition returns undefined for a user who owns no cards", async () => {
     expect(await RankDB.getCativeiroPosition(lowId)).toBeUndefined();
+  });
+
+  test("getTopByCativeiroCount counts distinct cards past cativeiroThreshold, not raw card count", async () => {
+    const [top] = await RankDB.getTopByCativeiroCount("telegram", 1, 0);
+    expect(top?.userId).toBe(catHighId);
+    expect(top?.value).toBe(3);
+  });
+
+  test("getCativeiroCountPosition is undefined for a user with zero cards past threshold", async () => {
+    // catLowId owns 1 copy of a card whose threshold is 2 - short of eligible, so no row at all
+    expect(await RankDB.getCativeiroCountPosition(catLowId)).toBeUndefined();
   });
 
   test("a merged account (multiple linked_accounts on the same platform) contributes only one row", async () => {

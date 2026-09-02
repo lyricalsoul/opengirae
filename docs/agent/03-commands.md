@@ -235,6 +235,20 @@ duplicating a workflow's logic behind a "button version."
   truth for every "can this viewer see that user's stuff" check (`/profile`'s
   avatar, `/wish`, `/cards`' reply-to-view). Don't reimplement that
   condition inline in a new command.
+- **Any new `userCards` insert site must set `tradable` from the recipient's
+  `users.makeCardsTradeableByDefault`** — the column's own DB default is
+  `false`, so an insert that omits it silently ignores `/autotroca`
+  regardless of what the recipient configured. `addUserCardWithClient`
+  (`CardsDB.addUserCard`) and `GachaLogic.runBulkDraws` already do this
+  correctly (look the flag up, pass it into `.values({..., tradable})`); this
+  exact gap was found and fixed in `CardsDB.executeTrade`/`executeMixedTrade`'s
+  `increment`/`incrementCard` helpers, which had been inserting the
+  recipient's new row with no `tradable` field at all (bit every trade-based
+  card gain — `/doarclc`, `/trade`, `/tradedisco` — until fixed; see
+  `packages/database/tests/cards/tradable.test.ts`). Grep for
+  `insert(userCards).values(` before adding another card-granting code path
+  and make sure whichever one you're adding pulls this same lookup, rather
+  than trusting the column default.
 
 ## Testing: every new DB method and every command with real branching needs a test
 
@@ -421,6 +435,13 @@ exactly, don't default to a generic/corporate tone:
    above. Don't treat this as optional.
 7. Staff mutation? Call `AuditDB.log(userId, action, metadata)`,
    `action` as `'{noun}.{verb}'` (`card.create`, `category.imageUpdate`).
+   Skip this only when the `*DB` method itself already writes the audit row
+   because it's *functionally* required there, not just for observability —
+   `UsersDB.undoLastMergeForUser` (`/unlink`) is the example: it has to
+   claim-lock the originating audit log row regardless (same
+   `revertedAt`/`revertedByAdminId` shape as `AuditDB.revertDonation`, see
+   `06-prod-operations.md`), so a second `AuditDB.log` call from the command
+   would just be a duplicate entry for the same action.
 8. Does your command grant the user a card (a new draw mode, an admin gift
    command, ...)? Emit `cards:new` via `emitCardsNew`/`emitHook`
    (`packages/commandeer/loaders/hooks.ts`) right after the `*DB` call that

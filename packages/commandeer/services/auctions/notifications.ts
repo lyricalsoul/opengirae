@@ -1,20 +1,26 @@
 import { AuctionsDB, type Auction } from '@girae/database/auctions'
 import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
-import { reply } from '@girae/common/dbos/messaging'
+import { reply, type ButtonSpec } from '@girae/common/dbos/messaging'
 import { buildCtx } from '../syntheticCtx'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import type { Platform } from '@girae/common/commands/types'
+import { EMOJI } from '../../constants'
 
 // a user can be linked on both platforms - DM whichever one they're actually reachable on, telegram first.
-async function dmUser(userId: number, displayName: string, content: string) {
+async function dmUser(userId: number, displayName: string, content: string, buttons?: ButtonSpec[]) {
   for (const platform of ['telegram', 'discord'] as Platform[]) {
     const platformId = await UsersDB.getPlatformIdForUser(userId, platform)
     if (!platformId) continue
-    await reply(buildCtx(platform, platformId, displayName, platformId), content)
+    await reply(buildCtx(platform, platformId, displayName, platformId), buttons ? { content, buttons } : content)
     return
   }
 }
+
+const auctionButtons = (auctionId: number): ButtonSpec[] => [
+  { text: '👀 Ver leilão', runCommand: { name: 'leilao', args: [String(auctionId)] } },
+  { text: '💰 Dar lance', runCommand: { name: 'leilao', args: ['lance', String(auctionId)] } },
+]
 
 async function displayNameFor(userId: number): Promise<string> {
   const user = await UsersDB.getUserById(userId)
@@ -107,5 +113,26 @@ export async function sendResolutionNotifications(limit = 50): Promise<void> {
     if (!card) continue
     await describeResolution(auction, card.name, card.rarityEmoji)
     await AuctionsDB.markResolutionNotified(auction.id)
+  }
+}
+
+// drains the /leilao wish outbox (auctionWatchNotifications.notifiedAt) - same reasoning as sendOutbidNotifications.
+export async function sendAuctionWatchNotifications(limit = 50): Promise<void> {
+  const pending = await AuctionsDB.listUnnotifiedWatchAlerts(limit)
+  for (const alert of pending) {
+    const auctionDetails = await AuctionsDB.getAuction(alert.auctionId)
+    if (!auctionDetails) { await AuctionsDB.markWatchAlertNotified(alert.id); continue }
+    const displayName = await displayNameFor(alert.userId)
+    const cardName = escapeMarkdown(auctionDetails.cardName)
+    await dmUser(
+      alert.userId, displayName,
+      [
+        `${EMOJI.inAuction} **Card em leilão!**`,
+        '',
+        `Um card que você estava de olho — ${auctionDetails.rarityEmoji} **${cardName}** — foi colocado em leilão por **${escapeMarkdown(auctionDetails.sellerName)}**!`,
+      ].join('\n'),
+      auctionButtons(alert.auctionId),
+    )
+    await AuctionsDB.markWatchAlertNotified(alert.id)
   }
 }

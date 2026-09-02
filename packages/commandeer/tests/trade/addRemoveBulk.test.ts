@@ -62,12 +62,13 @@ describe("/add and /remove support multiple space-separated card IDs", () => {
 
   test("with no active trade, replies without throwing and adds nothing", async () => {
     await rawClient.del(lockKey(proposerPlatformId));
-    await expect(AddCommand.execute(ctx([String(cardAId)]))).resolves.toBeUndefined();
+    // plain await, not expect(promise).resolves - the chained matcher hangs the whole file under bun test 1.3.14, see 03-commands.md
+    expect(await AddCommand.execute(ctx([String(cardAId)]))).toBeUndefined();
   });
 
   test("adds multiple cards by ID in one command, only the owned+valid ones succeed", async () => {
     await seedTradeState();
-    await expect(AddCommand.execute(ctx([String(cardAId), String(cardBId), String(cardCId), '999999']))).resolves.toBeUndefined();
+    expect(await AddCommand.execute(ctx([String(cardAId), String(cardBId), String(cardCId), '999999']))).toBeUndefined();
 
     const raw = await rawClient.get(stateKey());
     const state = JSON.parse(raw!);
@@ -77,7 +78,7 @@ describe("/add and /remove support multiple space-separated card IDs", () => {
   });
 
   test("removes multiple cards by ID in one command", async () => {
-    await expect(RemoveCommand.execute(ctx([String(cardAId), String(cardBId)]))).resolves.toBeUndefined();
+    expect(await RemoveCommand.execute(ctx([String(cardAId), String(cardBId)]))).toBeUndefined();
 
     const raw = await rawClient.get(stateKey());
     const state = JSON.parse(raw!);
@@ -86,7 +87,7 @@ describe("/add and /remove support multiple space-separated card IDs", () => {
   });
 
   test("a single non-numeric token still resolves by fuzzy name", async () => {
-    await expect(AddCommand.execute(ctx(["Test AddRemove Card A"]))).resolves.toBeUndefined();
+    expect(await AddCommand.execute(ctx(["Test AddRemove Card A"]))).toBeUndefined();
     const raw = await rawClient.get(stateKey());
     const state = JSON.parse(raw!);
     expect(state.offers.proposer[cardAId]).toBe(1);

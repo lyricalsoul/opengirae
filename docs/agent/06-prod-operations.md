@@ -156,6 +156,62 @@ again, set `revertedAt`/`revertedByAdminId` on it in the same transaction —
 `revertedByAdminId` is a real FK to `users.id`, so use whichever admin's row
 is doing this manual fix, not a placeholder.
 
+## Reverting an accidental account merge (`/link`, `/unlink`)
+
+`/link` doesn't just attach a second platform to an account — it fully
+merges two `users` rows into one (`UsersDB.mergeUsers`): coins and
+reputation are summed, cards/wishlist/bought items are moved over, and the
+secondary account's row is deleted outright. The common mistake this
+reverts: someone runs `/link` expecting to attach a Discord account but
+links a second *Telegram* account instead, permanently combining two
+separate people's (or their own two separate) economies.
+
+**Use `/unlink <@usuário>` (`isAdmin`-guarded, any chat) before doing
+anything by hand.** It calls `UsersDB.undoLastMergeForUser`
+(`packages/database/users.ts`), which finds the target's most recent
+not-yet-undone `'users.merge'` audit log — `mergeUsers` now snapshots
+everything about the secondary account into that row's `metadata` before
+deleting it, specifically so this can rebuild it later — and claim-locks it
+the same way `AuditDB.revertDonation` does (`revertedAt`/`revertedByAdminId`,
+so two staff racing on the same target just makes the second call a no-op).
+It then creates a **brand-new** `users` row for the resurrected secondary
+account (a new id — the old one is gone for good) and moves back everything
+the snapshot recorded: coins, reputation, `user_cards`, `wishlist`,
+`bought_items`, `card_draw_history`/`audit_logs`/`trades` row ownership, the
+secondary's own `linked_accounts` rows, and any marriage the merge dissolved
+(restored only if the old partner hasn't remarried since — checked against
+live state, not the snapshot).
+
+**This cannot always be a full, exact reversal, and the command says so.**
+Coins/reputation/card counts are only reversible up to whatever the main
+account *currently* has — if it already spent or traded away some of what
+came in from the merge, there's no way to tell the merged-in units apart
+from the account's own pre-merge units, so `undoLastMergeForUser` clamps to
+what's actually available and reports the shortfall in its reply (e.g. "só
+consegui devolver 30 de 50 moedas") rather than going negative or refusing
+outright. `wishlist`/`bought_items` entries move back only if the main
+account still has that exact card/item — if it doesn't, or if it
+independently re-added/re-bought the same one since the merge, there's
+nothing left to distinguish. None of this needs manual intervention; it's
+the expected, disclosed behavior of a merge that had time to be acted on
+before someone caught it. Manual reversal is only for the cases `/unlink`
+structurally can't help with:
+
+- **No `'users.merge'` audit log at all** — a merge from before this
+  logging existed, or the row was hand-deleted. Nothing to rebuild from;
+  you're reconstructing state from `card_draw_history`/other logs by hand,
+  same as a pre-audit-log `/doar` would require.
+- **Staff wants a different clamping decision than "return what's
+  available"** — e.g. the main account's post-merge spending should itself
+  be undone first so the reversal comes out exact. That's a separate manual
+  fix (probably via `/dar`/`/tirar`) done *before* running `/unlink`, not
+  something `/unlink` itself should be made to guess at.
+
+Like the donation revert, back up affected rows first if you're touching
+anything by hand, and if you manually adjust a merge's outcome, mark the
+`'users.merge'` audit log's `revertedAt`/`revertedByAdminId` yourself so a
+later `/unlink` on the same target doesn't also try to act on it.
+
 ## Traffic/abuse analysis: card-catalog scraping
 
 A recurring attack: an account scrapes the full card catalog (name/art/

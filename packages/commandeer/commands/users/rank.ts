@@ -9,13 +9,14 @@ import { resolveDisplayEmoji } from '@girae/common/utilities/customEmoji'
 
 const PAGE_SIZE = 10
 
-type RankType = 'rep' | 'dinheiro' | 'cards' | 'cativeiros'
+type RankType = 'rep' | 'dinheiro' | 'cards' | 'cativeiros' | 'maiscat'
 
 const RANK_META: Record<RankType, { title: string; emoji: string; suffix: (v: number) => string }> = {
   rep: { title: 'Ranking de Reputação', emoji: '🌠', suffix: v => `${v} pts` },
   dinheiro: { title: 'Ranking de Dinheiro', emoji: '💰', suffix: v => `${v} moedas` },
   cards: { title: 'Ranking de Cartas', emoji: '🃏', suffix: v => `${v} cartas` },
   cativeiros: { title: 'Ranking de Cativeiros', emoji: '❤️‍🔥', suffix: v => `${v}x` },
+  maiscat: { title: 'Ranking de Mais Cativeiros', emoji: '👑', suffix: v => `${v} cativeiros` },
 }
 
 type PrivacyRow = { userId: number; displayName: string; privacyMode: boolean; platformId: string | null }
@@ -57,11 +58,13 @@ async function renderPage(type: RankType, page: number, viewerTelegramId: string
       rep: RankDB.getTopByReputation,
       dinheiro: RankDB.getTopByCoins,
       cards: RankDB.getTopByCardCount,
+      maiscat: RankDB.getTopByCativeiroCount,
     }
     const positionFetchers: Record<Exclude<RankType, 'cativeiros'>, typeof RankDB.getReputationPosition> = {
       rep: RankDB.getReputationPosition,
       dinheiro: RankDB.getCoinsPosition,
       cards: RankDB.getCardCountPosition,
+      maiscat: RankDB.getCativeiroCountPosition,
     }
     const [entries, pos] = await Promise.all([
       fetchers[type](platform, PAGE_SIZE, offset),
@@ -88,7 +91,7 @@ export default class RankCommand extends Command {
   static override info = {
     name: 'rank',
     description: 'Mostra os rankings da Giraê',
-    usage: '/rank <rep|dinheiro|cards|cativeiros>',
+    usage: '/rank <rep|dinheiro|cards|cativeiros|maiscat>',
     aliases: ['ranking', 'top'],
   }
 
@@ -114,6 +117,11 @@ export default class RankCommand extends Command {
   @Subcommand({ name: 'cativeiros', description: 'Ranking de cards mais repetidos' })
   static async cativeiros(ctx: IncomingCommand) {
     await RankCommand.showPage('cativeiros', ctx)
+  }
+
+  @Subcommand({ name: 'maiscat', description: 'Ranking de quantidade de cativeiros' })
+  static async maiscat(ctx: IncomingCommand) {
+    await RankCommand.showPage('maiscat', ctx)
   }
 
   static async showPage(type: RankType, ctx: IncomingCommand) {

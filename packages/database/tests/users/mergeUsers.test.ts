@@ -4,6 +4,7 @@ import { db } from "../../index";
 import { users, userProfiles, linkedAccounts } from "../../schemas/users";
 import { userCards, wishlist } from "../../schemas/cards";
 import { boughtItems } from "../../schemas/vanities";
+import { auditLogs } from "../../schemas/audit";
 import { eq } from "drizzle-orm";
 import { UsersDB } from "../../users";
 
@@ -39,6 +40,9 @@ describe("UsersDB.mergeUsers", () => {
       await db.delete(userCards).where(eq(userCards.userId, secondaryId));
       await db.delete(wishlist).where(eq(wishlist.userId, secondaryId));
       await db.delete(boughtItems).where(eq(boughtItems.userId, secondaryId));
+      // mergeUsers now logs a 'users.merge' audit_logs row (actorUserId: mainId) - the FK from
+      // audit_logs.actorUserId to users.id would otherwise block fx.user()'s own mainId delete.
+      await db.delete(auditLogs).where(eq(auditLogs.actorUserId, mainId));
     });
   });
 

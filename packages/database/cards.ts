@@ -791,6 +791,13 @@ export class CardsDB {
       : [];
     const thresholdByCardId = new Map(thresholds.map(t => [t.cardId, t.cativeiroThreshold]));
 
+    // needed so a newly-received card (no existing userCards row) respects the recipient's /autotroca default.
+    const tradeableDefaults = await client
+      .select({ id: users.id, makeCardsTradeableByDefault: users.makeCardsTradeableByDefault })
+      .from(users)
+      .where(inArray(users.id, [userAId, userBId]));
+    const defaultTradableByUserId = new Map(tradeableDefaults.map(u => [u.id, u.makeCardsTradeableByDefault]));
+
     const decrement = async (userId: number, cardId: number, count: number) => {
       const [row] = await client
         .update(userCards)
@@ -831,7 +838,7 @@ export class CardsDB {
           .set({ count: sql`${userCards.count} + ${count}` })
           .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
       } else {
-        await client.insert(userCards).values({ userId, cardId, count });
+        await client.insert(userCards).values({ userId, cardId, count, tradable: defaultTradableByUserId.get(userId) ?? false });
       }
 
       const completedSubcategories = await CardsDB.claimCompletionsForCardGain(client, userId, cardId, incomeInflationRate);
@@ -886,6 +893,13 @@ export class CardsDB {
       : [];
     const thresholdByCardId = new Map(thresholds.map(t => [t.cardId, t.cativeiroThreshold]));
 
+    // needed so a newly-received card (no existing userCards row) respects the recipient's /autotroca default.
+    const tradeableDefaults = await client
+      .select({ id: users.id, makeCardsTradeableByDefault: users.makeCardsTradeableByDefault })
+      .from(users)
+      .where(inArray(users.id, [userAId, userBId]));
+    const defaultTradableByUserId = new Map(tradeableDefaults.map(u => [u.id, u.makeCardsTradeableByDefault]));
+
     const decrementCard = async (userId: number, cardId: number, count: number) => {
       const [row] = await client
         .update(userCards)
@@ -923,7 +937,7 @@ export class CardsDB {
           .set({ count: sql`${userCards.count} + ${count}` })
           .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
       } else {
-        await client.insert(userCards).values({ userId, cardId, count });
+        await client.insert(userCards).values({ userId, cardId, count, tradable: defaultTradableByUserId.get(userId) ?? false });
       }
 
       const completedSubcategories = await CardsDB.claimCompletionsForCardGain(client, userId, cardId, incomeInflationRate);
@@ -1705,10 +1719,14 @@ export class CardsDB {
       .then(a => a?.[0]));
   })
 
+  // viewerId (optional) is whoever is looking at this list, not necessarily userId - lets a
+  // caller show "how many of this I already own" next to a card on someone else's wishlist,
+  // same as CardsDB.compareWishlists' ownedCount. -1 (no real user has this id) keeps the join
+  // a no-op instead of branching the query shape when the caller doesn't pass one.
   static getWishlist = maybeTransaction('getWishlist', async (
-    client, userId: number, opts: { query?: string; limit?: number; offset?: number } = {},
+    client, userId: number, opts: { query?: string; limit?: number; offset?: number; viewerId?: number } = {},
   ) => {
-    const { query, limit = 20, offset = 0 } = opts;
+    const { query, limit = 20, offset = 0, viewerId } = opts;
     const where = query
       ? and(eq(wishlist.userId, userId), ilike(cards.name, `%${query}%`))
       : eq(wishlist.userId, userId);
@@ -1724,6 +1742,7 @@ export class CardsDB {
           categoryEmoji: categories.emoji,
           categoryName: categories.name,
           subcategoryName: subcategories.name,
+          viewerOwnedCount: sql<number>`COALESCE(${userCards.count}, 0)`,
         })
         .from(wishlist)
         .innerJoin(cards, eq(cards.id, wishlist.cardId))
@@ -1731,6 +1750,7 @@ export class CardsDB {
         .leftJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.isMain, true)))
         .leftJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
         .leftJoin(categories, eq(categories.id, subcategories.categoryId))
+        .leftJoin(userCards, and(eq(userCards.cardId, cards.id), eq(userCards.userId, viewerId ?? -1)))
         .where(where)
         .orderBy(wishlist.position, cards.id)
         .limit(limit)

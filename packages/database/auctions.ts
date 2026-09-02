@@ -1,6 +1,6 @@
 import { maybeTransaction, type DrizzleClient } from "./decorators";
 import { db } from "./index";
-import { auctions, auctionBids, cards, rarities, userCards, cardSubcategories, subcategories, categories } from "./schemas/cards";
+import { auctions, auctionBids, auctionWatches, auctionWatchNotifications, cards, rarities, userCards, cardSubcategories, subcategories, categories } from "./schemas/cards";
 import { economy } from "./schemas/economy";
 import { users } from "./schemas/users";
 import { eq, and, or, sql, gte, lte, inArray, ilike, desc, asc, isNull } from "drizzle-orm";
@@ -97,6 +97,15 @@ export class AuctionsDB {
       .where(and(eq(auctions.sellerId, sellerId), eq(auctions.cardId, cardId), eq(auctions.status, 'active')))
       .limit(1)
       .then(a => a?.[0]);
+  })
+
+  // used by /leilao wish - unlike the above, every active auction for the card, not just one seller's.
+  static getActiveAuctionsForCard = maybeTransaction('getActiveAuctionsForCard', async (client, cardId: number) => {
+    return await client
+      .select({ id: auctions.id })
+      .from(auctions)
+      .where(and(eq(auctions.cardId, cardId), eq(auctions.status, 'active')))
+      .orderBy(asc(auctions.id))
   })
 
   // `status` defaults to 'active'; pass `status: null` explicitly for the admin "every state" view.
@@ -352,6 +361,13 @@ export class AuctionsDB {
       expiresAt: new Date(now.getTime() + AUCTION_DURATION_MS),
     }).returning();
 
+    // watch-notification outbox - one row per watcher of this card, excluding the seller.
+    await client.execute(sql`
+      INSERT INTO ${auctionWatchNotifications} (${sql.identifier(auctionWatchNotifications.auctionId.name)}, ${sql.identifier(auctionWatchNotifications.userId.name)})
+      SELECT ${auction!.id}, ${auctionWatches.userId} FROM ${auctionWatches}
+      WHERE ${auctionWatches.cardId} = ${cardId} AND ${auctionWatches.userId} != ${sellerId}
+    `);
+
     return auction!;
   })
 
@@ -428,8 +444,14 @@ export class AuctionsDB {
       await client.update(users).set({ coins: sql`${users.coins} + ${payout}` }).where(eq(users.id, auction.sellerId));
       await EconomyDB.chargeAuctionSaleFee(client, auction.sellerId, saleFeePaid);
 
-      // the winner is a different owner - fresh entry, no copy of the seller's tradable/custom* fields
-      await client.insert(userCards).values({ userId: auction.currentBidderId!, cardId: auction.cardId, count: 1 })
+      // fresh entry for the winner - tradable comes from their own /autotroca default, not the column default (false).
+      const winnerDefault = await client
+        .select({ makeCardsTradeableByDefault: users.makeCardsTradeableByDefault })
+        .from(users)
+        .where(eq(users.id, auction.currentBidderId!))
+        .limit(1)
+        .then(a => a?.[0]?.makeCardsTradeableByDefault ?? false);
+      await client.insert(userCards).values({ userId: auction.currentBidderId!, cardId: auction.cardId, count: 1, tradable: winnerDefault })
         .onConflictDoUpdate({ target: [userCards.userId, userCards.cardId], set: { count: sql`${userCards.count} + 1` } });
 
       const [updated] = await client.update(auctions).set({ status: 'sold', saleFeePaid, resolvedAt: new Date() }).where(eq(auctions.id, auction.id)).returning();
@@ -551,5 +573,60 @@ export class AuctionsDB {
 
   static markResolutionNotified = maybeTransaction('markResolutionNotified', async (client, id: number) => {
     await client.update(auctions).set({ resolutionNotifiedAt: sql`now()` }).where(eq(auctions.id, id));
+  })
+
+  // /leilao wish - toggled the same way CardsDB.addToWishlist/removeFromWishlist is.
+  static isWatchingCard = maybeTransaction('isWatchingCard', async (client, userId: number, cardId: number) => {
+    return await client
+      .select({ userId: auctionWatches.userId })
+      .from(auctionWatches)
+      .where(and(eq(auctionWatches.userId, userId), eq(auctionWatches.cardId, cardId)))
+      .limit(1)
+      .then(a => a.length > 0);
+  })
+
+  static addWatch = maybeTransaction('addWatch', async (client, userId: number, cardId: number) => {
+    await client.insert(auctionWatches).values({ userId, cardId }).onConflictDoNothing();
+  })
+
+  static removeWatch = maybeTransaction('removeWatch', async (client, userId: number, cardId: number) => {
+    await client.delete(auctionWatches).where(and(eq(auctionWatches.userId, userId), eq(auctionWatches.cardId, cardId)));
+  })
+
+  // watch-alert outbox, drained by CronJobs.runAuctionSweep - see the INSERT in createAuctionTx above.
+  static listUnnotifiedWatchAlerts = maybeTransaction('listUnnotifiedWatchAlerts', async (client, limit = 50) => {
+    return await client
+      .select({ id: auctionWatchNotifications.id, auctionId: auctionWatchNotifications.auctionId, userId: auctionWatchNotifications.userId })
+      .from(auctionWatchNotifications)
+      .where(isNull(auctionWatchNotifications.notifiedAt))
+      .orderBy(asc(auctionWatchNotifications.id))
+      .limit(limit);
+  })
+
+  static markWatchAlertNotified = maybeTransaction('markWatchAlertNotified', async (client, id: number) => {
+    await client.update(auctionWatchNotifications).set({ notifiedAt: sql`now()` }).where(eq(auctionWatchNotifications.id, id));
+  })
+
+  // "/leilao wish" with no args - full list, unfiltered/unpaginated (filtered in memory, see leilao.ts).
+  static getWatchlist = maybeTransaction('getWatchlist', async (client, userId: number) => {
+    return await client
+      .select({
+        id: cards.id,
+        name: cards.name,
+        rarityName: rarities.name,
+        rarityEmoji: rarities.emoji,
+        categoryEmoji: categories.emoji,
+        subcategoryName: subcategories.name,
+        ownedCount: sql<number>`CAST(COALESCE(${userCards.count}, 0) AS INTEGER)`,
+      })
+      .from(auctionWatches)
+      .innerJoin(cards, eq(cards.id, auctionWatches.cardId))
+      .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+      .leftJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.isMain, true)))
+      .leftJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
+      .leftJoin(categories, eq(categories.id, subcategories.categoryId))
+      .leftJoin(userCards, and(eq(userCards.cardId, cards.id), eq(userCards.userId, userId)))
+      .where(eq(auctionWatches.userId, userId))
+      .orderBy(asc(cards.id));
   })
 }

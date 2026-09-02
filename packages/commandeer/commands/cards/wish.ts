@@ -3,23 +3,23 @@ import { reply, pageNavRow } from '@girae/common/dbos/messaging'
 import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import type { IncomingCommand } from '@girae/common/commands/types'
-import { EMOJI } from '../../constants'
+import { EMOJI, cativeiroEmoji } from '../../constants'
 import { resolveCardByIdOrName } from '../../services/commandArguments'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { generateWishlistImage } from '@girae/common/ditto'
 
 const PAGE_SIZE = 10
 
-async function renderPage(targetUserIdArg: string, page: number) {
+async function renderPage(targetUserIdArg: string, page: number, viewerId?: number) {
   const targetUserId = parseInt(targetUserIdArg, 10)
   const target = await UsersDB.getUserById(targetUserId)
   if (!target) return null
 
-  const { rows, total } = await CardsDB.getWishlist(target.id, { limit: PAGE_SIZE, offset: page * PAGE_SIZE })
+  const { rows, total } = await CardsDB.getWishlist(target.id, { limit: PAGE_SIZE, offset: page * PAGE_SIZE, viewerId })
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   const cardLines = rows.length > 0
-    ? rows.map(c => `${c.rarityEmoji} \`${c.id}\`. **${escapeMarkdown(c.name)}** — _${escapeMarkdown(c.subcategoryName ?? '?')}_`).join('\n')
+    ? rows.map(c => `${c.rarityEmoji} \`${c.id}\`. **${escapeMarkdown(c.name)}** — _${escapeMarkdown(c.subcategoryName ?? '?')}_ \`${c.viewerOwnedCount}x\` ${cativeiroEmoji(c.viewerOwnedCount)}`).join('\n')
     : '_A lista de desejos está vazia._'
   const pageInfo = totalPages > 1 ? `${EMOJI.page} Página \`${page + 1}\` de **${totalPages}**\n` : ''
 
@@ -64,7 +64,7 @@ export default class WishCommand extends Command {
         return
       }
 
-      const page = await renderPage(String(target.id), 0)
+      const page = await renderPage(String(target.id), 0, viewer.id)
       if (!page) return
 
       const navRow = pageNavRow('wish', String(target.id), 0, page.hasNext, page.totalPages)
@@ -75,7 +75,7 @@ export default class WishCommand extends Command {
     const rawArgs = ctx.args.join(' ').trim()
 
     if (!rawArgs) {
-      const page = await renderPage(String(viewer.id), 0)
+      const page = await renderPage(String(viewer.id), 0, viewer.id)
       if (!page) return
 
       const navRow = pageNavRow('wish', String(viewer.id), 0, page.hasNext, page.totalPages)
@@ -160,6 +160,6 @@ export default class WishCommand extends Command {
     if (!viewer) return null
     if (!UsersDB.isViewable(viewer.id, target)) return null
 
-    return renderPage(arg, page)
+    return renderPage(arg, page, viewer.id)
   }
 }

@@ -115,21 +115,27 @@ with multiple replicas).
   6h (`0 */6 * * *`). The same method also claims+announces new vanity store
   items (`VanitiesDB.claimUnannouncedStoreItems`/`getStoreItemsForAnnouncementBatch`,
   `packages/database/vanities.ts`; rendering/sending in
-  `packages/commandeer/services/vanity/vanityAnnouncements.ts`) for the same
-  reason. Only reach for a genuinely new `scheduleName`/cron entry when the
-  timing actually differs (a different time of day, a different frequency)
-  from what already exists.
-  - `claimUnannouncedSubcategories`'s per-subcategory `cards` list is every
+  `packages/commandeer/services/vanity/vanityAnnouncements.ts`) and new
+  Discoteca content (`DiscotecaDB.claimUnannouncedArtists`/`claimUnannouncedEntries`,
+  `packages/database/discoteca.ts`; rendering/sending in
+  `packages/commandeer/services/discoteca/discotecaAnnouncements.ts` — an
+  artist is the Discoteca analog of a subcategory/collection, an entry
+  (album/single) the analog of a card) for the same reason. Only reach for a
+  genuinely new `scheduleName`/cron entry when the timing actually differs (a
+  different time of day, a different frequency) from what already exists.
+  - `claimUnannouncedSubcategories`'s per-subcategory `cards` list (and
+    `claimUnannouncedArtists`'s per-artist `entries` list, same shape) is every
     card whose *current* main (`cardSubcategories.isMain`) link points at that
-    subcategory, not just the ones this call happens to also mark
-    `announcedAt` on. A card that already had `announcedAt` set (from an
-    earlier announcement under a different subcategory) and then got moved
-    into the new subcategory via `setCardMainSubcategory` is deliberately
-    left alone by the `UPDATE ... WHERE announcedAt IS NULL` claim, but still
-    shown in the new subcategory's card list — a new-collection announcement
-    should read as "here's what's in it now," not just "here's what's
-    brand-new." Don't narrow that listing query back down to only the
-    freshly-claimed cards; that's the exact bug this was fixed from.
+    subcategory (every entry whose `artistId` currently points at that artist),
+    not just the ones this call happens to also mark `announcedAt` on. A card
+    that already had `announcedAt` set (from an earlier announcement under a
+    different subcategory) and then got moved into the new subcategory via
+    `setCardMainSubcategory` (an entry moved via `DiscotecaDB.mergeArtists`) is
+    deliberately left alone by the `UPDATE ... WHERE announcedAt IS NULL`
+    claim, but still shown in the new subcategory's/artist's list — a
+    new-collection announcement should read as "here's what's in it now," not
+    just "here's what's brand-new." Don't narrow that listing query back down
+    to only the freshly-claimed rows; that's the exact bug this was fixed from.
   - One deliberate deviation from the cards/subcategories claim: it stamps
     `announcedAt` with the cron's `schedTime` (not `sql\`now()\``), so every
     item claimed in the same tick shares one exact value, used as the batch
@@ -139,7 +145,10 @@ with multiple replicas).
     `@Page`), the vanity announcement (`vanityAnnouncements.ts`'s
     `announceNewVanityItems`) sends every item from the batch in one message,
     with no cap and no buttons — a single `sendMessage`/`sendPhoto` job, not a
-    `@Page`-driven broadcast.
+    `@Page`-driven broadcast. The Discoteca claim follows the cards/subcategories
+    shape instead (`sql\`now()\``, capped+listed inline, no separate batch
+    re-fetch), since it mirrors that pattern one-for-one rather than the
+    vanity one.
 - **`resetMidnightStats()` (and any job shaped like it) updates every row in
   `users` with no per-user `WHERE` scoping** — correct for a real scheduled
   run, but means it should never be called from a test against a shared dev

@@ -15,7 +15,7 @@ import {
 } from "./schemas/discoteca";
 import { users, userProfiles } from "./schemas/users";
 import { cards, categories, subcategories, cardSubcategories, rarities } from "./schemas/cards";
-import { eq, and, or, sql, gt, gte, isNull, inArray } from "drizzle-orm";
+import { eq, and, or, sql, gt, gte, lt, isNull, inArray } from "drizzle-orm";
 import { calculateCardDiscardReward } from "./constants";
 import { EconomyDB } from "./economy";
 
@@ -379,6 +379,74 @@ export class DiscotecaDB {
       .values({ appleMusicArtistId: source.appleMusicArtistId, artistId: targetId })
       .onConflictDoUpdate({ target: discotecaArtistAppleIds.appleMusicArtistId, set: { artistId: targetId } });
     await client.delete(discotecaArtists).where(eq(discotecaArtists.id, sourceId));
+  })
+
+  // same shape as CardsDB.claimUnannouncedSubcategories - `entries` is every entry currently on the artist, not just the ones freshly claimed (mergeArtists can move one in from an already-announced artist).
+  static claimUnannouncedArtists = maybeTransaction('claimUnannouncedArtists', async (client, cutoff: Date, onlyIds?: number[]) => {
+    const claimConditions = [isNull(discotecaArtists.announcedAt), lt(discotecaArtists.createdAt, cutoff)];
+    if (onlyIds) claimConditions.push(inArray(discotecaArtists.id, onlyIds));
+
+    const claimedArtists = await client
+      .update(discotecaArtists)
+      .set({ announcedAt: sql`now()` })
+      .where(and(...claimConditions))
+      .returning();
+    if (claimedArtists.length === 0) return [];
+
+    const artistIds = claimedArtists.map(a => a.id);
+
+    // an entry moved in from an already-announced artist keeps its own announcedAt, but is still listed below.
+    await client
+      .update(discotecaEntries)
+      .set({ announcedAt: sql`now()` })
+      .where(and(isNull(discotecaEntries.announcedAt), inArray(discotecaEntries.artistId, artistIds)));
+
+    const allEntries = await client
+      .select({ id: discotecaEntries.id, name: discotecaEntries.name, type: discotecaEntries.type, artistId: discotecaEntries.artistId, rarityEmoji: rarities.emoji, rarityWeight: rarities.weight })
+      .from(discotecaEntries)
+      .innerJoin(rarities, eq(rarities.id, discotecaEntries.rarityId))
+      .where(inArray(discotecaEntries.artistId, artistIds));
+
+    const entriesByArtist = new Map<number, typeof allEntries>();
+    for (const row of allEntries) {
+      const group = entriesByArtist.get(row.artistId);
+      if (group) group.push(row); else entriesByArtist.set(row.artistId, [row]);
+    }
+    for (const group of entriesByArtist.values()) group.sort((a, b) => a.rarityWeight - b.rarityWeight || a.id - b.id);
+
+    return claimedArtists.map(artist => ({
+      ...artist,
+      entries: (entriesByArtist.get(artist.id) ?? []).map(({ id, name, type, rarityEmoji }) => ({ id, name, type, rarityEmoji })),
+    }));
+  })
+
+  // Claims every eligible entry; ones already claimed via claimUnannouncedArtists are skipped naturally (see above).
+  static claimUnannouncedEntries = maybeTransaction('claimUnannouncedEntries', async (client, cutoff: Date, onlyIds?: number[]) => {
+    const claimConditions = [isNull(discotecaEntries.announcedAt), lt(discotecaEntries.createdAt, cutoff)];
+    if (onlyIds) claimConditions.push(inArray(discotecaEntries.id, onlyIds));
+
+    const claimed = await client
+      .update(discotecaEntries)
+      .set({ announcedAt: sql`now()` })
+      .where(and(...claimConditions))
+      .returning({ id: discotecaEntries.id });
+    if (claimed.length === 0) return [];
+
+    return await client
+      .select({
+        id: discotecaEntries.id,
+        name: discotecaEntries.name,
+        type: discotecaEntries.type,
+        rarityEmoji: rarities.emoji,
+        artistId: discotecaArtists.id,
+        artistName: discotecaArtists.name,
+      })
+      .from(discotecaEntries)
+      .innerJoin(rarities, eq(rarities.id, discotecaEntries.rarityId))
+      .innerJoin(discotecaArtists, eq(discotecaArtists.id, discotecaEntries.artistId))
+      .where(inArray(discotecaEntries.id, claimed.map(c => c.id)))
+      // lower weight = rarer (RARITY_RANK_SQL in gacha.ts)
+      .orderBy(discotecaArtists.id, rarities.weight, discotecaEntries.id);
   })
 
   static setArtistImage = maybeTransaction('setArtistImage', async (client, artistId: number, imageUrl: string) => {
