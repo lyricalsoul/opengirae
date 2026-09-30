@@ -17,10 +17,18 @@
 	let activeTab = $state<Tab>(initialTab);
 
 	let idParam = $derived(page.url.searchParams.get('id'));
-	let viewingUserId = $derived(idParam && /^\d+$/.test(idParam) ? parseInt(idParam, 10) : undefined);
+	// `id` is only meaningful for whichever tab the mini app was actually launched into
+	// (`initialTab`, from BotFather's own per-short-name URL) - gate on that, not on
+	// `activeTab`. Otherwise switching tabs via the bottom bar re-mounts the target tab with
+	// whatever `id` happens to still be in the URL from an earlier, unrelated deep link (e.g.
+	// opening via /cards leaves `?id=<userId>` in place; tapping "Leilão" afterwards then
+	// misreads that same id as an auction id, landing on a bogus/not-found auction detail view
+	// instead of the active-auctions list - the list was there the whole time, revealed as soon
+	// as "voltar" clears the bogus selection).
+	let viewingUserId = $derived(initialTab === 'cards' && idParam && /^\d+$/.test(idParam) ? parseInt(idParam, 10) : undefined);
 	// the /leilao bot command's mini app link reuses the same startapp -> ?id param plumbing,
 	// but for the "leilao" tab it means "open this auction", not "view this user's cards".
-	let initialAuctionId = $derived(idParam && /^\d+$/.test(idParam) ? parseInt(idParam, 10) : undefined);
+	let initialAuctionId = $derived(initialTab === 'leilao' && idParam && /^\d+$/.test(idParam) ? parseInt(idParam, 10) : undefined);
 </script>
 
 {#if activeTab === 'cards' || activeTab === 'card'}
