@@ -791,6 +791,13 @@ export class CardsDB {
       : [];
     const thresholdByCardId = new Map(thresholds.map(t => [t.cardId, t.cativeiroThreshold]));
 
+    // needed so a newly-received card (no existing userCards row) respects the recipient's /autotroca default.
+    const tradeableDefaults = await client
+      .select({ id: users.id, makeCardsTradeableByDefault: users.makeCardsTradeableByDefault })
+      .from(users)
+      .where(inArray(users.id, [userAId, userBId]));
+    const defaultTradableByUserId = new Map(tradeableDefaults.map(u => [u.id, u.makeCardsTradeableByDefault]));
+
     const decrement = async (userId: number, cardId: number, count: number) => {
       const [row] = await client
         .update(userCards)
@@ -831,7 +838,7 @@ export class CardsDB {
           .set({ count: sql`${userCards.count} + ${count}` })
           .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
       } else {
-        await client.insert(userCards).values({ userId, cardId, count });
+        await client.insert(userCards).values({ userId, cardId, count, tradable: defaultTradableByUserId.get(userId) ?? false });
       }
 
       const completedSubcategories = await CardsDB.claimCompletionsForCardGain(client, userId, cardId, incomeInflationRate);
@@ -886,6 +893,13 @@ export class CardsDB {
       : [];
     const thresholdByCardId = new Map(thresholds.map(t => [t.cardId, t.cativeiroThreshold]));
 
+    // needed so a newly-received card (no existing userCards row) respects the recipient's /autotroca default.
+    const tradeableDefaults = await client
+      .select({ id: users.id, makeCardsTradeableByDefault: users.makeCardsTradeableByDefault })
+      .from(users)
+      .where(inArray(users.id, [userAId, userBId]));
+    const defaultTradableByUserId = new Map(tradeableDefaults.map(u => [u.id, u.makeCardsTradeableByDefault]));
+
     const decrementCard = async (userId: number, cardId: number, count: number) => {
       const [row] = await client
         .update(userCards)
@@ -923,7 +937,7 @@ export class CardsDB {
           .set({ count: sql`${userCards.count} + ${count}` })
           .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
       } else {
-        await client.insert(userCards).values({ userId, cardId, count });
+        await client.insert(userCards).values({ userId, cardId, count, tradable: defaultTradableByUserId.get(userId) ?? false });
       }
 
       const completedSubcategories = await CardsDB.claimCompletionsForCardGain(client, userId, cardId, incomeInflationRate);
