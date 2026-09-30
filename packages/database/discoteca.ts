@@ -176,6 +176,16 @@ export class DiscotecaDB {
       .orderBy(discotecaGenres.name);
   })
 
+  // ids here are discoteca_subcategories.id - what setEntryGenres expects, unlike getGenresForEntry's genre id.
+  static getSubcategoriesForEntry = maybeTransaction('getSubcategoriesForEntry', async (client, entryId: number) => {
+    return await client
+      .select({ id: discotecaSubcategories.id, name: discotecaSubcategories.name })
+      .from(discotecaEntrySubcategories)
+      .innerJoin(discotecaSubcategories, eq(discotecaSubcategories.id, discotecaEntrySubcategories.subcategoryId))
+      .where(eq(discotecaEntrySubcategories.entryId, entryId))
+      .orderBy(discotecaSubcategories.name);
+  })
+
   static getLinkedSingles = maybeTransaction('getLinkedSingles', async (client, albumId: number, userId: number) => {
     return await client
       .select({

@@ -412,8 +412,8 @@ export async function runEditFlow(ctx: IncomingCommand, entryId: number, type: '
   if (!artistRow) return
   const artist: Artist = { id: artistRow.id, name: artistRow.name, cardId: artistRow.cardId }
 
-  const genreRows = await DiscotecaDB.getGenresForEntry(entryId)
-  const initialGenres: ResolvedGenres = { resolved: genreRows, unmapped: [] }
+  const subcategoryRows = await DiscotecaDB.getSubcategoriesForEntry(entryId)
+  const initialGenres: ResolvedGenres = { resolved: subcategoryRows, unmapped: [] }
   const currentRarity = rarities.find(r => r.id === entry.rarityId) ?? rarities[0]!
 
   let initialAlbum: AlbumOption = null

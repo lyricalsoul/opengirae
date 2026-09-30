@@ -78,4 +78,35 @@ describe("/editalbum", () => {
     expect(finalEdit.method).toBe('editMessageCaption');
     expect(finalEdit.caption).toContain('atualizado');
   }, 15000);
+
+  test("sending an already-attached genre's name via ➕ Adicionar/remover gênero removes it, not duplicates it", async () => {
+    const artistId = (await fx.discotecaArtist({ name: "Test Edit Genre Artist" })).id;
+    const rarityId = await anyRarityId();
+    const genreName = `Test Edit Genre ${Date.now()}`;
+    const genreId = (await fx.discotecaGenre({ name: genreName })).id;
+    const subcategoryId = (await fx.discotecaSubcategory({ genreId, isAlbum: true, name: `Álbuns de ${genreName}` })).id;
+    const entry = await DiscotecaDB.createEntry({
+      name: "Test Album With Genre", artistId, appleMusicId: `test-editalbum-genre-${Date.now()}`, type: 'album', rarityId,
+    });
+    await DiscotecaDB.setEntryGenres(entry!.id, [subcategoryId]);
+    fx.onCleanup(async () => {
+      await db.delete(discotecaEntrySubcategories).where(eq(discotecaEntrySubcategories.entryId, entry!.id));
+      await db.delete(discotecaEntries).where(eq(discotecaEntries.id, entry!.id));
+    });
+
+    const workflowID = `test-editalbum-genre-${Bun.randomUUIDv7()}`;
+    const runCtx = fakeCtx({ name: 'editalbum', authorId: staffPlatformId, args: [String(entry!.id)], platform: 'telegram', workflowID });
+    const handle = await DBOS.startWorkflow(EditAlbumCommand, { workflowID }).execute(runCtx, { entry: { id: entry!.id } } as any);
+
+    await new Promise(r => setTimeout(r, 500));
+    await DBOS.send(workflowID, { value: { action: 'addGenre' } }, 'discoteca:confirm');
+    await new Promise(r => setTimeout(r, 500));
+    await DBOS.send(workflowID, { value: genreName }, 'discoteca:addGenre');
+    await new Promise(r => setTimeout(r, 500));
+    await DBOS.send(workflowID, { value: { action: 'confirm' } }, 'discoteca:confirm');
+    await handle.getResult();
+
+    const remaining = await db.select().from(discotecaEntrySubcategories).where(eq(discotecaEntrySubcategories.entryId, entry!.id));
+    expect(remaining).toHaveLength(0);
+  }, 15000);
 });
