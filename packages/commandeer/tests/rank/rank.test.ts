@@ -18,7 +18,7 @@ async function waitForSentMessage(minLength: number, timeoutMs = 5000): Promise<
 
 describe("/rank", () => {
   const fx = new TestFixtures();
-  let highId: number, highPlatformId: string, privatePlatformId: string, privateId: number, cardId: number;
+  let highId: number, highPlatformId: string, privatePlatformId: string, privateId: number, cardId: number, maiscatId: number, maiscatPlatformId: string;
 
   beforeAll(async () => {
     await bootstrapCommandeerWorkers();
@@ -41,6 +41,15 @@ describe("/rank", () => {
     await db.insert(userCards).values({ userId: highId, cardId, count: 42 });
     fx.onCleanup(async () => {
       await db.delete(userCards).where(eq(userCards.userId, highId));
+    });
+
+    maiscatPlatformId = `test-rank-cmd-maiscat-${Date.now()}`;
+    maiscatId = (await fx.user({ displayName: "Rank Maiscat", platform: "telegram", platformId: maiscatPlatformId })).id;
+    const lowThresholdRarityId = (await fx.rarity({ name: `Test Rank Cmd Cativeiro Rarity ${Date.now()}`, cativeiroThreshold: 2 })).id;
+    const maiscatCardId = (await fx.card({ name: `Test Rank Cmd Cativeiro Card ${Date.now()}`, subcategoryId, rarityId: lowThresholdRarityId })).id;
+    await db.insert(userCards).values({ userId: maiscatId, cardId: maiscatCardId, count: 2 });
+    fx.onCleanup(async () => {
+      await db.delete(userCards).where(eq(userCards.userId, maiscatId));
     });
   });
 
@@ -65,6 +74,14 @@ describe("/rank", () => {
     expect(page!.content).toContain(`\`${cardId}\`.`);
     expect(page!.content).toContain("_Test Rank Cmd Card");
     expect(page!.content).toContain("`x42`");
+  });
+
+  test("maiscat page counts distinct eligible cards per user, not the single-card pile cativeiros ranks", async () => {
+    // only checks the position line, not top-10 placement - unlike dinheiro/rep's astronomical values, 1 eligible card isn't guaranteed to rank in the top 10 on a shared dev DB.
+    const page = await RankCommand.rankPage("maiscat", 0, maiscatPlatformId, "telegram");
+    expect(page!.content).toContain("**Ranking de Mais Cativeiros**");
+    expect(page!.content).toContain("Você está em **#");
+    expect(page!.content).toContain("com 1 cativeiros");
   });
 
   test("a privacy-mode user shows as a plain bold name, not a mention", async () => {

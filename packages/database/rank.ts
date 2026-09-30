@@ -100,6 +100,29 @@ export class RankDB {
     return result.rows
   })
 
+  // "/rank maiscat" - how many distinct cards each user has past rarities.cativeiroThreshold, not the single-card-pile ranking above.
+  static getTopByCativeiroCount = maybeTransaction('getTopByCativeiroCount', async (client, platform: string, limit: number, offset: number): Promise<RankEntry[]> => {
+    const result = await client.execute<RankEntry>(sql`
+      WITH ${primaryLinkCte(platform)},
+      cativeiro_totals AS (
+        SELECT uc."userId", CAST(COUNT(*) AS INTEGER) AS total
+        FROM user_cards uc
+        JOIN cards c ON c.id = uc."cardId"
+        JOIN rarities r ON r.id = c."rarityId"
+        WHERE uc.count >= r."cativeiroThreshold"
+        GROUP BY uc."userId"
+      )
+      SELECT u.id AS "userId", u."displayName", u."privacyMode", pl."platformId", ct.total AS value,
+             CAST(COUNT(*) OVER () AS INTEGER) AS total
+      FROM cativeiro_totals ct
+      JOIN users u ON u.id = ct."userId"
+      LEFT JOIN primary_link pl ON pl."userId" = u.id
+      ORDER BY ct.total DESC, u.id ASC
+      LIMIT ${limit} OFFSET ${offset}
+    `)
+    return result.rows
+  })
+
   static getReputationPosition = maybeTransaction('getReputationPosition', async (client, userId: number): Promise<RankPosition | undefined> => {
     const result = await client.execute<RankPosition>(sql`
       WITH ranked AS (
@@ -153,6 +176,28 @@ export class RankDB {
       SELECT MIN(rank) AS rank, MAX(value) AS value, CAST((SELECT COUNT(*) FROM user_cards) AS INTEGER) AS total
       FROM ranked WHERE "userId" = ${userId}
       GROUP BY "userId"
+    `)
+    return result.rows[0]
+  })
+
+  // undefined for a user with zero eligible cativeiros, same as getCativeiroPosition above.
+  static getCativeiroCountPosition = maybeTransaction('getCativeiroCountPosition', async (client, userId: number): Promise<RankPosition | undefined> => {
+    const result = await client.execute<RankPosition>(sql`
+      WITH cativeiro_totals AS (
+        SELECT uc."userId", CAST(COUNT(*) AS INTEGER) AS total
+        FROM user_cards uc
+        JOIN cards c ON c.id = uc."cardId"
+        JOIN rarities r ON r.id = c."rarityId"
+        WHERE uc.count >= r."cativeiroThreshold"
+        GROUP BY uc."userId"
+      ),
+      ranked AS (
+        SELECT "userId", total AS value,
+               CAST(RANK() OVER (ORDER BY total DESC) AS INTEGER) AS rank,
+               CAST(COUNT(*) OVER () AS INTEGER) AS total_users
+        FROM cativeiro_totals
+      )
+      SELECT rank, value, total_users AS total FROM ranked WHERE "userId" = ${userId}
     `)
     return result.rows[0]
   })
