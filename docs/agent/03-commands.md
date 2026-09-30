@@ -421,6 +421,13 @@ exactly, don't default to a generic/corporate tone:
    above. Don't treat this as optional.
 7. Staff mutation? Call `AuditDB.log(userId, action, metadata)`,
    `action` as `'{noun}.{verb}'` (`card.create`, `category.imageUpdate`).
+   Skip this only when the `*DB` method itself already writes the audit row
+   because it's *functionally* required there, not just for observability —
+   `UsersDB.undoLastMergeForUser` (`/unlink`) is the example: it has to
+   claim-lock the originating audit log row regardless (same
+   `revertedAt`/`revertedByAdminId` shape as `AuditDB.revertDonation`, see
+   `06-prod-operations.md`), so a second `AuditDB.log` call from the command
+   would just be a duplicate entry for the same action.
 8. Does your command grant the user a card (a new draw mode, an admin gift
    command, ...)? Emit `cards:new` via `emitCardsNew`/`emitHook`
    (`packages/commandeer/loaders/hooks.ts`) right after the `*DB` call that
