@@ -2,11 +2,12 @@ import { test, expect, describe, beforeAll, afterAll } from "bun:test";
 import { TestFixtures } from "@girae/tests";
 import { db } from "../../index";
 import { users } from "../../schemas/users";
-import { userCards, auctions, auctionBids, subcategoryCompletionRewards } from "../../schemas/cards";
+import { userCards, auctions, auctionBids, auctionWatches, auctionWatchNotifications, subcategoryCompletionRewards } from "../../schemas/cards";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { AuctionsDB, type Auction } from "../../auctions";
 import { CardsDB } from "../../cards";
 import { EconomyDB } from "../../economy";
+import { UsersDB } from "../../users";
 
 async function setCoins(userId: number, amount: number) {
   await db.update(users).set({ coins: amount }).where(eq(users.id, userId));
@@ -41,7 +42,9 @@ describe("AuctionsDB", () => {
   });
 
   afterAll(async () => {
-    // auctions/auctionBids FK rows must go first, or fx.cleanup()'s card/user deletes fail - every test user here is named "Test Leilao ...".
+    // auctions/auctionBids/auctionWatch* FK rows must go first, or fx.cleanup()'s card/user deletes fail - every test user here is named "Test Leilao ...".
+    await db.delete(auctionWatchNotifications).where(sql`"userId" IN (SELECT id FROM ${users} WHERE "displayName" LIKE 'Test Leilao%')`);
+    await db.delete(auctionWatches).where(sql`"userId" IN (SELECT id FROM ${users} WHERE "displayName" LIKE 'Test Leilao%')`);
     await db.delete(auctionBids).where(sql`"auctionId" IN (SELECT id FROM ${auctions} WHERE "sellerId" IN (SELECT id FROM ${users} WHERE "displayName" LIKE 'Test Leilao%'))`);
     await db.delete(auctions).where(sql`"sellerId" IN (SELECT id FROM ${users} WHERE "displayName" LIKE 'Test Leilao%')`);
     await db.delete(subcategoryCompletionRewards).where(eq(subcategoryCompletionRewards.subcategoryId, subcategoryId));
@@ -402,6 +405,19 @@ describe("AuctionsDB", () => {
       expect(await getOwnedCount(bidderId, auction.cardId)).toBe(1);
     });
 
+    // settleAuction's winner insert used to omit tradable entirely, ignoring the winner's own /autotroca default.
+    test("sold: the winner's new copy respects their own /autotroca default, not the seller's", async () => {
+      const auction = await freshAuction("Test Leilao Sweep TradableDefault");
+      const bidderId = await freshSeller();
+      await UsersDB.setMakeCardsTradeableByDefault(bidderId, true);
+      await AuctionsDB.placeBid(auction.id, bidderId, auction.startingBid);
+
+      await expireNow(auction.id);
+      await AuctionsDB.sweepExpiredAuctions(new Date());
+
+      expect(await CardsDB.isCardTradable(bidderId, auction.cardId)).toBe(true);
+    });
+
     test("expired without bids: card returns, nothing charged either way (listing was free)", async () => {
       const auction = await freshAuction("Test Leilao Sweep ExpiredNoBids");
       const sellerCoinsBefore = await getCoins(auction.sellerId);
@@ -635,6 +651,103 @@ describe("AuctionsDB", () => {
       await AuctionsDB.markResolutionNotified(auction.id);
       const afterMarking = await AuctionsDB.listUnnotifiedResolutions(100);
       expect(afterMarking.some(a => a.id === auction.id)).toBe(false);
+    });
+  });
+
+  describe("watches (/leilao wish)", () => {
+    test("addWatch/isWatchingCard/removeWatch round-trip, and addWatch is idempotent", async () => {
+      const watcherId = await freshSeller();
+      const cardId = await freshCard("Test Leilao Watch Toggle");
+
+      expect(await AuctionsDB.isWatchingCard(watcherId, cardId)).toBe(false);
+
+      await AuctionsDB.addWatch(watcherId, cardId);
+      expect(await AuctionsDB.isWatchingCard(watcherId, cardId)).toBe(true);
+
+      // re-adding an existing watch must not throw (onConflictDoNothing)
+      await AuctionsDB.addWatch(watcherId, cardId);
+      expect(await AuctionsDB.isWatchingCard(watcherId, cardId)).toBe(true);
+
+      await AuctionsDB.removeWatch(watcherId, cardId);
+      expect(await AuctionsDB.isWatchingCard(watcherId, cardId)).toBe(false);
+    });
+
+    test("getActiveAuctionsForCard finds every listing across sellers, not just one", async () => {
+      const { sellerId, cardId } = await freshTradableSellerCard("Test Leilao Watch ActiveLookup");
+      expect(await AuctionsDB.getActiveAuctionsForCard(cardId)).toHaveLength(0);
+
+      const first = await AuctionsDB.createAuction(sellerId, cardId);
+      expect(first.ok).toBe(true);
+      if (!first.ok) return;
+      expect((await AuctionsDB.getActiveAuctionsForCard(cardId)).map(a => a.id)).toEqual([first.auction.id]);
+
+      // a second, independent owner lists the same cardId - both listings must show up.
+      const otherSellerId = await freshSeller();
+      await fx.ownCard(otherSellerId, cardId, 1);
+      await CardsDB.setCardTradable(otherSellerId, cardId, true);
+      const second = await AuctionsDB.createAuction(otherSellerId, cardId);
+      expect(second.ok).toBe(true);
+      if (!second.ok) return;
+
+      const both = await AuctionsDB.getActiveAuctionsForCard(cardId);
+      expect(both.map(a => a.id).sort()).toEqual([first.auction.id, second.auction.id].sort());
+    });
+
+    test("createAuction queues exactly one alert per watcher, excludes the seller's own watch, and leaves non-watchers untouched", async () => {
+      const cardId = await freshCard("Test Leilao Watch Outbox");
+      const sellerId = await freshSeller();
+      await fx.ownCard(sellerId, cardId, 1);
+      await CardsDB.setCardTradable(sellerId, cardId, true);
+
+      const watcherA = await freshSeller();
+      const watcherB = await freshSeller();
+      const nonWatcher = await freshSeller();
+      await AuctionsDB.addWatch(watcherA, cardId);
+      await AuctionsDB.addWatch(watcherB, cardId);
+      // the seller watching their own card must never generate a self-notification
+      await AuctionsDB.addWatch(sellerId, cardId);
+
+      const created = await AuctionsDB.createAuction(sellerId, cardId);
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+
+      const pending = await AuctionsDB.listUnnotifiedWatchAlerts(500);
+      const forThisAuction = pending.filter(a => a.auctionId === created.auction.id);
+      const watcherIds = forThisAuction.map(a => a.userId).sort();
+      expect(watcherIds).toEqual([watcherA, watcherB].sort());
+      expect(forThisAuction.some(a => a.userId === sellerId)).toBe(false);
+      expect(forThisAuction.some(a => a.userId === nonWatcher)).toBe(false);
+
+      await AuctionsDB.markWatchAlertNotified(forThisAuction.find(a => a.userId === watcherA)!.id);
+      const afterMarkingOne = await AuctionsDB.listUnnotifiedWatchAlerts(500);
+      const remaining = afterMarkingOne.filter(a => a.auctionId === created.auction.id);
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0]!.userId).toBe(watcherB);
+    });
+
+    test("relisting the same watched card after it expires queues a fresh alert each time", async () => {
+      const { sellerId, cardId } = await freshTradableSellerCard("Test Leilao Watch Relist", 2);
+      const watcherId = await freshSeller();
+      await AuctionsDB.addWatch(watcherId, cardId);
+
+      const first = await AuctionsDB.createAuction(sellerId, cardId);
+      expect(first.ok).toBe(true);
+      if (!first.ok) return;
+      const firstPending = (await AuctionsDB.listUnnotifiedWatchAlerts(500)).filter(a => a.auctionId === first.auction.id);
+      expect(firstPending).toHaveLength(1);
+      await AuctionsDB.markWatchAlertNotified(firstPending[0]!.id);
+
+      await expireNow(first.auction.id);
+      await AuctionsDB.sweepExpiredAuctions(new Date());
+      // clear the relist cooldown so the fixture can list a second copy right away
+      await db.update(auctions).set({ resolvedAt: new Date(Date.now() - 60 * 60 * 1000) }).where(eq(auctions.id, first.auction.id));
+
+      const second = await AuctionsDB.createAuction(sellerId, cardId);
+      expect(second.ok).toBe(true);
+      if (!second.ok) return;
+      const secondPending = (await AuctionsDB.listUnnotifiedWatchAlerts(500)).filter(a => a.auctionId === second.auction.id);
+      expect(secondPending).toHaveLength(1);
+      expect(secondPending[0]!.userId).toBe(watcherId);
     });
   });
 

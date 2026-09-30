@@ -70,13 +70,13 @@ with multiple replicas).
   ])
   ```
   `runAuctionSweep` is the once-a-minute example of the fastest cadence in the system so far —
-  settles expired `/leilao` auctions (`AuctionsDB.sweepExpiredAuctions`) and drains two
+  settles expired `/leilao` auctions (`AuctionsDB.sweepExpiredAuctions`) and drains three
   notification outboxes (`services/auctions/notifications.ts`'s `sendOutbidNotifications`/
-  `sendResolutionNotifications`). The outbox pattern itself is worth knowing about for any future
-  feature the **website** can trigger: `@girae/database` has no messaging access (see
-  `02-architecture.md`), so a DB write that needs to notify someone can't just call `reply()`
-  inline — it may be running inside a tRPC mutation, not commandeer. Instead the write stamps a
-  `notifiedAt IS NULL` column (`auctionBids.notifiedAt`, `auctions.resolutionNotifiedAt`), and a
+  `sendResolutionNotifications`/`sendAuctionWatchNotifications`). The outbox pattern itself is worth
+  knowing about for any future feature the **website** can trigger: `@girae/database` has no
+  messaging access (see `02-architecture.md`), so a DB write that needs to notify someone can't just
+  call `reply()` inline — it may be running inside a tRPC mutation, not commandeer. Instead the write
+  stamps a `notifiedAt IS NULL` column (`auctionBids.notifiedAt`, `auctions.resolutionNotifiedAt`), and a
   cron tick reads the unnotified rows (`AuctionsDB.listUnnotifiedBids`/`listUnnotifiedResolutions`,
   a plain `SELECT ... WHERE notifiedAt IS NULL`), sends from inside commandeer (which does have
   messaging access), and only *then* marks each row notified (`markBidNotified`/
@@ -90,6 +90,15 @@ with multiple replicas).
   send-then-mark drops the old claim's protection against two overlapping sweep ticks both
   processing the same row — accepted here since ticks are fast/infrequent and an occasional
   duplicate DM is far less bad than a silently lost one.
+  `/leilao wish <id ou nome>` (`AuctionsDB.addWatch`/`removeWatch`/`isWatchingCard`, a toggle exactly
+  like `/wish`'s but for "tell me when this card goes up for auction" rather than "I want to own
+  this") is the third outbox and a slightly different shape: it doesn't have a single owning row to
+  stamp `notifiedAt` on (a watch can outlive many auctions, and several different watchers can care
+  about the same card), so it gets its own join table, `auctionWatchNotifications` — one row per
+  `(watcher, auction)` pair, inserted once, inside the same `createAuctionTx` that creates the
+  auction (`INSERT ... SELECT` from `auctionWatches` for that `cardId`, excluding the seller's own
+  watch on their own card). `listUnnotifiedWatchAlerts`/`markWatchAlertNotified` then drain it with
+  the identical send-then-mark shape as the other two.
   `schedule` is a standard 5-field cron string, evaluated in the server's
   timezone (the existing jobs assume UTC — `runMidnightReset` fires at 3:00
   UTC, matching `/daily`'s own `getTimeUntilMidnight()` cutoff, not literal

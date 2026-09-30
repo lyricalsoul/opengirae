@@ -3,10 +3,11 @@ import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures } from 
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { db } from "@girae/database/index";
 import { users } from "@girae/database/schemas/users";
-import { userCards, auctions, auctionBids, subcategoryCompletionRewards } from "@girae/database/schemas/cards";
+import { userCards, auctions, auctionBids, auctionWatches, auctionWatchNotifications, subcategoryCompletionRewards } from "@girae/database/schemas/cards";
 import { eq, and, sql } from "drizzle-orm";
 import { CardsDB } from "@girae/database/cards";
 import { AuctionsDB, type Auction } from "@girae/database/auctions";
+import { buildFilterArg } from "@girae/common/utilities/pageFilters";
 import LeilaoCommand from "../../commands/cards/leilao";
 
 mockTelegram();
@@ -39,6 +40,8 @@ describe("/leilao", () => {
   });
 
   afterAll(async () => {
+    await db.delete(auctionWatchNotifications).where(sql`"userId" IN (SELECT id FROM ${users} WHERE "displayName" LIKE 'Test Leilao Cmd%')`);
+    await db.delete(auctionWatches).where(sql`"userId" IN (SELECT id FROM ${users} WHERE "displayName" LIKE 'Test Leilao Cmd%')`);
     await db.delete(auctionBids).where(sql`"auctionId" IN (SELECT id FROM ${auctions} WHERE "sellerId" IN (SELECT id FROM ${users} WHERE "displayName" LIKE 'Test Leilao Cmd%'))`);
     await db.delete(auctions).where(sql`"sellerId" IN (SELECT id FROM ${users} WHERE "displayName" LIKE 'Test Leilao Cmd%')`);
     await db.delete(subcategoryCompletionRewards).where(eq(subcategoryCompletionRewards.subcategoryId, subcategoryId));
@@ -477,6 +480,147 @@ describe("/leilao", () => {
       const workflowID = `test-leilao-link-${Bun.randomUUIDv7()}`;
       const ctx = fakeCtx({ name: 'leilao', authorId: 'test-leilao-cmd-link', args: [], platform: 'telegram', workflowID });
       await run(workflowID, ctx, '').then(h => h.getResult());
+    });
+  });
+
+  describe("wish", () => {
+    test("toggles a watch on, then off, for the calling user", async () => {
+      const platformId = 'test-leilao-cmd-wish-toggle';
+      const userId = (await fx.user({ displayName: "Test Leilao Cmd Wish Toggle", platform: 'telegram', platformId })).id;
+      const cardId = (await fx.card({ name: "Test Leilao Cmd Wish Toggle Card", rarityId, subcategoryId })).id;
+
+      const workflowID = `test-leilao-wish-toggle-${Bun.randomUUIDv7()}`;
+      const ctx = fakeCtx({ name: 'leilao', authorId: platformId, args: ['wish', String(cardId)], platform: 'telegram', workflowID });
+      await run(workflowID, ctx, `wish ${cardId}`).then(h => h.getResult());
+      expect(await AuctionsDB.isWatchingCard(userId, cardId)).toBe(true);
+
+      const workflowID2 = `test-leilao-wish-toggle-2-${Bun.randomUUIDv7()}`;
+      const ctx2 = fakeCtx({ name: 'leilao', authorId: platformId, args: ['wish', String(cardId)], platform: 'telegram', workflowID: workflowID2 });
+      await run(workflowID2, ctx2, `wish ${cardId}`).then(h => h.getResult());
+      expect(await AuctionsDB.isWatchingCard(userId, cardId)).toBe(false);
+    });
+
+    test("no card given shows the watch list page instead, without throwing", async () => {
+      const platformId = 'test-leilao-cmd-wish-nocard';
+      await fx.user({ displayName: "Test Leilao Cmd Wish NoCard", platform: 'telegram', platformId });
+
+      const workflowID = `test-leilao-wish-nocard-${Bun.randomUUIDv7()}`;
+      const ctx = fakeCtx({ name: 'leilao', authorId: platformId, args: ['wish'], platform: 'telegram', workflowID });
+      await run(workflowID, ctx, 'wish').then(h => h.getResult());
+    });
+
+    test("end-to-end: watching a card, then someone else auctioning it, queues exactly one alert for the watcher", async () => {
+      const watcherPlatformId = 'test-leilao-cmd-wish-e2e-watcher';
+      const watcherId = (await fx.user({ displayName: "Test Leilao Cmd Wish E2E Watcher", platform: 'telegram', platformId: watcherPlatformId })).id;
+      const cardId = (await fx.card({ name: "Test Leilao Cmd Wish E2E Card", rarityId, subcategoryId })).id;
+
+      const workflowID = `test-leilao-wish-e2e-${Bun.randomUUIDv7()}`;
+      const ctx = fakeCtx({ name: 'leilao', authorId: watcherPlatformId, args: ['wish', String(cardId)], platform: 'telegram', workflowID });
+      await run(workflowID, ctx, `wish ${cardId}`).then(h => h.getResult());
+      expect(await AuctionsDB.isWatchingCard(watcherId, cardId)).toBe(true);
+
+      const sellerId = (await fx.user({ displayName: "Test Leilao Cmd Wish E2E Seller" })).id;
+      await fx.ownCard(sellerId, cardId, 1);
+      await CardsDB.setCardTradable(sellerId, cardId, true);
+      const created = await AuctionsDB.createAuction(sellerId, cardId);
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+
+      const pending = await AuctionsDB.listUnnotifiedWatchAlerts(500);
+      const forThisAuction = pending.filter(a => a.auctionId === created.auction.id);
+      expect(forThisAuction).toHaveLength(1);
+      expect(forThisAuction[0]!.userId).toBe(watcherId);
+    });
+
+    test("the card being in an active auction already doesn't block adding the watch", async () => {
+      const auction = await freshAuction("Test Leilao Cmd Wish AlreadyActive");
+      const platformId = 'test-leilao-cmd-wish-active';
+      const userId = (await fx.user({ displayName: "Test Leilao Cmd Wish Active", platform: 'telegram', platformId })).id;
+
+      const workflowID = `test-leilao-wish-active-${Bun.randomUUIDv7()}`;
+      const ctx = fakeCtx({ name: 'leilao', authorId: platformId, args: ['wish', String(auction.cardId)], platform: 'telegram', workflowID });
+      await run(workflowID, ctx, `wish ${auction.cardId}`).then(h => h.getResult());
+
+      expect(await AuctionsDB.isWatchingCard(userId, auction.cardId)).toBe(true);
+    });
+
+    test("more than one active auction for the same card resolves without throwing and still adds the watch", async () => {
+      const firstAuction = await freshAuction("Test Leilao Cmd Wish MultiActive");
+      const cardId = firstAuction.cardId;
+
+      // a second, independent owner lists the same cardId - both listings stay active at once.
+      const sellerBId = (await fx.user({ displayName: "Test Leilao Cmd Wish MultiActive Seller B" })).id;
+      await fx.ownCard(sellerBId, cardId, 1);
+      await CardsDB.setCardTradable(sellerBId, cardId, true);
+      const secondAuction = await AuctionsDB.createAuction(sellerBId, cardId);
+      if (!secondAuction.ok) throw new Error('fixture setup failed');
+
+      const platformId = 'test-leilao-cmd-wish-multiactive';
+      const userId = (await fx.user({ displayName: "Test Leilao Cmd Wish MultiActive Watcher", platform: 'telegram', platformId })).id;
+
+      const workflowID = `test-leilao-wish-multiactive-${Bun.randomUUIDv7()}`;
+      const ctx = fakeCtx({ name: 'leilao', authorId: platformId, args: ['wish', String(cardId)], platform: 'telegram', workflowID });
+      await run(workflowID, ctx, `wish ${cardId}`).then(h => h.getResult());
+
+      expect(await AuctionsDB.isWatchingCard(userId, cardId)).toBe(true);
+    });
+
+    describe("empty-args listing page", () => {
+      test("an empty watch list shows the empty state and a zero total", async () => {
+        const platformId = 'test-leilao-cmd-wish-list-empty';
+        await fx.user({ displayName: "Test Leilao Cmd Wish List Empty", platform: 'telegram', platformId });
+
+        const page = await LeilaoCommand.leilaoWishPage(':', 0, platformId, 'telegram');
+        expect(page).not.toBeNull();
+        expect(page!.content).toContain('_Nenhum card na lista._');
+        expect(page!.content).toContain('`0` cards no total.');
+      });
+
+      test("lists watched cards with category/rarity emoji, id, name and subcategory", async () => {
+        const platformId = 'test-leilao-cmd-wish-list-basic';
+        const userId = (await fx.user({ displayName: "Test Leilao Cmd Wish List Basic", platform: 'telegram', platformId })).id;
+        const cardId = (await fx.card({ name: "Test Leilao Cmd Wish List Card", rarityId, subcategoryId })).id;
+        await AuctionsDB.addWatch(userId, cardId);
+
+        const page = await LeilaoCommand.leilaoWishPage(':', 0, platformId, 'telegram');
+        expect(page!.content).toContain('Lista de desejos do leilão de **Test Leilao Cmd Wish List Basic**');
+        expect(page!.content).toContain('`1` cards no total.');
+        expect(page!.content).toContain(`\`${cardId}\`. **Test Leilao Cmd Wish List Card** — _Test Leilao Cmd Subcategory_`);
+      });
+
+      test("filter buttons narrow the list and show the advice line", async () => {
+        const platformId = 'test-leilao-cmd-wish-list-filter';
+        const userId = (await fx.user({ displayName: "Test Leilao Cmd Wish List Filter", platform: 'telegram', platformId })).id;
+        const ownedCardId = (await fx.card({ name: "Test Leilao Cmd Wish List Filter Owned", rarityId, subcategoryId })).id;
+        const missingCardId = (await fx.card({ name: "Test Leilao Cmd Wish List Filter Missing", rarityId, subcategoryId })).id;
+        await AuctionsDB.addWatch(userId, ownedCardId);
+        await AuctionsDB.addWatch(userId, missingCardId);
+        await fx.ownCard(userId, ownedCardId, 3);
+
+        // filter '1' = "que você possui" (ownedCount > 0), see WISH_FILTERS in leilao.ts
+        const filteredArg = buildFilterArg(['1'], '');
+        const page = await LeilaoCommand.leilaoWishPage(filteredArg, 0, platformId, 'telegram');
+        expect(page!.content).toContain('🔎 Mostrando apenas cards **que você possui**');
+        expect(page!.content).toContain('Test Leilao Cmd Wish List Filter Owned');
+        expect(page!.content).not.toContain('Test Leilao Cmd Wish List Filter Missing');
+      });
+
+      test("pagination: more than one page's worth of watched cards splits correctly", async () => {
+        const platformId = 'test-leilao-cmd-wish-list-page';
+        const userId = (await fx.user({ displayName: "Test Leilao Cmd Wish List Page", platform: 'telegram', platformId })).id;
+        for (let i = 0; i < 12; i++) {
+          const cardId = (await fx.card({ name: `Test Leilao Cmd Wish List Page Card ${i}`, rarityId, subcategoryId })).id;
+          await AuctionsDB.addWatch(userId, cardId);
+        }
+
+        const firstPage = await LeilaoCommand.leilaoWishPage(':', 0, platformId, 'telegram');
+        expect(firstPage!.totalPages).toBe(2);
+        expect(firstPage!.hasNext).toBe(true);
+        expect(firstPage!.content).toContain('`12` cards no total.');
+
+        const secondPage = await LeilaoCommand.leilaoWishPage(':', 1, platformId, 'telegram');
+        expect(secondPage!.hasNext).toBe(false);
+      });
     });
   });
 });

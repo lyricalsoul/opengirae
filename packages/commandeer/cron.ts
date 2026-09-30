@@ -9,7 +9,7 @@ import { AuctionsDB } from '@girae/database/auctions'
 import { info } from '@girae/common/logger'
 import { announceNewSubcategory, announceNewCardsGroup, groupCardsBySubcategory } from './services/cards/contentAnnouncements'
 import { announceNewVanityItems } from './services/vanity/vanityAnnouncements'
-import { sendOutbidNotifications, sendResolutionNotifications } from './services/auctions/notifications'
+import { sendOutbidNotifications, sendResolutionNotifications, sendAuctionWatchNotifications } from './services/auctions/notifications'
 
 const ANNOUNCEMENT_LOOKBACK_MS = 60 * 60 * 1000
 
@@ -67,6 +67,7 @@ export class CronJobs {
     await AuctionsDB.sweepExpiredAuctions(schedTime)
     await sendOutbidNotifications()
     await sendResolutionNotifications()
+    await sendAuctionWatchNotifications()
   }
 
   @DBOS.workflow()
