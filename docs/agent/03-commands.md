@@ -52,7 +52,14 @@ packages/commandeer/commands/<category>/<name>.ts
   `isAdmin` in the same `guards` array, though `staffGroupOnly` alone already
   implies it today) for a command whose blast radius is too high to trust
   from anywhere but the physical staff room — `/dar`/`/tirar` (mint/confiscate
-  coins, giros, or cards for a user) are why it exists.
+  coins, giros, or cards for a user) are why it exists. A command with more
+  than one branch can also call a guard function directly (`guards.staffGroupOnly(ctx)`,
+  imported from `services/guards.ts`) to gate just *one* branch more tightly
+  than `info.guards` gates the command as a whole — `/unlink`'s "antes da
+  atualização" mode does this, since its sibling "depois da atualização" mode
+  stays usable from anywhere under plain `isAdmin` (see
+  `docs/agent/06-prod-operations.md`'s account-merge section for why that one
+  branch specifically needs the stricter check).
 - **Aliases**: pick names that read naturally in Portuguese first (this bot's
   primary audience), with an English alias where it helps (`/wish` /
   `/wishlist`). Don't be shy about silly/casual aliases either — `/girar`'s

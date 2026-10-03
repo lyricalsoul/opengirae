@@ -70,13 +70,13 @@ with multiple replicas).
   ])
   ```
   `runAuctionSweep` is the once-a-minute example of the fastest cadence in the system so far —
-  settles expired `/leilao` auctions (`AuctionsDB.sweepExpiredAuctions`) and drains three
+  settles expired `/leilao` auctions (`AuctionsDB.sweepExpiredAuctions`) and drains two
   notification outboxes (`services/auctions/notifications.ts`'s `sendOutbidNotifications`/
-  `sendResolutionNotifications`/`sendAuctionWatchNotifications`). The outbox pattern itself is worth
-  knowing about for any future feature the **website** can trigger: `@girae/database` has no
-  messaging access (see `02-architecture.md`), so a DB write that needs to notify someone can't just
-  call `reply()` inline — it may be running inside a tRPC mutation, not commandeer. Instead the write
-  stamps a `notifiedAt IS NULL` column (`auctionBids.notifiedAt`, `auctions.resolutionNotifiedAt`), and a
+  `sendResolutionNotifications`). The outbox pattern itself is worth knowing about for any future
+  feature the **website** can trigger: `@girae/database` has no messaging access (see
+  `02-architecture.md`), so a DB write that needs to notify someone can't just call `reply()`
+  inline — it may be running inside a tRPC mutation, not commandeer. Instead the write stamps a
+  `notifiedAt IS NULL` column (`auctionBids.notifiedAt`, `auctions.resolutionNotifiedAt`), and a
   cron tick reads the unnotified rows (`AuctionsDB.listUnnotifiedBids`/`listUnnotifiedResolutions`,
   a plain `SELECT ... WHERE notifiedAt IS NULL`), sends from inside commandeer (which does have
   messaging access), and only *then* marks each row notified (`markBidNotified`/
@@ -90,15 +90,6 @@ with multiple replicas).
   send-then-mark drops the old claim's protection against two overlapping sweep ticks both
   processing the same row — accepted here since ticks are fast/infrequent and an occasional
   duplicate DM is far less bad than a silently lost one.
-  `/leilao wish <id ou nome>` (`AuctionsDB.addWatch`/`removeWatch`/`isWatchingCard`, a toggle exactly
-  like `/wish`'s but for "tell me when this card goes up for auction" rather than "I want to own
-  this") is the third outbox and a slightly different shape: it doesn't have a single owning row to
-  stamp `notifiedAt` on (a watch can outlive many auctions, and several different watchers can care
-  about the same card), so it gets its own join table, `auctionWatchNotifications` — one row per
-  `(watcher, auction)` pair, inserted once, inside the same `createAuctionTx` that creates the
-  auction (`INSERT ... SELECT` from `auctionWatches` for that `cardId`, excluding the seller's own
-  watch on their own card). `listUnnotifiedWatchAlerts`/`markWatchAlertNotified` then drain it with
-  the identical send-then-mark shape as the other two.
   `schedule` is a standard 5-field cron string, evaluated in the server's
   timezone (the existing jobs assume UTC — `runMidnightReset` fires at 3:00
   UTC, matching `/daily`'s own `getTimeUntilMidnight()` cutoff, not literal
@@ -124,21 +115,27 @@ with multiple replicas).
   6h (`0 */6 * * *`). The same method also claims+announces new vanity store
   items (`VanitiesDB.claimUnannouncedStoreItems`/`getStoreItemsForAnnouncementBatch`,
   `packages/database/vanities.ts`; rendering/sending in
-  `packages/commandeer/services/vanity/vanityAnnouncements.ts`) for the same
-  reason. Only reach for a genuinely new `scheduleName`/cron entry when the
-  timing actually differs (a different time of day, a different frequency)
-  from what already exists.
-  - `claimUnannouncedSubcategories`'s per-subcategory `cards` list is every
+  `packages/commandeer/services/vanity/vanityAnnouncements.ts`) and new
+  Discoteca content (`DiscotecaDB.claimUnannouncedArtists`/`claimUnannouncedEntries`,
+  `packages/database/discoteca.ts`; rendering/sending in
+  `packages/commandeer/services/discoteca/discotecaAnnouncements.ts` — an
+  artist is the Discoteca analog of a subcategory/collection, an entry
+  (album/single) the analog of a card) for the same reason. Only reach for a
+  genuinely new `scheduleName`/cron entry when the timing actually differs (a
+  different time of day, a different frequency) from what already exists.
+  - `claimUnannouncedSubcategories`'s per-subcategory `cards` list (and
+    `claimUnannouncedArtists`'s per-artist `entries` list, same shape) is every
     card whose *current* main (`cardSubcategories.isMain`) link points at that
-    subcategory, not just the ones this call happens to also mark
-    `announcedAt` on. A card that already had `announcedAt` set (from an
-    earlier announcement under a different subcategory) and then got moved
-    into the new subcategory via `setCardMainSubcategory` is deliberately
-    left alone by the `UPDATE ... WHERE announcedAt IS NULL` claim, but still
-    shown in the new subcategory's card list — a new-collection announcement
-    should read as "here's what's in it now," not just "here's what's
-    brand-new." Don't narrow that listing query back down to only the
-    freshly-claimed cards; that's the exact bug this was fixed from.
+    subcategory (every entry whose `artistId` currently points at that artist),
+    not just the ones this call happens to also mark `announcedAt` on. A card
+    that already had `announcedAt` set (from an earlier announcement under a
+    different subcategory) and then got moved into the new subcategory via
+    `setCardMainSubcategory` (an entry moved via `DiscotecaDB.mergeArtists`) is
+    deliberately left alone by the `UPDATE ... WHERE announcedAt IS NULL`
+    claim, but still shown in the new subcategory's/artist's list — a
+    new-collection announcement should read as "here's what's in it now," not
+    just "here's what's brand-new." Don't narrow that listing query back down
+    to only the freshly-claimed rows; that's the exact bug this was fixed from.
   - One deliberate deviation from the cards/subcategories claim: it stamps
     `announcedAt` with the cron's `schedTime` (not `sql\`now()\``), so every
     item claimed in the same tick shares one exact value, used as the batch
@@ -148,7 +145,10 @@ with multiple replicas).
     `@Page`), the vanity announcement (`vanityAnnouncements.ts`'s
     `announceNewVanityItems`) sends every item from the batch in one message,
     with no cap and no buttons — a single `sendMessage`/`sendPhoto` job, not a
-    `@Page`-driven broadcast.
+    `@Page`-driven broadcast. The Discoteca claim follows the cards/subcategories
+    shape instead (`sql\`now()\``, capped+listed inline, no separate batch
+    re-fetch), since it mirrors that pattern one-for-one rather than the
+    vanity one.
 - **`resetMidnightStats()` (and any job shaped like it) updates every row in
   `users` with no per-user `WHERE` scoping** — correct for a real scheduled
   run, but means it should never be called from a test against a shared dev
