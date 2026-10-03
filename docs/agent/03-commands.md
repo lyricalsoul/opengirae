@@ -249,6 +249,10 @@ duplicating a workflow's logic behind a "button version."
   `insert(userCards).values(` before adding another card-granting code path
   and make sure whichever one you're adding pulls this same lookup, rather
   than trusting the column default.
+- **Any reply rendering a user-sized list (card/entry count) needs a cap** —
+  `/doar *`/`/doardisco *` are uncapped, so `/doacoes`/`/doacoesdisco` could
+  blow past Telegram's ~4096 char limit; grep `*LIST_LIMIT` for the existing
+  slice-and-`…e mais N` pattern before inventing another.
 
 ## Testing: every new DB method and every command with real branching needs a test
 
