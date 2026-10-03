@@ -167,20 +167,37 @@ links a second *Telegram* account instead, permanently combining two
 separate people's (or their own two separate) economies.
 
 **Use `/unlink <@usuário>` (`isAdmin`-guarded, any chat) before doing
-anything by hand.** It calls `UsersDB.undoLastMergeForUser`
-(`packages/database/users.ts`), which finds the target's most recent
-not-yet-undone `'users.merge'` audit log — `mergeUsers` now snapshots
-everything about the secondary account into that row's `metadata` before
-deleting it, specifically so this can rebuild it later — and claim-locks it
-the same way `AuditDB.revertDonation` does (`revertedAt`/`revertedByAdminId`,
-so two staff racing on the same target just makes the second call a no-op).
-It then creates a **brand-new** `users` row for the resurrected secondary
-account (a new id — the old one is gone for good) and moves back everything
-the snapshot recorded: coins, reputation, `user_cards`, `wishlist`,
-`bought_items`, `card_draw_history`/`audit_logs`/`trades` row ownership, the
-secondary's own `linked_accounts` rows, and any marriage the merge dissolved
-(restored only if the old partner hasn't remarried since — checked against
-live state, not the snapshot).
+anything by hand.** It first asks which of two modes applies, since the two
+have very different safety properties:
+
+- **📜 Depois da atualização** calls `UsersDB.undoLastMergeForUser`
+  (`packages/database/users.ts`), which finds the target's most recent
+  not-yet-undone `'users.merge'` audit log — `mergeUsers` now snapshots
+  everything about the secondary account into that row's `metadata` before
+  deleting it, specifically so this can rebuild it later — and claim-locks it
+  the same way `AuditDB.revertDonation` does (`revertedAt`/`revertedByAdminId`,
+  so two staff racing on the same target just makes the second call a no-op).
+  It then creates a **brand-new** `users` row for the resurrected secondary
+  account (a new id — the old one is gone for good) and moves back everything
+  the snapshot recorded: coins, reputation, `user_cards`, `wishlist`,
+  `bought_items`, `card_draw_history`/`audit_logs`/`trades` row ownership, the
+  secondary's own `linked_accounts` rows, and any marriage the merge dissolved
+  (restored only if the old partner hasn't remarried since — checked against
+  live state, not the snapshot).
+- **🔓 Antes da atualização** calls `UsersDB.unlinkAllExcept` instead, for a
+  merge from before `mergeUsers` started snapshotting (see "No
+  `'users.merge'` audit log at all" below) — see that method's own doc
+  comment for exactly why a split can't be reconstructed here.
+  `staffGroupOnly`-gated (checked inline in the command, not via
+  `info.guards`, since the "depois" mode above stays usable from anywhere —
+  see `guards.staffGroupOnly` in `packages/commandeer/services/guards.ts`),
+  because unlike the "depois" mode it has no shortfall-reporting safety net:
+  every *other* platform account currently sharing the mentioned user's row
+  gets spun off into a brand-new, empty account (0 coins, 0 cards, nothing),
+  and the mentioned account simply keeps everything the shared row already
+  has. Not a mint — no coins or cards are created — but also not a fair
+  split, since there's no data left to split fairly from. Pick which
+  identity should "win" before running it; that choice isn't reversible.
 
 **This cannot always be a full, exact reversal, and the command says so.**
 Coins/reputation/card counts are only reversible up to whatever the main
@@ -194,18 +211,24 @@ account still has that exact card/item — if it doesn't, or if it
 independently re-added/re-bought the same one since the merge, there's
 nothing left to distinguish. None of this needs manual intervention; it's
 the expected, disclosed behavior of a merge that had time to be acted on
-before someone caught it. Manual reversal is only for the cases `/unlink`
-structurally can't help with:
+before someone caught it.
 
-- **No `'users.merge'` audit log at all** — a merge from before this
-  logging existed, or the row was hand-deleted. Nothing to rebuild from;
-  you're reconstructing state from `card_draw_history`/other logs by hand,
-  same as a pre-audit-log `/doar` would require.
+**No `'users.merge'` audit log at all** (a merge from before this logging
+existed, or the row was hand-deleted) used to mean reconstructing state from
+`card_draw_history`/other logs by hand — `/unlink`'s "🔓 Antes da
+atualização" mode above now covers this case directly, at the cost of giving
+up an exact split (everything goes to whichever account staff mentions).
+Reach for it before doing anything by hand; manual reversal is now really
+only for:
+
 - **Staff wants a different clamping decision than "return what's
-  available"** — e.g. the main account's post-merge spending should itself
-  be undone first so the reversal comes out exact. That's a separate manual
-  fix (probably via `/dar`/`/tirar`) done *before* running `/unlink`, not
-  something `/unlink` itself should be made to guess at.
+  available"** (📜 mode) **or a real split instead of "winner takes all"**
+  (🔓 mode) — e.g. the main account's post-merge spending should itself be
+  undone first so the 📜 reversal comes out exact, or staff has some outside
+  way to know the true pre-merge division and wants to honor it instead of
+  handing everything to one side. That's a separate manual fix (probably via
+  `/dar`/`/tirar`) done *before* running `/unlink`, not something `/unlink`
+  itself should be made to guess at.
 
 Like the donation revert, back up affected rows first if you're touching
 anything by hand, and if you manually adjust a merge's outcome, mark the

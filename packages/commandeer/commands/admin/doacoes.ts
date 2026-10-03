@@ -10,6 +10,7 @@ import { EMOJI } from '../../constants'
 
 const DEFAULT_LIMIT_PER_DIRECTION = 5
 const PAIR_PAGE_SIZE = 15
+const CARDS_LIST_LIMIT = 20
 
 type DonationRow = Awaited<ReturnType<typeof AuditDB.getDonationHistory>>['rows'][number]
 type BotPlatform = 'telegram' | 'discord'
@@ -27,6 +28,13 @@ function nameOrMention(platform: BotPlatform, platformId: string | null, name: s
   return platformId ? mention(platform, platformId, name) : escapeMarkdown(name)
 }
 
+// /doar * has no card cap - keep this list bounded too.
+function renderCardsLine(cards: DonationRow['cards']): string {
+  if (cards.length === 0) return '0 card(s)'
+  const parts = cards.slice(0, CARDS_LIST_LIMIT).map(c => `${c.rarityEmoji} ${escapeMarkdown(c.name)}${c.count > 1 ? ` (${c.count}x)` : ''}`)
+  return cards.length > CARDS_LIST_LIMIT ? `${parts.join(', ')} e mais ${cards.length - CARDS_LIST_LIMIT}` : parts.join(', ')
+}
+
 function renderEntry(row: DonationRow, platform: BotPlatform): string {
   const otherPartyLabel = row.direction === 'sent' ? 'Para' : 'De'
   const otherPartyName = row.direction === 'sent'
@@ -34,7 +42,7 @@ function renderEntry(row: DonationRow, platform: BotPlatform): string {
     : nameOrMention(platform, row.donorPlatformId, row.donorName)
   const cardsLine = row.action === 'card.doarclc'
     ? `Coleção inteira **${escapeMarkdown(row.subcategoryName ?? 'coleção removida')}** (${row.cards.length} card${row.cards.length === 1 ? '' : 's'})`
-    : row.cards.map(c => `${c.rarityEmoji} ${escapeMarkdown(c.name)}${c.count > 1 ? ` (${c.count}x)` : ''}`).join(', ') || `${row.cards.length} card(s)`
+    : renderCardsLine(row.cards)
   const statusLine = row.revertedAt
     ? `↩️ revertida por **${nameOrMention(platform, row.revertedByAdminPlatformId, row.revertedByAdminName)}** em ${formatDate(row.revertedAt)}`
     : `Pra cancelar: \`/doacaocancelar ${row.id}\``

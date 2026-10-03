@@ -55,6 +55,8 @@ export const discotecaArtists = pgTable(
     cardId: integer().references(() => cards.id, { onDelete: "set null" }),
     imageUrl: text(),
     createdAt: timestamp().notNull().defaultNow(),
+    // set once the new-content cron has posted about this artist - see DiscotecaDB.claimUnannouncedArtists
+    announcedAt: timestamp(),
   },
   (table) => [
     index("discoteca_artists_card_idx").on(table.cardId),
@@ -93,6 +95,9 @@ export const discotecaEntries = pgTable(
     albumAppleMusicId: text(),
     albumId: integer().references((): AnyPgColumn => discotecaEntries.id, { onDelete: "set null" }),
     updatedAt: timestamp().notNull().defaultNow(),
+    createdAt: timestamp().notNull().defaultNow(),
+    // set once the new-content cron has posted about this entry - see DiscotecaDB.claimUnannouncedEntries
+    announcedAt: timestamp(),
   },
   (table) => [
     index("discoteca_entries_name_trgm_idx").using("gin", sql`immutable_unaccent(${table.name}) gin_trgm_ops`),
