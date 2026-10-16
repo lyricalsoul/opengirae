@@ -682,4 +682,37 @@ export class UsersDB {
     };
   })
 
+  // Last resort for a /link from before mergeUsers snapshotted: no data to split fairly, so every OTHER linked account gets spun off empty and the named one keeps everything (not a mint).
+  static unlinkAllExcept = maybeTransaction('unlinkAllExcept', async (
+    client, keepPlatform: Platform, keepPlatformId: string,
+  ): Promise<
+    | { ok: false; reason: 'not_found' }
+    | { ok: true; mainUserId: number; separatedAccounts: Array<{ platform: string; platformId: string; newUserId: number }> }
+  > => {
+    const mainUserId = await client
+      .select({ userId: linkedAccounts.userId })
+      .from(linkedAccounts)
+      .where(and(eq(linkedAccounts.platform, keepPlatform), eq(linkedAccounts.platformId, keepPlatformId)))
+      .limit(1)
+      .then(rows => rows[0]?.userId);
+    if (!mainUserId) return { ok: false, reason: 'not_found' };
+
+    const allLinks = await client
+      .select({ platform: linkedAccounts.platform, platformId: linkedAccounts.platformId })
+      .from(linkedAccounts)
+      .where(eq(linkedAccounts.userId, mainUserId));
+    const others = allLinks.filter(l => !(l.platform === keepPlatform && l.platformId === keepPlatformId));
+
+    const separatedAccounts: Array<{ platform: string; platformId: string; newUserId: number }> = [];
+    for (const other of others) {
+      const [newUser] = await client.insert(users).values({ displayName: 'Conta separada via /unlink', avatarUrl: '' }).returning();
+      if (!newUser) continue;
+      await client.insert(userProfiles).values({ userId: newUser.id }).onConflictDoNothing();
+      await client.update(linkedAccounts).set({ userId: newUser.id }).where(and(eq(linkedAccounts.platform, other.platform), eq(linkedAccounts.platformId, other.platformId)));
+      separatedAccounts.push({ platform: other.platform, platformId: other.platformId, newUserId: newUser.id });
+    }
+
+    return { ok: true, mainUserId, separatedAccounts };
+  })
+
 }
