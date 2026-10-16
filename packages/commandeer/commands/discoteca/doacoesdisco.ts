@@ -10,6 +10,7 @@ import { EMOJI } from '../../constants'
 
 const DEFAULT_LIMIT_PER_DIRECTION = 5
 const PAIR_PAGE_SIZE = 15
+const ENTRIES_LIST_LIMIT = 20
 
 type DonationRow = Awaited<ReturnType<typeof AuditDB.getDiscotecaDonationHistory>>['rows'][number]
 type BotPlatform = 'telegram' | 'discord'
@@ -27,6 +28,13 @@ function nameOrMention(platform: BotPlatform, platformId: string | null, name: s
   return platformId ? mention(platform, platformId, name) : escapeMarkdown(name)
 }
 
+// /doardisco * has no entry cap - keep this list bounded too.
+function renderEntriesLine(entries: DonationRow['entries']): string {
+  if (entries.length === 0) return '0 item(ns)'
+  const parts = entries.slice(0, ENTRIES_LIST_LIMIT).map(e => `${e.type === 'album' ? '💽' : '🎵'} ${escapeMarkdown(e.name)}${e.count > 1 ? ` (${e.count}x)` : ''}`)
+  return entries.length > ENTRIES_LIST_LIMIT ? `${parts.join(', ')} e mais ${entries.length - ENTRIES_LIST_LIMIT}` : parts.join(', ')
+}
+
 function renderEntry(row: DonationRow, platform: BotPlatform): string {
   const otherPartyLabel = row.direction === 'sent' ? 'Para' : 'De'
   const otherPartyName = row.direction === 'sent'
@@ -34,7 +42,7 @@ function renderEntry(row: DonationRow, platform: BotPlatform): string {
     : nameOrMention(platform, row.donorPlatformId, row.donorName)
   const entriesLine = row.action === 'discoteca.doarclc'
     ? `Discografia inteira de **${escapeMarkdown(row.artistName ?? 'artista removido')}** (${row.entries.length} item(ns))`
-    : row.entries.map(e => `${e.type === 'album' ? '💽' : '🎵'} ${escapeMarkdown(e.name)}${e.count > 1 ? ` (${e.count}x)` : ''}`).join(', ') || `${row.entries.length} item(ns)`
+    : renderEntriesLine(row.entries)
   const statusLine = row.revertedAt
     ? `↩️ revertida por **${nameOrMention(platform, row.revertedByAdminPlatformId, row.revertedByAdminName)}** em ${formatDate(row.revertedAt)}`
     : `Pra cancelar: \`/doacaocancelardisco ${row.id}\``
