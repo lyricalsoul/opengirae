@@ -6,10 +6,12 @@ import { StorefrontDB } from '@girae/database/storefront'
 import { CardsDB } from '@girae/database/cards'
 import { VanitiesDB } from '@girae/database/vanities'
 import { AuctionsDB } from '@girae/database/auctions'
+import { DiscotecaDB } from '@girae/database/discoteca'
 import { info } from '@girae/common/logger'
 import { announceNewSubcategory, announceNewCardsGroup, groupCardsBySubcategory } from './services/cards/contentAnnouncements'
 import { announceNewVanityItems } from './services/vanity/vanityAnnouncements'
-import { sendOutbidNotifications, sendResolutionNotifications, sendAuctionWatchNotifications } from './services/auctions/notifications'
+import { announceNewArtist, announceNewEntriesGroup, groupEntriesByArtist } from './services/discoteca/discotecaAnnouncements'
+import { sendOutbidNotifications, sendResolutionNotifications } from './services/auctions/notifications'
 
 const ANNOUNCEMENT_LOOKBACK_MS = 60 * 60 * 1000
 
@@ -60,6 +62,16 @@ export class CronJobs {
       const claimed = await VanitiesDB.claimUnannouncedStoreItems(type, schedTime, cutoff)
       if (claimed.length > 0) await announceNewVanityItems(chatId, threadId, type, schedTime)
     }
+
+    const newArtists = await DiscotecaDB.claimUnannouncedArtists(cutoff)
+    for (const artist of newArtists) {
+      await announceNewArtist(chatId, threadId, artist)
+    }
+
+    const newEntries = await DiscotecaDB.claimUnannouncedEntries(cutoff)
+    for (const group of groupEntriesByArtist(newEntries)) {
+      await announceNewEntriesGroup(chatId, threadId, group, schedTime)
+    }
   }
 
   @DBOS.workflow()
@@ -67,7 +79,6 @@ export class CronJobs {
     await AuctionsDB.sweepExpiredAuctions(schedTime)
     await sendOutbidNotifications()
     await sendResolutionNotifications()
-    await sendAuctionWatchNotifications()
   }
 
   @DBOS.workflow()
