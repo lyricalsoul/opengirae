@@ -24,7 +24,6 @@ describe("/mergecards", () => {
     const ctx = fakeCtx({ name: 'mergecards', authorId: admin.platformId, platform: 'telegram', workflowID });
 
     const handle = await DBOS.startWorkflow(MergeCardsCommand, { workflowID }).execute(ctx, { source: await CardsDB.getCardWithDetails(source.id), target: await CardsDB.getCardWithDetails(target.id) });
-    await new Promise(r => setTimeout(r, 500)); // let it reach DBOS.recv and register the listener
     await DBOS.send(workflowID, { value: true }, 'mergecards:confirm');
     await handle.getResult();
 

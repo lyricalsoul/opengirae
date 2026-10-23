@@ -19,7 +19,7 @@ describe("/cativeiros", () => {
 
   test("with no eligible cards, execute() resolves without throwing", async () => {
     const ctx = fakeCtx({ name: 'cativeiros', authorId, platform: 'none' });
-    await expect(CativeirosCommand.execute(ctx)).resolves.toBeUndefined();
+    await CativeirosCommand.execute(ctx);
   });
 
   describe("renderPage content", () => {

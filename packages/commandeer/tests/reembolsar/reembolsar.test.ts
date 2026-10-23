@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll, beforeEach } from "bun:test";
-import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures } from "@girae/tests";
+import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures, awaitRecv } from "@girae/tests";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { VanitiesDB, REFUND_WINDOW_MS } from "@girae/database/vanities";
 import { db } from "@girae/database/index";
@@ -42,7 +42,7 @@ describe("/reembolsar refunds a store purchase made within the last 1h", () => {
     const workflowID = `test-reembolsar-${Bun.randomUUIDv7()}`;
     const ctx = runCtx(itemIdArg !== undefined ? [String(itemIdArg)] : [], workflowID);
     const handle = await DBOS.startWorkflow(ReembolsarCommand, { workflowID }).execute(ctx, { itemId: itemIdArg });
-    await new Promise(r => setTimeout(r, 500));
+    await awaitRecv(workflowID)
     return { workflowID, handle };
   }
 

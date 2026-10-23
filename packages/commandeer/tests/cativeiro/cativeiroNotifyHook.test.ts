@@ -26,18 +26,18 @@ describe("CativeiroNotifyHook.onCardsNew", () => {
   });
 
   test("a crossing (previousCount below, newCount at/above threshold) resolves without throwing", async () => {
-    await expect(CativeiroNotifyHook.onCardsNew({ ...baseEvent(), previousCount: 4, newCount: 5 })).resolves.toBeUndefined();
+    await CativeiroNotifyHook.onCardsNew({ ...baseEvent(), previousCount: 4, newCount: 5 });
   });
 
   test("no crossing (already past threshold before this gain) resolves without throwing", async () => {
-    await expect(CativeiroNotifyHook.onCardsNew({ ...baseEvent(), previousCount: 5, newCount: 6 })).resolves.toBeUndefined();
+    await CativeiroNotifyHook.onCardsNew({ ...baseEvent(), previousCount: 5, newCount: 6 });
   });
 
   test("not yet reaching the threshold resolves without throwing", async () => {
-    await expect(CativeiroNotifyHook.onCardsNew({ ...baseEvent(), previousCount: 2, newCount: 3 })).resolves.toBeUndefined();
+    await CativeiroNotifyHook.onCardsNew({ ...baseEvent(), previousCount: 2, newCount: 3 });
   });
 
   test("a nonexistent cardId is handled gracefully", async () => {
-    await expect(CativeiroNotifyHook.onCardsNew({ ...baseEvent(), cardId: 999999999, previousCount: 4, newCount: 5 })).resolves.toBeUndefined();
+    await CativeiroNotifyHook.onCardsNew({ ...baseEvent(), cardId: 999999999, previousCount: 4, newCount: 5 });
   });
 });

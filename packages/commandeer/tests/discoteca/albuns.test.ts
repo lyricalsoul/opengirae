@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures, anyRarityId } from "@girae/tests";
+import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures, anyRarityId, lastReply } from "@girae/tests";
 import { DiscotecaDB } from "@girae/database/discoteca";
 import { CardsDB } from "@girae/database/cards";
 import { CommandArgumentType, type CommandArgumentSpec } from "@girae/common/commands";
@@ -37,9 +37,7 @@ describe("/albuns", () => {
     sentMessages.length = 0;
     const ctx = fakeCtx({ name: 'albuns', authorId: userPlatformId, args: [], platform: 'telegram' });
     await AlbunsCommand.execute(ctx, { query: undefined });
-    await new Promise(r => setTimeout(r, 1000));
-
-    const last = sentMessages[sentMessages.length - 1]!;
+    const last = await lastReply(sentMessages);
     const text = last.text ?? last.caption ?? '';
     expect(text).toContain('Álbuns da discoteca');
     expect(text).not.toContain(`<code>${singleId}</code>`);
@@ -77,9 +75,7 @@ describe("/albuns", () => {
     sentMessages.length = 0;
     const ctx = fakeCtx({ name: 'albuns', authorId: userPlatformId, args: [], platform: 'telegram' });
     await AlbunsCommand.execute(ctx, { query: entry! });
-    await new Promise(r => setTimeout(r, 1000));
-
-    const last = sentMessages[sentMessages.length - 1]!;
+    const last = await lastReply(sentMessages);
     expect(last.method).toBe('sendPhoto');
   });
 
@@ -107,9 +103,7 @@ describe("/albuns", () => {
     sentMessages.length = 0;
     const ctx = fakeCtx({ name: 'albuns', authorId: userPlatformId, args: [], platform: 'telegram' });
     await AlbunsCommand.execute(ctx, { query: entry! });
-    await new Promise(r => setTimeout(r, 1000));
-
-    const last = sentMessages[sentMessages.length - 1]!;
+    const last = await lastReply(sentMessages);
     expect(last.method).toBe('sendPhoto');
     const text = last.text ?? last.caption ?? '';
     expect(text).toContain(singleName);
@@ -131,9 +125,7 @@ describe("/albuns", () => {
     sentMessages.length = 0;
     const ctx = fakeCtx({ name: 'albuns', authorId: userPlatformId, args: [], platform: 'telegram' });
     await AlbunsCommand.execute(ctx, { query: entry! });
-    await new Promise(r => setTimeout(r, 1000));
-
-    const last = sentMessages[sentMessages.length - 1]!;
+    const last = await lastReply(sentMessages);
     const text = last.text ?? last.caption ?? '';
     expect(text).toContain(`<code>${cardId}</code>`);
     expect(text).not.toContain('x0');
@@ -154,9 +146,7 @@ describe("/albuns", () => {
     sentMessages.length = 0;
     const ctx = fakeCtx({ name: 'albuns', authorId: userPlatformId, args: [], platform: 'telegram' });
     await AlbunsCommand.execute(ctx, { query: entry! });
-    await new Promise(r => setTimeout(r, 1000));
-
-    const last = sentMessages[sentMessages.length - 1]!;
+    const last = await lastReply(sentMessages);
     const text = last.text ?? last.caption ?? '';
     expect(text).toMatch(/Álbuns de Alternativo \d+, Pop \d+, e Rock \d+/);
   });
@@ -175,9 +165,7 @@ describe("/albuns", () => {
     sentMessages.length = 0;
     const ctx = fakeCtx({ name: 'albuns', authorId: userPlatformId, args: [], platform: 'telegram' });
     await AlbunsCommand.execute(ctx, { query: entry! });
-    await new Promise(r => setTimeout(r, 1000));
-
-    const last = sentMessages[sentMessages.length - 1]!;
+    const last = await lastReply(sentMessages);
     expect(last.method).toBe('sendAnimation');
     expect(last.animation).toBe('https://example.com/animated-art.mp4');
   });

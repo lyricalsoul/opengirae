@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { bgImage } from '$lib/css';
 	import { Card } from 'konsta/svelte';
 
 	type Item = { id: number; title: string; description: string; price: number; itemURL: string };
@@ -17,7 +18,7 @@
 	{#snippet header()}
 		<div
 			class="ios:-mx-4 ios:-mt-4 ios:-mb-4 material:rounded-xl aspect-3/1 bg-cover bg-center"
-			style={`background-image: url(${item.itemURL})`}
+			style={bgImage(item.itemURL)}
 		></div>
 	{/snippet}
 	<div class="min-w-0">

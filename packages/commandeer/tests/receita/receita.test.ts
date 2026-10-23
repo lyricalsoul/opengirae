@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures } from "@girae/tests";
+import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures, lastReply } from "@girae/tests";
 import { db } from "@girae/database/index";
 import { users } from "@girae/database/schemas/users";
 import { EconomyDB } from "@girae/database/economy";
@@ -26,10 +26,8 @@ describe("/receita shows the treasury total and the caller's contribution", () =
   test("the reply shows both the treasury balance and the caller's own contribution, formatted", async () => {
     sentMessages.length = 0;
     await ReceitaCommand.execute(fakeCtx({ name: 'receita', authorId, platform: 'telegram' }));
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
+    const last = await lastReply(sentMessages);
     const state = await EconomyDB.getState();
-    const last = sentMessages[sentMessages.length - 1]!;
     const text = last.text ?? last.caption ?? '';
 
     const formatter = new Intl.NumberFormat('pt-BR');

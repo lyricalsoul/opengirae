@@ -8,6 +8,9 @@ import { resolveStaffAndTarget } from '../../services/users/staffGrant'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 
+// int4 column ceiling - anything bigger would fail inside postgres with no reply
+const MAX_AMOUNT = 2_000_000_000
+
 export default class TirarCommand extends Command {
   static override info = {
     guards: ['isAdmin', 'staffGroupOnly'],
@@ -27,7 +30,7 @@ export default class TirarCommand extends Command {
     { name: 'target', type: CommandArgumentType.USER_MENTION, description: 'Usuário' },
   ])
   static async takeCoins(ctx: IncomingCommand, args: { amount: number; target: string }) {
-    if (args.amount <= 0) { await reply(ctx, '💸 A quantidade tem que ser maior que zero.'); return }
+    if (!Number.isInteger(args.amount) || args.amount <= 0 || args.amount > MAX_AMOUNT) { await reply(ctx, '💸 A quantidade tem que ser um número inteiro maior que zero.'); return }
 
     const resolved = await resolveStaffAndTarget(ctx, args.target)
     if (!resolved) return
@@ -53,7 +56,7 @@ export default class TirarCommand extends Command {
     { name: 'target', type: CommandArgumentType.USER_MENTION, description: 'Usuário' },
   ])
   static async takeGiros(ctx: IncomingCommand, args: { amount: number; target: string }) {
-    if (args.amount <= 0) { await reply(ctx, '🎲 A quantidade tem que ser maior que zero.'); return }
+    if (!Number.isInteger(args.amount) || args.amount <= 0 || args.amount > MAX_AMOUNT) { await reply(ctx, '🎲 A quantidade tem que ser um número inteiro maior que zero.'); return }
 
     const resolved = await resolveStaffAndTarget(ctx, args.target)
     if (!resolved) return
@@ -79,7 +82,7 @@ export default class TirarCommand extends Command {
     card: NonNullable<Awaited<ReturnType<typeof CardsDB.getCardWithDetails>>>
     target: string
   }) {
-    if (args.amount <= 0) { await reply(ctx, '🃏 A quantidade tem que ser maior que zero.'); return }
+    if (!Number.isInteger(args.amount) || args.amount <= 0 || args.amount > MAX_AMOUNT) { await reply(ctx, '🃏 A quantidade tem que ser um número inteiro maior que zero.'); return }
 
     const resolved = await resolveStaffAndTarget(ctx, args.target)
     if (!resolved) return

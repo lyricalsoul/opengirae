@@ -55,6 +55,28 @@ export const GIRO_PACKAGE_TIERS = [
   { giros: 30, price: 50000 },
 ] as const;
 
+
+// every FK into users that mergeUsers handles via the generic loop below (the older tables are handled inline in mergeUsers). A new table referencing users must be added here or inline - tests/users/mergeUsersCoverage.test.ts fails otherwise, and an uncovered FK makes the final DELETE FROM users abort every /link for that account.
+// keyed: unique on (userId, ...keys), so the secondary's row is dropped when main already has the same key. plain: no uniqueness, just repointed.
+export const MERGE_KEYED_TABLES: ReadonlyArray<{ table: string; keys: readonly string[] }> = [
+  { table: 'subcategory_goals', keys: ['subcategoryId'] },
+  { table: 'subcategory_completion_rewards', keys: ['subcategoryId'] },
+  { table: 'promo_code_redemptions', keys: ['promoCodeId'] },
+  { table: 'storefront_purchases', keys: ['cardId', 'storefrontId'] },
+  { table: 'discoteca_wishlist', keys: ['entryId'] },
+  { table: 'auction_watches', keys: ['cardId'] },
+  { table: 'hipoteca_sessions', keys: [] },
+];
+export const MERGE_PLAIN_REFS: ReadonlyArray<{ table: string; column: string }> = [
+  { table: 'auctions', column: 'sellerId' },
+  { table: 'auctions', column: 'currentBidderId' },
+  { table: 'auction_bids', column: 'bidderId' },
+  { table: 'auction_watch_notifications', column: 'userId' },
+  { table: 'card_customization_submissions', column: 'userId' },
+  { table: 'hipoteca_sessions', column: 'staffId' },
+  { table: 'audit_logs', column: 'revertedByAdminId' },
+];
+
 export class UsersDB {
   static listUsers = maybeTransaction('listUsers', async (client, opts: {
     limit?: number; offset?: number; query?: string; sortField?: UserSortField; sortDir?: 'asc' | 'desc';
@@ -193,6 +215,8 @@ export class UsersDB {
 
   // unlike spendCoins, doesn't touch the treasury or treasuryContributed - this is a confiscation, not a purchase.
   static removeCoins = maybeTransaction('removeCoins', async (client, userId: number, amount: number): Promise<boolean> => {
+    // a negative amount would pass the gte check and mint coins
+    if (!Number.isInteger(amount) || amount <= 0) return false;
     const [updated] = await client
       .update(users)
       .set({ coins: sql`${users.coins} - ${amount}` })
@@ -207,6 +231,7 @@ export class UsersDB {
 
   // player-to-player transfer (e.g. /pix) - unlike spendCoins, doesn't touch the treasury since nothing is being bought
   static transferCoins = maybeTransaction('transferCoins', async (client, fromUserId: number, toUserId: number, amount: number): Promise<boolean> => {
+    if (!Number.isInteger(amount) || amount <= 0) return false;
     const [spendRow] = await client
       .update(users)
       .set({ coins: sql`${users.coins} - ${amount}` })
@@ -214,7 +239,9 @@ export class UsersDB {
       .returning();
     if (!spendRow) return false;
 
-    await client.update(users).set({ coins: sql`${users.coins} + ${amount}` }).where(eq(users.id, toUserId));
+    const [credited] = await client.update(users).set({ coins: sql`${users.coins} + ${amount}` }).where(eq(users.id, toUserId)).returning({ id: users.id });
+    // the debit above is only safe to commit if somebody actually got the coins - throwing rolls it back
+    if (!credited) throw new Error(`transferCoins: recipient ${toUserId} does not exist`);
     return true;
   })
 
@@ -451,6 +478,8 @@ export class UsersDB {
     // snapshot everything mergeUsers is about to touch on the secondary side, BEFORE any
     // mutation - this is what UsersDB.undoLastMergeForUser rebuilds the account from later.
     const [secondaryUser] = await client.select().from(users).where(eq(users.id, secondaryUserId));
+    // a second concurrent merge of the same secondary would otherwise log a snapshot-less 'users.merge' row that /unlink then picks first and chokes on
+    if (!secondaryUser) throw new Error(`mergeUsers: secondary user ${secondaryUserId} no longer exists`);
     const [secondaryProfile] = await client.select().from(userProfiles).where(eq(userProfiles.userId, secondaryUserId));
     const [mainProfile] = await client.select().from(userProfiles).where(eq(userProfiles.userId, mainUserId));
     const secondaryCardsSnapshot = await client.select({ cardId: userCards.cardId, count: userCards.count, tradable: userCards.tradable }).from(userCards).where(eq(userCards.userId, secondaryUserId));
@@ -505,13 +534,44 @@ export class UsersDB {
     await client.update(trades).set({ user1Id: mainUserId }).where(eq(trades.user1Id, secondaryUserId));
     await client.update(trades).set({ user2Id: mainUserId }).where(eq(trades.user2Id, secondaryUserId));
 
+    // user_discoteca is a counted pile like user_cards: sum into main's row, move the rest.
+    await client.execute(sql`
+      UPDATE user_discoteca m SET count = m.count + s.count, "updatedAt" = now()
+      FROM user_discoteca s WHERE s."userId" = ${secondaryUserId} AND m."userId" = ${mainUserId} AND m."entryId" = s."entryId"
+    `);
+    await client.execute(sql`
+      UPDATE user_discoteca s SET "userId" = ${mainUserId}
+      WHERE s."userId" = ${secondaryUserId} AND NOT EXISTS (SELECT 1 FROM user_discoteca m WHERE m."userId" = ${mainUserId} AND m."entryId" = s."entryId")
+    `);
+    await client.execute(sql`DELETE FROM user_discoteca WHERE "userId" = ${secondaryUserId}`);
+
+    for (const { table, keys } of MERGE_KEYED_TABLES) {
+      const t = sql.identifier(table);
+      const sameKey = keys.length ? sql.join(keys.map(k => sql` AND m.${sql.identifier(k)} = s.${sql.identifier(k)}`), sql``) : sql``;
+      await client.execute(sql`
+        UPDATE ${t} s SET "userId" = ${mainUserId}
+        WHERE s."userId" = ${secondaryUserId} AND NOT EXISTS (SELECT 1 FROM ${t} m WHERE m."userId" = ${mainUserId}${sameKey})
+      `);
+      await client.execute(sql`DELETE FROM ${t} WHERE "userId" = ${secondaryUserId}`);
+    }
+    for (const { table, column } of MERGE_PLAIN_REFS) {
+      if (table === 'card_customization_submissions') {
+        // at most one pending submission per (user, card): drop the secondary's pending duplicate instead of violating that index
+        await client.execute(sql`
+          DELETE FROM card_customization_submissions s WHERE s."userId" = ${secondaryUserId} AND s.status = 'pending'
+            AND EXISTS (SELECT 1 FROM card_customization_submissions m WHERE m."userId" = ${mainUserId} AND m.status = 'pending' AND m."cardId" = s."cardId")
+        `);
+      }
+      await client.execute(sql`UPDATE ${sql.identifier(table)} SET ${sql.identifier(column)} = ${mainUserId} WHERE ${sql.identifier(column)} = ${secondaryUserId}`);
+    }
+
     // main's singular fields already win by construction - just delete what's left of secondary.
     await client.delete(userProfiles).where(eq(userProfiles.userId, secondaryUserId));
     await client.delete(users).where(eq(users.id, secondaryUserId));
 
     const snapshot: MergeSnapshot = {
       mainUserId, secondaryUserId,
-      secondaryUser: secondaryUser!,
+      secondaryUser,
       secondaryProfile: secondaryProfile ?? null,
       dissolvedMarriages,
       userCards: secondaryCardsSnapshot,
@@ -556,7 +616,8 @@ export class UsersDB {
 
     const { id: _oldId, createdAt, updatedAt: _updatedAt, avatarUpdatedAt, supportChannelCheckedAt, coins: secondaryCoins, ...secondaryUserRest } = secondaryUser;
 
-    const [mainUserRow] = await client.select({ coins: users.coins }).from(users).where(eq(users.id, snapMainId));
+    // FOR UPDATE: the clamp below reads main's balance and then subtracts it, so main can't spend in between
+    const [mainUserRow] = await client.select({ coins: users.coins }).from(users).where(eq(users.id, snapMainId)).for('update');
     const coinsReturned = Math.min(secondaryCoins, mainUserRow?.coins ?? 0);
     const coinsShortfall = secondaryCoins - coinsReturned;
 
@@ -574,7 +635,7 @@ export class UsersDB {
     let reputationShortfall = 0;
     if (secondaryProfile) {
       const { id: _profId, userId: _profUserId, createdAt: profCreatedAt, updatedAt: _profUpdatedAt, isMarried: _im, partnerId: _pid, reputation: secondaryReputation, ...profileRest } = secondaryProfile;
-      const [mainProfileRow] = await client.select({ reputation: userProfiles.reputation }).from(userProfiles).where(eq(userProfiles.userId, snapMainId));
+      const [mainProfileRow] = await client.select({ reputation: userProfiles.reputation }).from(userProfiles).where(eq(userProfiles.userId, snapMainId)).for('update');
       reputationReturned = Math.min(secondaryReputation, mainProfileRow?.reputation ?? 0);
       reputationShortfall = secondaryReputation - reputationReturned;
 
@@ -620,7 +681,7 @@ export class UsersDB {
 
     const cardShortfalls: Array<{ cardId: number; requested: number; returned: number }> = [];
     for (const c of snap.userCards) {
-      const [row] = await client.select({ count: userCards.count }).from(userCards).where(and(eq(userCards.userId, snapMainId), eq(userCards.cardId, c.cardId)));
+      const [row] = await client.select({ count: userCards.count }).from(userCards).where(and(eq(userCards.userId, snapMainId), eq(userCards.cardId, c.cardId))).for('update');
       const available = row?.count ?? 0;
       const returned = Math.min(c.count, available);
       if (returned < c.count) cardShortfalls.push({ cardId: c.cardId, requested: c.count, returned });

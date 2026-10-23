@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures } from "@girae/tests";
+import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures, awaitRecv } from "@girae/tests";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { db } from "@girae/database/index";
 import { users } from "@girae/database/schemas/users";
@@ -46,7 +46,7 @@ describe("/pix transfers coins directly between users, without touching the trea
     const workflowID = `test-pix-${Bun.randomUUIDv7()}`;
     const ctx = runCtx([target, amountRaw], workflowID);
     const handle = await DBOS.startWorkflow(PixCommand, { workflowID }).execute(ctx, { target, amountRaw });
-    await new Promise(r => setTimeout(r, 500));
+    await awaitRecv(workflowID)
     return { workflowID, handle };
   }
 
@@ -89,21 +89,21 @@ describe("/pix transfers coins directly between users, without touching the trea
   test("donating to yourself resolves without throwing and moves nothing", async () => {
     await setCoins(senderId, 10000);
     const ctx = fakeCtx({ name: 'pix', authorId: senderPlatformId, args: [senderPlatformId, '2000'], platform: 'telegram' });
-    await expect(PixCommand.execute(ctx, { target: senderPlatformId, amountRaw: '2000' })).resolves.toBeUndefined();
+    await PixCommand.execute(ctx, { target: senderPlatformId, amountRaw: '2000' });
     expect(await coinsOf(senderId)).toBe(10000);
   });
 
   test("a negative amount is refused without prompting", async () => {
     await setCoins(senderId, 10000);
     const ctx = fakeCtx({ name: 'pix', authorId: senderPlatformId, args: [recipientPlatformId, '-500'], platform: 'telegram' });
-    await expect(PixCommand.execute(ctx, { target: recipientPlatformId, amountRaw: '-500' })).resolves.toBeUndefined();
+    await PixCommand.execute(ctx, { target: recipientPlatformId, amountRaw: '-500' });
     expect(await coinsOf(senderId)).toBe(10000);
   });
 
   test("a decimal amount cancels without prompting", async () => {
     await setCoins(senderId, 10000);
     const ctx = fakeCtx({ name: 'pix', authorId: senderPlatformId, args: [recipientPlatformId, '1000.5'], platform: 'telegram' });
-    await expect(PixCommand.execute(ctx, { target: recipientPlatformId, amountRaw: '1000.5' })).resolves.toBeUndefined();
+    await PixCommand.execute(ctx, { target: recipientPlatformId, amountRaw: '1000.5' });
     expect(await coinsOf(senderId)).toBe(10000);
   });
 
@@ -111,7 +111,7 @@ describe("/pix transfers coins directly between users, without touching the trea
     await setCoins(senderId, 1500);
     const recipientBefore = await coinsOf(recipientId);
     const ctx = fakeCtx({ name: 'pix', authorId: senderPlatformId, args: [recipientPlatformId, '999999'], platform: 'telegram' });
-    await expect(PixCommand.execute(ctx, { target: recipientPlatformId, amountRaw: '999999' })).resolves.toBeUndefined();
+    await PixCommand.execute(ctx, { target: recipientPlatformId, amountRaw: '999999' });
     expect(await coinsOf(senderId)).toBe(1500);
     expect(await coinsOf(recipientId)).toBe(recipientBefore);
   });
@@ -119,14 +119,14 @@ describe("/pix transfers coins directly between users, without touching the trea
   test("below the 1000-coin minimum is refused without prompting", async () => {
     await setCoins(senderId, 10000);
     const ctx = fakeCtx({ name: 'pix', authorId: senderPlatformId, args: [recipientPlatformId, '500'], platform: 'telegram' });
-    await expect(PixCommand.execute(ctx, { target: recipientPlatformId, amountRaw: '500' })).resolves.toBeUndefined();
+    await PixCommand.execute(ctx, { target: recipientPlatformId, amountRaw: '500' });
     expect(await coinsOf(senderId)).toBe(10000);
   });
 
   test("a target who never used the bot is refused without prompting", async () => {
     await setCoins(senderId, 10000);
     const ctx = fakeCtx({ name: 'pix', authorId: senderPlatformId, args: ['999999999', '2000'], platform: 'telegram' });
-    await expect(PixCommand.execute(ctx, { target: '999999999', amountRaw: '2000' })).resolves.toBeUndefined();
+    await PixCommand.execute(ctx, { target: '999999999', amountRaw: '2000' });
     expect(await coinsOf(senderId)).toBe(10000);
   });
 

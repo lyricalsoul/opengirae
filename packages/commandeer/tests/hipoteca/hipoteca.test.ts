@@ -45,7 +45,6 @@ describe("/hipoteca toggles a hold on a user's legendary cards", () => {
     const handle = await DBOS.startWorkflow(HipotecaCommand, { workflowID }).execute(runCtx, { target: targetPlatformId });
 
     // give the workflow a moment to reach DBOS.recv and register the confirm listener
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: true }, 'hipoteca:confirm');
     await handle.getResult();
 
@@ -61,7 +60,6 @@ describe("/hipoteca toggles a hold on a user's legendary cards", () => {
     const runCtx = fakeCtx({ name: 'hipoteca', authorId: staffPlatformId, args: [`@${targetPlatformId}`], platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(HipotecaCommand, { workflowID }).execute(runCtx, { target: targetPlatformId });
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: true }, 'hipoteca:confirm');
     await handle.getResult();
 

@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures } from "@girae/tests";
+import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures, awaitRecv } from "@girae/tests";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { CardsDB } from "@girae/database/cards";
 import { db } from "@girae/database/index";
@@ -48,11 +48,11 @@ describe("/doar (and its alias /micar) donate cards as a one-sided trade", () =>
     return row?.count ?? 0;
   }
 
-  async function runToConfirm(args: string[]) {
+  async function runToConfirm(args: string[], targetPlatformId = recipientPlatformId) {
     const workflowID = `test-doar-${Bun.randomUUIDv7()}`;
     const ctx = runCtx(args, workflowID);
-    const handle = await DBOS.startWorkflow(DoarCommand, { workflowID }).execute(ctx, { target: recipientPlatformId, cardsRaw: args.join(' ') });
-    await new Promise(r => setTimeout(r, 500));
+    const handle = await DBOS.startWorkflow(DoarCommand, { workflowID }).execute(ctx, { target: targetPlatformId, cardsRaw: args.join(' ') });
+    await awaitRecv(workflowID)
     return { workflowID, handle };
   }
 
@@ -132,7 +132,6 @@ describe("/doar (and its alias /micar) donate cards as a one-sided trade", () =>
     const workflowID = `test-doar-star-${Bun.randomUUIDv7()}`;
     const ctx = fakeCtx({ name: 'doar', authorId: bulkDonorPlatformId, args: ['*'], platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(DoarCommand, { workflowID }).execute(ctx, { target: recipientPlatformId, cardsRaw: '*' });
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: true }, 'doar:confirm');
     await handle.getResult();
 
@@ -145,55 +144,24 @@ describe("/doar (and its alias /micar) donate cards as a one-sided trade", () =>
   test("donating to yourself resolves without throwing and moves nothing", async () => {
     await fx.ownCard(donorId, cardAId, 1);
     const ctx = fakeCtx({ name: 'doar', authorId: donorPlatformId, args: [String(cardAId)], platform: 'telegram' });
-    await expect(DoarCommand.execute(ctx, { target: donorPlatformId, cardsRaw: String(cardAId) })).resolves.toBeUndefined();
+    await DoarCommand.execute(ctx, { target: donorPlatformId, cardsRaw: String(cardAId) }); // no throw = pass
     expect(await ownedCount(donorId, cardAId)).toBe(1);
   });
 
-  test("blocks the donation when the recipient already has more than 1500 cards", async () => {
+  test("has no recipient card cap: a recipient with over 1500 cards still receives the donation", async () => {
+    // the cap was removed deliberately (eabd5da); this pins that so it can't silently come back half-wired
     const bigRecipientPlatformId = "test-doar-big-recipient";
     const bigRecipientId = (await fx.user({ displayName: "Test Doar Big Recipient", platform: 'telegram', platformId: bigRecipientPlatformId })).id;
-    fx.onCleanup(async () => {
-      await db.delete(userCards).where(eq(userCards.userId, bigRecipientId));
-    });
+    fx.onCleanup(async () => { await db.delete(userCards).where(eq(userCards.userId, bigRecipientId)); });
     // a direct insert, not fx.ownCard() in a loop - 1501 round trips through addUserCard would be needlessly slow here.
     await db.insert(userCards).values({ userId: bigRecipientId, cardId: cardAId, count: 1501 });
 
-    const donorCountBefore = await ownedCount(donorId, cardBId);
     await fx.ownCard(donorId, cardBId, 1);
-    const workflowID = `test-doar-already-over-cap-${Bun.randomUUIDv7()}`;
-    const ctx = fakeCtx({ name: 'doar', authorId: donorPlatformId, args: [String(cardBId)], platform: 'telegram', workflowID });
-    const handle = await DBOS.startWorkflow(DoarCommand, { workflowID }).execute(ctx, { target: bigRecipientPlatformId, cardsRaw: String(cardBId) });
-    await new Promise(r => setTimeout(r, 500));
+    const { workflowID, handle } = await runToConfirm([String(cardBId)], bigRecipientPlatformId);
     await DBOS.send(workflowID, { value: true }, 'doar:confirm');
     await handle.getResult();
 
-    expect(await ownedCount(donorId, cardBId)).toBe(donorCountBefore + 1);
-    expect(await ownedCount(bigRecipientId, cardBId)).toBe(0);
-  }, 10000);
-
-  test("a TOCTOU race: the recipient crosses 1500 cards between the confirm prompt and the click", async () => {
-    const growingRecipientPlatformId = "test-doar-growing-recipient";
-    const growingRecipientId = (await fx.user({ displayName: "Test Doar Growing Recipient", platform: 'telegram', platformId: growingRecipientPlatformId })).id;
-    fx.onCleanup(async () => {
-      await db.delete(userCards).where(eq(userCards.userId, growingRecipientId));
-    });
-    await db.insert(userCards).values({ userId: growingRecipientId, cardId: cardCId, count: 1400 });
-
-    const donorCountBefore = await ownedCount(donorId, cardAId);
-    await fx.ownCard(donorId, cardAId, 1);
-    const workflowID = `test-doar-recipient-cap-${Bun.randomUUIDv7()}`;
-    const ctx = fakeCtx({ name: 'doar', authorId: donorPlatformId, args: [String(cardAId)], platform: 'telegram', workflowID });
-    const handle = await DBOS.startWorkflow(DoarCommand, { workflowID }).execute(ctx, { target: growingRecipientPlatformId, cardsRaw: String(cardAId) });
-    await new Promise(r => setTimeout(r, 500));
-
-    // simulate the recipient crossing the cap while the confirm prompt is still up.
-    await db.update(userCards).set({ count: 1600 }).where(and(eq(userCards.userId, growingRecipientId), eq(userCards.cardId, cardCId)));
-
-    await DBOS.send(workflowID, { value: true }, 'doar:confirm');
-    await handle.getResult();
-
-    expect(await ownedCount(donorId, cardAId)).toBe(donorCountBefore + 1);
-    expect(await ownedCount(growingRecipientId, cardAId)).toBe(0);
+    expect(await ownedCount(bigRecipientId, cardBId)).toBe(1);
   }, 10000);
 
   test("a TOCTOU race: donor loses the card between the confirm prompt and the click", async () => {

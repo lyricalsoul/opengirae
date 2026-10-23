@@ -14,6 +14,7 @@ import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { mention } from '@girae/common/utilities/mention'
 import { error } from '@girae/common/logger'
+import { reportTransferFailure } from '../../services/donations/shared'
 import { sideCtx } from '../../services/syntheticCtx'
 
 const LOCK_TTL_SECONDS = 60 * 60
@@ -420,7 +421,7 @@ export default class TradeDiscoCommand extends Command {
           const who = e.userId === proposerUser.id ? proposerName : targetName
           await reply(ctx, `Não foi possível completar a troca: **${escapeMarkdown(who)}** não tem mais um dos itens oferecidos, ou ele deixou de estar trocável.`)
         } else {
-          await reply(ctx, `Não foi possível completar a troca: ${(e as Error).message}`)
+          await reportTransferFailure(ctx, 'tradedisco', 'troca', e)
         }
         return
       }

@@ -2,6 +2,10 @@
 	import { Page, Navbar, Block, BlockTitle, Preloader, Button, Dialog, DialogButton } from 'konsta/svelte';
 	import { telegramTrpc } from '$lib/trpc/telegramClient';
 	import AuctionBalanceBadge from './AuctionBalanceBadge.svelte';
+	import LoadError from './LoadError.svelte';
+	import { bgImage } from '$lib/css';
+	import { createClock } from '$lib/clock.svelte';
+	import { formatTimeLeft, minimumBidFor } from '$lib/auction';
 
 	let { auctionId, onBack, onChanged }: { auctionId: number; onBack: () => void; onChanged: () => void } = $props();
 
@@ -28,46 +32,34 @@
 
 	let details = $state<Details | null>(null);
 	let loading = $state(true);
+	let loadFailed = $state(false);
 	let bidding = $state(false);
 	let customAmount = $state('');
 	let pendingBidAmount = $state<number | null>(null);
 	let error = $state<string | null>(null);
 	let brokenAvatars = $state(new Set<number>());
-	let now = $state(Date.now());
+	const clock = createClock();
 
 	async function load() {
 		loading = true;
-		details = (await telegramTrpc.telegram.auctions.get.query({ id: auctionId })) as Details | null;
-		loading = false;
+		loadFailed = false;
+		try {
+			details = (await telegramTrpc.telegram.auctions.get.query({ id: auctionId })) as Details | null;
+		} catch {
+			loadFailed = true;
+		} finally {
+			loading = false;
+		}
 	}
 	load();
 
-	$effect(() => {
-		const interval = setInterval(() => (now = Date.now()), 1000);
-		return () => clearInterval(interval);
-	});
-
-	// same format as AuctionRows.svelte's list preview, kept in sync deliberately
-	function timeLeft(expiresAt: string): string {
-		const ms = new Date(expiresAt).getTime() - now;
-		if (ms <= 0) return 'Terminando...';
-		const totalSeconds = Math.floor(ms / 1000);
-		const hours = Math.floor(totalSeconds / 3600);
-		const minutes = Math.floor((totalSeconds % 3600) / 60);
-		if (hours > 0) return `${hours}h ${minutes}min`;
-		return `${minutes}min ${String(totalSeconds % 60).padStart(2, '0')}s`;
-	}
-
-	let msLeft = $derived(details ? new Date(details.auction.expiresAt).getTime() - now : Infinity);
+	let msLeft = $derived(details ? new Date(details.auction.expiresAt).getTime() - clock.now : Infinity);
 	let isUrgent = $derived(msLeft < 2 * 60 * 1000);
 	let isWarning = $derived(msLeft >= 2 * 60 * 1000 && msLeft < 5 * 60 * 1000);
 
+	// the exact rule placeBid enforces (@girae/database/auctionRules) - not a second copy of it
 	function minimumBid(): number {
-		if (!details) return 0;
-		const a = details.auction;
-		const inOvertime = new Date(a.expiresAt).getTime() - Date.now() < 2 * 60 * 1000;
-		const step = inOvertime ? a.overtimeIncrement : a.bidIncrement;
-		return a.currentBid !== null ? a.currentBid + step : a.startingBid;
+		return details ? minimumBidFor(details.auction, Date.now()) : 0;
 	}
 
 	function bidErrorMessage(reason: string): string {
@@ -108,16 +100,23 @@
 		const amount = pendingBidAmount;
 		if (amount === null) return;
 		bidding = true;
-		const result = await telegramTrpc.telegram.auctions.bid.mutate({ auctionId, amount });
-		bidding = false;
-		pendingBidAmount = null;
-		if (!result.ok) {
-			error = bidErrorMessage(result.reason);
-			return;
+		try {
+			const result = await telegramTrpc.telegram.auctions.bid.mutate({ auctionId, amount });
+			pendingBidAmount = null;
+			if (!result.ok) {
+				error = bidErrorMessage(result.reason);
+				return;
+			}
+			customAmount = '';
+			onChanged();
+			await load();
+		} catch {
+			// network/server failure: unlock the dialog instead of leaving it stuck on "bidding"
+			pendingBidAmount = null;
+			error = 'Não deu pra enviar o lance. Verifica a conexão e confere se ele entrou antes de tentar de novo.';
+		} finally {
+			bidding = false;
 		}
-		customAmount = '';
-		onChanged();
-		await load();
 	}
 </script>
 
@@ -133,13 +132,15 @@
 
 	{#if loading}
 		<div class="flex justify-center p-8"><Preloader /></div>
+	{:else if loadFailed}
+		<LoadError onRetry={load} />
 	{:else if !details}
 		<div class="p-8 text-center text-black/55 dark:text-white/55">Leilão não encontrado.</div>
 	{:else}
 		<BlockTitle>{details.categoryEmoji} {details.categoryName}</BlockTitle>
 		<Block class="flex gap-4">
 			{#if details.cardImageUrl}
-				<div class="aspect-3/4 w-1/3 shrink-0 rounded-lg bg-cover bg-center" style={`background-image: url(${details.cardImageUrl})`}></div>
+				<div class="aspect-3/4 w-1/3 shrink-0 rounded-lg bg-cover bg-center" style={bgImage(details.cardImageUrl)}></div>
 			{:else}
 				<div class="flex aspect-3/4 w-1/3 shrink-0 items-center justify-center rounded-lg bg-black/5 dark:bg-white/10">
 					<Preloader />
@@ -158,7 +159,7 @@
 										: 'bg-black/5 text-black/70 dark:bg-white/10 dark:text-white/70'
 							}`}
 						>
-							⏳ {timeLeft(details.auction.expiresAt)}
+							⏳ {formatTimeLeft(details.auction.expiresAt, clock.now)}
 						</span>
 					{/if}
 				</div>
@@ -196,6 +197,7 @@
 					inputmode="numeric"
 					step={details.auction.bidIncrement}
 					min={minimumBid()}
+					aria-label="Valor do lance em moedas"
 					placeholder="Insira o seu valor"
 					value={customAmount}
 					oninput={(e: Event) => (customAmount = (e.target as HTMLInputElement).value)}

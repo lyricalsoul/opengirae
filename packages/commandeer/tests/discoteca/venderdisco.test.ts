@@ -42,7 +42,6 @@ describe("/venderdisco", () => {
     const workflowID = `test-venderdisco-${Bun.randomUUIDv7()}`;
     const ctx = fakeCtx({ name: 'venderdisco', authorId: platformId, platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(VenderDiscoCommand, { workflowID }).execute(ctx, { ids: String(entryAId) });
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: true }, 'venderdisco:confirm');
     await handle.getResult();
 
@@ -57,7 +56,6 @@ describe("/venderdisco", () => {
     const workflowID = `test-venderdisco-cancel-${Bun.randomUUIDv7()}`;
     const ctx = fakeCtx({ name: 'venderdisco', authorId: platformId, platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(VenderDiscoCommand, { workflowID }).execute(ctx, { ids: String(entryBId) });
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: false }, 'venderdisco:confirm');
     await handle.getResult();
 

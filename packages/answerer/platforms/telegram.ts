@@ -95,6 +95,9 @@ async function editMessageMediaRaw(params: {
   return String(json.result?.message_id ?? params.messageId)
 }
 
+// telegram's cap on a media caption (plain messages allow 4096); measured on the html we send, so it errs toward splitting
+const MAX_CAPTION_LENGTH = 1024
+
 export async function sendTelegramAnswer(response: PendingResponse): Promise<SendResult | undefined> {
   const formattedContent = await processMarkdown(response.content);
 
@@ -180,6 +183,23 @@ export async function sendTelegramAnswer(response: PendingResponse): Promise<Sen
           ...buildReplyMarkup(response.buttons)
         })
         return { messageId: msg.id }
+      }
+      if ((formattedContent?.length ?? 0) > MAX_CAPTION_LENGTH) {
+        // over the caption cap telegram rejects the whole send, so the photo goes bare and the text follows as its own message (which keeps the buttons)
+        await tg.sendPhoto({
+          chatId: response.chatId,
+          messageThreadId: response.threadId,
+          photo: photoUrl,
+          ...buildReplyParameters(response.replyToMessageId, true),
+        })
+        const textMsg = await tg.sendMessage({
+          chatId: response.chatId,
+          messageThreadId: response.threadId,
+          text: formattedContent!,
+          parseMode: 'HTML',
+          ...buildReplyMarkup(response.buttons)
+        })
+        return { messageId: textMsg.id }
       }
       const msg = await tg.sendPhoto({
         chatId: response.chatId,

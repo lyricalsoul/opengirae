@@ -5,11 +5,12 @@ import { economy } from "./schemas/economy";
 import { users } from "./schemas/users";
 import { eq, and, or, sql, gte, lte, inArray, ilike, desc, asc, isNull } from "drizzle-orm";
 import { EconomyDB } from "./economy";
+import { computeMinimumBid, ANTI_SNIPE_WINDOW_MS } from "./auctionRules";
+import { CardsDB } from "./cards";
 
 export type Auction = typeof auctions.$inferSelect;
 
 const AUCTION_DURATION_MS = 60 * 60 * 1000; // 1h
-const ANTI_SNIPE_WINDOW_MS = 2 * 60 * 1000; // last 2min of the current expiresAt
 const ANTI_SNIPE_EXTENSION_MS = 2 * 60 * 1000;
 const BID_UNIT = 500;
 const OVERTIME_UNIT = 2000;
@@ -57,12 +58,7 @@ export class AuctionForceCloseError extends Error {
   }
 }
 
-// shared by /lance and the site's "lance mínimo" button, so both suggest exactly what placeBid will accept.
-export function computeMinimumBid(auction: Pick<Auction, 'currentBid' | 'startingBid' | 'bidIncrement' | 'overtimeIncrement' | 'expiresAt'>, now: Date = new Date()): number {
-  const inOvertime = auction.expiresAt.getTime() - now.getTime() < ANTI_SNIPE_WINDOW_MS;
-  if (auction.currentBid === null) return auction.startingBid;
-  return auction.currentBid + (inOvertime ? auction.overtimeIncrement : auction.bidIncrement);
-}
+export { computeMinimumBid };
 
 export class AuctionsDB {
   static getAuction = maybeTransaction('getAuction', async (client, id: number) => {
@@ -299,6 +295,9 @@ export class AuctionsDB {
     const state = await client.select().from(economy).limit(1).then(r => r[0]!);
     if (!state.auctionsEnabled) throw new AuctionCreateError('auctions_disabled');
 
+    // serializes one seller's concurrent creates: the daily-limit count below is check-then-insert, so without this lock four parallel /leilao criar all read 'two so far'
+    await client.select({ id: users.id }).from(users).where(eq(users.id, sellerId)).for('update');
+
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
     const createdToday = await client
@@ -423,6 +422,7 @@ export class AuctionsDB {
       .where(eq(auctions.id, auctionId))
       .returning();
 
+    await AuctionsDB.retireUnqualifiableBids(client, auctionId, { bidderId });
     await client.insert(auctionBids).values({ auctionId, bidderId, amount });
 
     if (amount === auction.capPrice) {
@@ -433,12 +433,28 @@ export class AuctionsDB {
     return { auction: updated!, settled: false };
   })
 
+  // bid rows that can never produce an outbid DM (a later row by the same bidder exists, or - once the auction is over - nobody outbid them) would otherwise sit at notifiedAt IS NULL forever and get rescanned by listUnnotifiedBids every minute.
+  private static async retireUnqualifiableBids(client: DrizzleClient, auctionId: number, opts: { bidderId?: number; auctionOver?: boolean }) {
+    if (opts.bidderId !== undefined) {
+      await client.update(auctionBids).set({ notifiedAt: sql`now()` })
+        .where(and(eq(auctionBids.auctionId, auctionId), eq(auctionBids.bidderId, opts.bidderId), isNull(auctionBids.notifiedAt)));
+    }
+    if (opts.auctionOver) {
+      await client.execute(sql`
+        UPDATE ${auctionBids} b SET "notifiedAt" = now()
+        WHERE b."auctionId" = ${auctionId} AND b."notifiedAt" IS NULL
+          AND NOT EXISTS (SELECT 1 FROM ${auctionBids} b2 WHERE b2."auctionId" = b."auctionId" AND b2.id > b.id AND b2."bidderId" != b."bidderId")
+      `);
+    }
+  }
+
   // shared settlement for placeBid's cap-hit path and the sweep/forceClose below - 'sold' assumes currentBid/currentBidderId are set, 'expired' assumes they aren't.
   private static async settleAuction(client: DrizzleClient, auction: Auction, outcome: 'sold' | 'expired'): Promise<Auction> {
     if (outcome === 'sold') {
       // the bid was already fully debited from the bidder in placeBidTx - withhold the commission from it here, before paying out the seller.
       const state = await client.select({ auctionSaleFeeRate: economy.auctionSaleFeeRate }).from(economy).limit(1).then(r => r[0]!);
-      const saleFeePaid = Math.round(auction.currentBid! * state.auctionSaleFeeRate);
+      // a misconfigured rate above 100% must not turn the payout negative
+      const saleFeePaid = Math.round(auction.currentBid! * Math.min(Math.max(state.auctionSaleFeeRate, 0), 1));
       const payout = auction.currentBid! - saleFeePaid;
 
       await client.update(users).set({ coins: sql`${users.coins} + ${payout}` }).where(eq(users.id, auction.sellerId));
@@ -454,7 +470,11 @@ export class AuctionsDB {
       await client.insert(userCards).values({ userId: auction.currentBidderId!, cardId: auction.cardId, count: 1, tradable: winnerDefault })
         .onConflictDoUpdate({ target: [userCards.userId, userCards.cardId], set: { count: sql`${userCards.count} + 1` } });
 
+      // every other card-granting path claims collection-completion rewards; a won auction must too
+      await CardsDB.claimCompletionsForCardGain(client, auction.currentBidderId!, auction.cardId, await EconomyDB.getIncomeInflationRate());
+
       const [updated] = await client.update(auctions).set({ status: 'sold', saleFeePaid, resolvedAt: new Date() }).where(eq(auctions.id, auction.id)).returning();
+      await AuctionsDB.retireUnqualifiableBids(client, auction.id, { auctionOver: true });
       return updated!;
     }
 
@@ -478,7 +498,14 @@ export class AuctionsDB {
 
   static sweepExpiredAuctions = async (schedTime: Date) => {
     const candidates = await db.select({ id: auctions.id }).from(auctions).where(and(eq(auctions.status, 'active'), lte(auctions.expiresAt, schedTime)));
-    for (const { id } of candidates) await AuctionsDB.settleOneExpired(id, schedTime);
+    for (const { id } of candidates) {
+      // one auction failing to settle must not strand the rest of the batch until the next tick
+      try {
+        await AuctionsDB.settleOneExpired(id, schedTime);
+      } catch (e) {
+        console.error(`sweepExpiredAuctions: auction ${id} failed to settle`, e);
+      }
+    }
   }
 
   // re-checks status='active' AND expiresAt<=schedTime under the lock - a candidate from the unlocked SELECT above may since have been resolved by another tick, or extended by a concurrent anti-snipe bid.
@@ -523,6 +550,7 @@ export class AuctionsDB {
     }
 
     const [updated] = await client.update(auctions).set({ status: 'cancelled', resolvedAt: new Date() }).where(eq(auctions.id, auctionId)).returning();
+    await AuctionsDB.retireUnqualifiableBids(client, auctionId, { auctionOver: true });
     return updated!;
   })
 
@@ -546,7 +574,7 @@ export class AuctionsDB {
   // Mark-after-send (not mark-then-send): a crash mid-send re-reads the same unmarked rows on replay instead of losing them.
 
   // a bid row counts as "outbid" once a later bid from a *different* bidder exists AND it's that bidder's own latest row - the second condition avoids double-notifying a bidder's self-superseded rows after a confirmed self-rebid.
-  static listUnnotifiedBids = maybeTransaction('listUnnotifiedBids', async (client, limit = 50) => {
+  static listUnnotifiedBids = maybeTransaction('listUnnotifiedBids', async (client, limit: number = 50) => {
     const result = await client.execute<{ id: number; auctionId: number; bidderId: number; amount: number }>(sql`
       SELECT b.id, b."auctionId", b."bidderId", b."amount" FROM ${auctionBids} b
       WHERE b."notifiedAt" IS NULL
@@ -562,7 +590,7 @@ export class AuctionsDB {
     await client.update(auctionBids).set({ notifiedAt: sql`now()` }).where(eq(auctionBids.id, id));
   })
 
-  static listUnnotifiedResolutions = maybeTransaction('listUnnotifiedResolutions', async (client, limit = 50) => {
+  static listUnnotifiedResolutions = maybeTransaction('listUnnotifiedResolutions', async (client, limit: number = 50) => {
     return await client
       .select()
       .from(auctions)
@@ -594,7 +622,7 @@ export class AuctionsDB {
   })
 
   // watch-alert outbox, drained by CronJobs.runAuctionSweep - see the INSERT in createAuctionTx above.
-  static listUnnotifiedWatchAlerts = maybeTransaction('listUnnotifiedWatchAlerts', async (client, limit = 50) => {
+  static listUnnotifiedWatchAlerts = maybeTransaction('listUnnotifiedWatchAlerts', async (client, limit: number = 50) => {
     return await client
       .select({ id: auctionWatchNotifications.id, auctionId: auctionWatchNotifications.auctionId, userId: auctionWatchNotifications.userId })
       .from(auctionWatchNotifications)

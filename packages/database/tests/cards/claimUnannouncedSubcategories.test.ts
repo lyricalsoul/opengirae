@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { TestFixtures } from "@girae/tests";
+import { TestFixtures, futureCutoff } from "@girae/tests";
 import { CardsDB } from "../../cards";
 
 describe("CardsDB.claimUnannouncedSubcategories", () => {
@@ -17,7 +17,7 @@ describe("CardsDB.claimUnannouncedSubcategories", () => {
   test("claims a subcategory older than cutoff along with its cards, but only once", async () => {
     const subcategoryId = (await fx.subcategory({ categoryId, name: "Test Claim Subcategory" })).id;
     const cardId = (await fx.card({ name: "Test Claim Card", subcategoryId })).id;
-    const cutoff = new Date();
+    const cutoff = futureCutoff();
 
     const firstRun = await CardsDB.claimUnannouncedSubcategories(cutoff, [subcategoryId]);
     expect(firstRun).toHaveLength(1);
@@ -33,7 +33,7 @@ describe("CardsDB.claimUnannouncedSubcategories", () => {
   test("a subcategory's cards claimed this way are excluded from claimUnannouncedCards", async () => {
     const subcategoryId = (await fx.subcategory({ categoryId, name: "Test Claim Subcategory 2" })).id;
     const cardId = (await fx.card({ name: "Test Claim Card 2", subcategoryId })).id;
-    const cutoff = new Date();
+    const cutoff = futureCutoff();
 
     await CardsDB.claimUnannouncedSubcategories(cutoff, [subcategoryId]);
     const cardRows = await CardsDB.claimUnannouncedCards(cutoff, [cardId]);
@@ -43,14 +43,14 @@ describe("CardsDB.claimUnannouncedSubcategories", () => {
   test("includes a card moved in from elsewhere that was already announced before", async () => {
     const oldSubcategoryId = (await fx.subcategory({ categoryId, name: "Test Claim Subcategory Old" })).id;
     const cardId = (await fx.card({ name: "Test Claim Moved Card", subcategoryId: oldSubcategoryId })).id;
-    const cutoff = new Date();
+    const cutoff = futureCutoff();
     // announce it once under the old subcategory so its cards.announcedAt is already set
     await CardsDB.claimUnannouncedSubcategories(cutoff, [oldSubcategoryId]);
 
     const newSubcategoryId = (await fx.subcategory({ categoryId, name: "Test Claim Subcategory New" })).id;
     await CardsDB.setCardMainSubcategory(cardId, newSubcategoryId);
 
-    const claimed = await CardsDB.claimUnannouncedSubcategories(new Date(), [newSubcategoryId]);
+    const claimed = await CardsDB.claimUnannouncedSubcategories(futureCutoff(), [newSubcategoryId]);
     expect(claimed).toHaveLength(1);
     expect(claimed[0]?.cards.map(c => c.id)).toEqual([cardId]);
   });
@@ -65,7 +65,7 @@ describe("CardsDB.claimUnannouncedSubcategories", () => {
     const rareCardId = (await fx.card({ name: "Test Ordered Rare", rarityId: rare.id, subcategoryId })).id;
     const legendaryCardId = (await fx.card({ name: "Test Ordered Legendary", rarityId: legendary.id, subcategoryId })).id;
 
-    const claimed = await CardsDB.claimUnannouncedSubcategories(new Date(), [subcategoryId]);
+    const claimed = await CardsDB.claimUnannouncedSubcategories(futureCutoff(), [subcategoryId]);
     expect(claimed).toHaveLength(1);
     expect(claimed[0]?.cards.map(c => c.id)).toEqual([legendaryCardId, rareCardId, commonCardId]);
   });

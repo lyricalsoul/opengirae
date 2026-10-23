@@ -1,18 +1,10 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram, fakeCtx, bootstrapCommandeerWorkers, TestFixtures } from "@girae/tests";
+import { mockTelegram, fakeCtx, bootstrapCommandeerWorkers, TestFixtures, waitFor } from "@girae/tests";
 import { CardsDB } from "@girae/database/cards";
 import { executeCommand } from "../../services/commands";
 import EmojicardCommand from "../../commands/cards/emojicard";
 
-const { sentMessages } = mockTelegram();
-
-async function waitForSentMessage(minLength: number, timeoutMs = 5000): Promise<void> {
-  const startTime = Date.now();
-  while (sentMessages.length < minLength) {
-    if (Date.now() - startTime > timeoutMs) throw new Error(`Timeout waiting for sentMessages.length >= ${minLength}`);
-    await new Promise(resolve => setTimeout(resolve, 25));
-  }
-}
+mockTelegram();
 
 describe("/emojicard", () => {
   const fx = new TestFixtures();
@@ -79,14 +71,10 @@ describe("/emojicard", () => {
     await CardsDB.setUserCardCustomEmoji(userId, cardId, '🎉');
     expect((await CardsDB.getUserCard(userId, cardId))?.customEmoji).toBe('🎉');
 
-    const startIndex = sentMessages.length;
     const ctx = fakeCtx({ name: 'emojicard', authorId, args: ['remover', String(cardId)], platform: 'none' });
     await executeCommand(ctx);
-    await waitForSentMessage(startIndex + 1);
 
-    expect((await CardsDB.getUserCard(userId, cardId))?.customEmoji).toBeNull();
-    const msg = sentMessages[sentMessages.length - 1]!;
-    const content = msg.text ?? msg.content ?? "";
-    expect(content).toContain("Removi o emoji personalizado");
+    // platform 'none' replies are dropped by the answerer, so the observable effect is the db row
+    await waitFor(async () => (await CardsDB.getUserCard(userId, cardId))?.customEmoji === null, { label: 'customEmoji cleared' });
   });
 });

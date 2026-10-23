@@ -11,7 +11,7 @@ import { info } from '@girae/common/logger'
 import { announceNewSubcategory, announceNewCardsGroup, groupCardsBySubcategory } from './services/cards/contentAnnouncements'
 import { announceNewVanityItems } from './services/vanity/vanityAnnouncements'
 import { announceNewArtist, announceNewEntriesGroup, groupEntriesByArtist } from './services/discoteca/discotecaAnnouncements'
-import { sendOutbidNotifications, sendResolutionNotifications } from './services/auctions/notifications'
+import { drainAuctionOutboxes } from './services/auctions/notifications'
 
 const ANNOUNCEMENT_LOOKBACK_MS = 60 * 60 * 1000
 
@@ -77,8 +77,7 @@ export class CronJobs {
   @DBOS.workflow()
   static async runAuctionSweep(schedTime: Date) {
     await AuctionsDB.sweepExpiredAuctions(schedTime)
-    await sendOutbidNotifications()
-    await sendResolutionNotifications()
+    await drainAuctionOutboxes()
   }
 
   @DBOS.workflow()

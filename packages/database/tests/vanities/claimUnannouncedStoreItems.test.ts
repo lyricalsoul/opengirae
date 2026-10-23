@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { TestFixtures } from "@girae/tests";
+import { TestFixtures, futureCutoff } from "@girae/tests";
 import { VanitiesDB } from "../../vanities";
 
 describe("VanitiesDB.claimUnannouncedStoreItems", () => {
@@ -11,7 +11,7 @@ describe("VanitiesDB.claimUnannouncedStoreItems", () => {
 
   test("claims a new item, stamping announcedAt with the given schedTime, but only once", async () => {
     const itemId = (await fx.storeItem({ title: `Test Claim BG ${Date.now()}`, type: 'background' })).id;
-    const cutoff = new Date();
+    const cutoff = futureCutoff();
     const schedTime = new Date();
 
     const firstRun = await VanitiesDB.claimUnannouncedStoreItems('background', schedTime, cutoff, [itemId]);
@@ -35,7 +35,7 @@ describe("VanitiesDB.claimUnannouncedStoreItems", () => {
 
   test("claiming one type does not claim an item of the other type", async () => {
     const stickerId = (await fx.storeItem({ title: `Test Claim Sticker ${Date.now()}`, type: 'sticker' })).id;
-    const cutoff = new Date();
+    const cutoff = futureCutoff();
 
     const claimedAsBackground = await VanitiesDB.claimUnannouncedStoreItems('background', new Date(), cutoff, [stickerId]);
     expect(claimedAsBackground).toHaveLength(0);

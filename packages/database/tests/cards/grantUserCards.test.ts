@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { TestFixtures } from "@girae/tests";
+import { TestFixtures, caught } from "@girae/tests";
 import { db } from "../../index";
 import { userCards } from "../../schemas/cards";
 import { eq, and } from "drizzle-orm";
@@ -43,5 +43,15 @@ describe("CardsDB.grantUserCards", () => {
 
     const [row] = await db.select().from(userCards).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
     expect(row?.count).toBe(55);
+  });
+
+  test("reports previousCount/newCount from the write itself and rejects non-positive counts", async () => {
+    await db.delete(userCards).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+    const first = await CardsDB.grantUserCards(userId, cardId, 3, incomeInflationRate);
+    expect([first.previousCount, first.newCount]).toEqual([0, 3]);
+    const second = await CardsDB.grantUserCards(userId, cardId, 2, incomeInflationRate);
+    expect([second.previousCount, second.newCount]).toEqual([3, 5]);
+
+    expect(String(await caught(CardsDB.grantUserCards(userId, cardId, -1, incomeInflationRate)))).toContain('positive integer');
   });
 });

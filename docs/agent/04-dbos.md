@@ -70,9 +70,15 @@ with multiple replicas).
   ])
   ```
   `runAuctionSweep` is the once-a-minute example of the fastest cadence in the system so far —
-  settles expired `/leilao` auctions (`AuctionsDB.sweepExpiredAuctions`) and drains two
-  notification outboxes (`services/auctions/notifications.ts`'s `sendOutbidNotifications`/
-  `sendResolutionNotifications`). The outbox pattern itself is worth knowing about for any future
+  settles expired `/leilao` auctions (`AuctionsDB.sweepExpiredAuctions`, one auction failing to
+  settle is logged and skipped, not fatal to the batch) and drains three notification outboxes
+  through `drainAuctionOutboxes` (`services/auctions/notifications.ts`: outbid, resolution and
+  `/leilao wish` watch alerts) — add any new outbox *there*, not inline in `cron.ts`: a merge once
+  dropped the watch drain from the sweep and the feature silently stopped notifying for weeks
+  (`tests/auctions/outboxes.test.ts` now pins the wiring). The other two schedules in
+  `index.ts` are `storefront-refresh` (every 6h, also runs `announceNewContent`) and
+  `dbos-system-db-cleanup` (daily, deletes finished `dbos.workflow_status` rows older than 3 days
+  by raw SQL against DBOS's own tables - re-check it after a DBOS upgrade). The outbox pattern itself is worth knowing about for any future
   feature the **website** can trigger: `@girae/database` has no messaging access (see
   `02-architecture.md`), so a DB write that needs to notify someone can't just call `reply()`
   inline — it may be running inside a tRPC mutation, not commandeer. Instead the write stamps a

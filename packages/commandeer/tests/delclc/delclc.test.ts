@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures } from "@girae/tests";
+import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures, awaitRecv } from "@girae/tests";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { CardsDB } from "@girae/database/cards";
 import { db } from "@girae/database/index";
@@ -62,7 +62,7 @@ describe("/delclc discards every card a user owns in a collection for coins", ()
     const ctx = runCtx([subcategoryArg], workflowID);
     const subcategory = await CardsDB.getSubcategory(parseInt(subcategoryArg, 10));
     const handle = await DBOS.startWorkflow(DelClcCommand, { workflowID }).execute(ctx, { subcategory: subcategory! });
-    await new Promise(r => setTimeout(r, 500));
+    await awaitRecv(workflowID)
     return { workflowID, handle };
   }
 
@@ -104,7 +104,6 @@ describe("/delclc discards every card a user owns in a collection for coins", ()
     const ctx = runCtx([String(emptySubcategoryId)], workflowID);
     const subcategory = await CardsDB.getSubcategory(emptySubcategoryId);
     const handle = await DBOS.startWorkflow(DelClcCommand, { workflowID }).execute(ctx, { subcategory: subcategory! });
-    await new Promise(r => setTimeout(r, 500));
     let threw: unknown;
     try { await handle.getResult() } catch (e) { threw = e }
     expect(threw).toBeUndefined();

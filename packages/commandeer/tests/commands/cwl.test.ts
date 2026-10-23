@@ -46,7 +46,6 @@ describe("/cwl", () => {
     const workflowID = `test-cwl-${Bun.randomUUIDv7()}`;
     const ctx = fakeCtx({ name: 'cwl', authorId: platformId, platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(ClearWishlistCommand, { workflowID }).execute(ctx, { cardsRaw: undefined });
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: true }, 'cwl:confirm');
     await handle.getResult();
 
@@ -60,7 +59,6 @@ describe("/cwl", () => {
     const workflowID = `test-cwl-cancel-${Bun.randomUUIDv7()}`;
     const ctx = fakeCtx({ name: 'cwl', authorId: platformId, platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(ClearWishlistCommand, { workflowID }).execute(ctx, { cardsRaw: undefined });
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: false }, 'cwl:confirm');
     await handle.getResult();
 
@@ -70,6 +68,6 @@ describe("/cwl", () => {
 
   test("no args, already empty: resolves without prompting", async () => {
     const ctx = fakeCtx({ name: 'cwl', authorId: platformId, platform: 'telegram' });
-    await expect(ClearWishlistCommand.execute(ctx, { cardsRaw: undefined })).resolves.toBeUndefined();
+    await ClearWishlistCommand.execute(ctx, { cardsRaw: undefined });
   });
 });

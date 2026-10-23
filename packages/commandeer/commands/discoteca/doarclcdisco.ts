@@ -3,7 +3,8 @@ import { DBOS } from '@dbos-inc/dbos-sdk'
 import { DiscotecaDB, InsufficientDiscotecaEntryError } from '@girae/database/discoteca'
 import { UsersDB } from '@girae/database/users'
 import { AuditDB } from '@girae/database/audit'
-import { reply, deleteMsg } from '@girae/common/dbos/messaging'
+import { reply } from '@girae/common/dbos/messaging'
+import { resolveDonationParties, confirmByAuthor, reportTransferFailure } from '../../services/donations/shared'
 import { buildCtx } from '../../services/syntheticCtx'
 import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
@@ -33,28 +34,9 @@ export default class DoarClcDiscoCommand extends Command {
     { name: 'artist', type: CommandArgumentType.DISCOTECA_ARTIST },
   ])
   static override async execute(ctx: IncomingCommand, args: { target: string; artist: NonNullable<Awaited<ReturnType<typeof DiscotecaDB.getArtist>>> }) {
-    if (args.target === ctx.message.author.id) {
-      await reply(ctx, 'Você não pode doar itens para você mesmo! 😅')
-      return
-    }
-
-    const platform = ctx.message.platform as 'telegram' | 'discord'
-    const donor = await UsersDB.getUserByPlatformAccount(platform, ctx.message.author.id)
-    if (!donor) return
-    if (donor.isBanned) {
-      await reply(ctx, 'Você está banido de usar a Giraê e não pode doar itens.')
-      return
-    }
-
-    const recipient = await UsersDB.getUserByPlatformAccount(platform, args.target)
-    if (!recipient) {
-      await reply(ctx, 'O usuário mencionado nunca usou a bot! Talvez você marcou a pessoa errada?')
-      return
-    }
-    if (recipient.isBanned) {
-      await reply(ctx, 'Esse usuário está banido de usar a Giraê e não pode receber itens.')
-      return
-    }
+    const parties = await resolveDonationParties(ctx, args.target, 'itens')
+    if (!parties) return
+    const { platform, donor, recipient } = parties
 
     const artistEntries = await DiscotecaDB.getEntriesForArtist(args.artist.id, donor.id)
     const owned = artistEntries.filter(e => e.ownedCount > 0)
@@ -73,16 +55,7 @@ export default class DoarClcDiscoCommand extends Command {
 
     const confirmContent = `Doar toda a sua discografia de **${escapeMarkdown(args.artist.name)}** (**${totalQty}** item(ns)) para **${escapeMarkdown(recipient.displayName)}**?\n\n${list}`
 
-    await reply(ctx, {
-      content: confirmContent,
-      eventName: CONFIRM_EVENT,
-      restricted: 'author',
-      options: [{ title: '✅ Confirmar', data: true }, { title: '❌ Cancelar', data: false }],
-    })
-
-    const confirmSelection = await DBOS.recv<{ value: boolean, messageId?: string }>(CONFIRM_EVENT)
-    if (confirmSelection?.messageId) await deleteMsg(ctx, confirmSelection.messageId)
-    if (!confirmSelection?.value) return
+    if (!(await confirmByAuthor(ctx, CONFIRM_EVENT, confirmContent))) return
 
     try {
       await DiscotecaDB.executeDonation(donor.id, offerA, recipient.id)
@@ -90,7 +63,7 @@ export default class DoarClcDiscoCommand extends Command {
       if (e instanceof InsufficientDiscotecaEntryError) {
         await reply(ctx, 'Não foi possível completar a doação: você não tem mais um dos itens selecionados.')
       } else {
-        await reply(ctx, `Não foi possível completar a doação: ${(e as Error).message}`)
+        await reportTransferFailure(ctx, 'doarclcdisco', 'doação', e)
       }
       return
     }

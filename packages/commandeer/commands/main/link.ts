@@ -4,6 +4,7 @@ import { reply, awaitMultiPartyChoice } from '@girae/common/dbos/messaging'
 import { UsersDB } from '@girae/database/users'
 import { rawClient } from '@girae/common/queue'
 import { invalidateCachedUserId } from '@girae/common/cache/users'
+import { error } from '@girae/common/logger'
 import type { IncomingCommand } from '@girae/common/commands/types'
 
 const LINK_CODE_TTL_SECONDS = 5 * 60
@@ -11,9 +12,19 @@ const LINK_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789' // no ambiguous cha
 
 function generateLinkCode(): string {
   let code = ''
-  for (let i = 0; i < 6; i++) code += LINK_CODE_ALPHABET[Math.floor(Math.random() * LINK_CODE_ALPHABET.length)]
+  // rejection sampling over a csprng: a plain modulo would favour the first alphabet characters
+  const limit = 256 - (256 % LINK_CODE_ALPHABET.length)
+  while (code.length < 6) {
+    for (const byte of crypto.getRandomValues(new Uint8Array(12))) {
+      if (byte < limit && code.length < 6) code += LINK_CODE_ALPHABET[byte % LINK_CODE_ALPHABET.length]
+    }
+  }
   return code
 }
+
+// telegram DMs have positive chat ids, groups negative; discord replies are ephemeral. A code posted in a group lets anyone in it redeem it and merge into the account.
+export const isPrivateLinkChat = (ctx: IncomingCommand) =>
+  ctx.message.platform !== 'telegram' || !ctx.message.chat.id.startsWith('-')
 
 export default class LinkCommand extends Command {
   static override info = {
@@ -26,6 +37,11 @@ export default class LinkCommand extends Command {
 
   @DBOS.workflow()
   static override async execute(ctx: IncomingCommand, args: { code?: string }) {
+    if (!isPrivateLinkChat(ctx)) {
+      await reply(ctx, '🔒 Por segurança, o `/link` só funciona no privado com a bot. Me chama no privado e tenta de novo.')
+      return
+    }
+
     const code = ctx.args[0]?.trim()
     if (code) {
       await redeemCode(ctx, code)
@@ -99,9 +115,18 @@ async function redeemCode(ctx: IncomingCommand, code: string) {
     (['telegram', 'discord'] as const).map(async platform => ({ platform, platformId: await UsersDB.getPlatformIdForUser(secondaryUserId, platform) }))
   )
 
+  // two redeems of the same code racing would both merge - only the SET NX winner proceeds
+  const claimKey = `link:claim:${code.toUpperCase()}`
+  if ((await rawClient.set(claimKey, '1', { EX: 60, NX: true })) !== 'OK') {
+    await reply(ctx, '❌ Esse código já está sendo usado.')
+    return
+  }
+
   try {
     await UsersDB.mergeUsers(mainUserId, secondaryUserId)
-  } catch {
+  } catch (e) {
+    error('link', `mergeUsers(${mainUserId}, ${secondaryUserId}) failed: ${e instanceof Error ? e.message : String(e)}`)
+    await rawClient.del(claimKey)
     await reply(ctx, '❌ Erro ao vincular as contas. Tente novamente com o mesmo código.')
     return
   }
@@ -111,5 +136,6 @@ async function redeemCode(ctx: IncomingCommand, code: string) {
   }
 
   await rawClient.del(`link:code:${code.toUpperCase()}`)
+  await rawClient.del(claimKey)
   await reply(ctx, '✅ Contas vinculadas com sucesso!')
 }

@@ -4,8 +4,8 @@ import { reply, deleteMsg } from '@girae/common/dbos/messaging'
 import { UsersDB } from '@girae/database/users'
 import { AuditDB } from '@girae/database/audit'
 import { CardsDB, DONATION_REVERT_PENALTY_COINS } from '@girae/database/cards'
-import { buildCtx } from '../../services/syntheticCtx'
-import type { IncomingCommand, Platform } from '@girae/common/commands/types'
+import { dmUser } from '../../services/users/dm'
+import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 
 const CONFIRM_EVENT = 'doacaocancelar:confirm'
@@ -80,14 +80,7 @@ export default class DoacaoCancelarCommand extends Command {
       })
       .join(', ')
 
-    if (donor) {
-      for (const platform of ['telegram', 'discord'] as Platform[]) {
-        const donorPlatformId = await UsersDB.getPlatformIdForUser(donor.id, platform)
-        if (!donorPlatformId) continue
-        await reply(buildCtx(platform, donorPlatformId, donor.displayName, donorPlatformId), `Um administrador reverteu a sua doação, você recebeu de volta ${returnedList}.`)
-        break
-      }
-    }
+    if (donor) await dmUser(donor.id, donor.displayName, `Um administrador reverteu a sua doação, você recebeu de volta ${returnedList}.`)
 
     await reply(
       ctx,

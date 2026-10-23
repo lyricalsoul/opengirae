@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures } from "@girae/tests";
+import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures, waitFor } from "@girae/tests";
 import { db } from "@girae/database/index";
 import { users } from "@girae/database/schemas/users";
 import { userCards, cardDrawHistory, categories } from "@girae/database/schemas/cards";
@@ -49,36 +49,33 @@ describe("girar full draw flow (real workers)", () => {
       chatId: chatId(),
       workflowID: `wf-${Date.now()}-${Math.floor(Math.random() * 1e9)}`,
     }));
-    await new Promise(resolve => setTimeout(resolve, 1500));
 
-    const categoryPrompt = sentMessages.slice(startIndex).find(m =>
-      typeof m.text === 'string' && m.text.includes('Escolha uma categoria'));
-    expect(categoryPrompt).toBeDefined();
-    const categoryButton = categoryPrompt!.replyMarkup?.inline_keyboard?.flat()
+    const categoryPrompt = await waitFor(() => sentMessages.slice(startIndex).find(m =>
+      typeof m.text === 'string' && m.text.includes('Escolha uma categoria')), { label: 'category prompt' });
+    const categoryButton = categoryPrompt.replyMarkup?.inline_keyboard?.flat()
       .find((b: any) => b.text?.includes('Test Drawflow Category'));
     expect(categoryButton).toBeDefined();
 
     await processCallback(categoryButton!.callback_data, telegramId, `test-click-cat-${Date.now()}`, 'telegram', chatId(), 'cat-msg-id');
-    await new Promise(resolve => setTimeout(resolve, 1500));
 
-    const subcategoryPrompt = sentMessages.slice(startIndex).find(m =>
-      m.method === 'editMessageText' && typeof m.text === 'string' && m.text.includes('Escolha uma coleção de'));
-    expect(subcategoryPrompt).toBeDefined();
-    const subcategoryButton = subcategoryPrompt!.replyMarkup?.inline_keyboard?.flat()[0];
+    const subcategoryPrompt = await waitFor(() => sentMessages.slice(startIndex).find(m =>
+      m.method === 'editMessageText' && typeof m.text === 'string' && m.text.includes('Escolha uma coleção de')), { label: 'subcategory prompt' });
+    const subcategoryButton = subcategoryPrompt.replyMarkup?.inline_keyboard?.flat()[0];
     expect(subcategoryButton).toBeDefined();
 
     await processCallback(subcategoryButton!.callback_data, telegramId, `test-click-sub-${Date.now()}`, 'telegram', chatId(), 'sub-msg-id');
-    await new Promise(resolve => setTimeout(resolve, 1500));
 
     // editMessageMedia bypasses the telegramsjs mock via a raw fetch(), so assert on DB state instead.
-    const [ownedCard] = await db.select({ count: userCards.count })
+    const ownedCard = await waitFor(() => db.select({ count: userCards.count })
       .from(userCards)
-      .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
-    expect(ownedCard?.count).toBe(1);
+      .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)))
+      .then(r => r[0]), { label: 'the drawn card to be granted' });
+    expect(ownedCard.count).toBe(1);
 
-    const drawHistory = await db.select()
+    const drawHistory = await waitFor(() => db.select()
       .from(cardDrawHistory)
-      .where(and(eq(cardDrawHistory.userId, userId), eq(cardDrawHistory.cardId, cardId)));
+      .where(and(eq(cardDrawHistory.userId, userId), eq(cardDrawHistory.cardId, cardId)))
+      .then(r => r.length ? r : undefined), { label: 'the draw history row' });
     expect(drawHistory.length).toBe(1);
 
     const [user] = await db.select({ usedDraws: users.usedDraws }).from(users).where(eq(users.id, userId));

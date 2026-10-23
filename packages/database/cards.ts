@@ -712,13 +712,7 @@ export class CardsDB {
 
   // grants `count` copies in one write instead of addUserCard's +1 looped N times.
   static grantUserCards = maybeTransaction('grantUserCards', async (client, userId: number, cardId: number, count: number, incomeInflationRate: number) => {
-    const existing = await client
-      .select({ count: userCards.count })
-      .from(userCards)
-      .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)))
-      .limit(1)
-      .then(a => a?.[0]);
-    const previousCount = existing?.count ?? 0;
+    if (!Number.isInteger(count) || count <= 0) throw new Error('grantUserCards: count must be a positive integer');
 
     const user = await client
       .select({ makeCardsTradeableByDefault: users.makeCardsTradeableByDefault })
@@ -727,12 +721,15 @@ export class CardsDB {
       .limit(1)
       .then(a => a?.[0]);
 
-    await client.insert(userCards)
+    // newCount comes back from the upsert itself, so a concurrent grant can't leave previousCount stale
+    const [row] = await client.insert(userCards)
       .values({ userId, cardId, count, tradable: user?.makeCardsTradeableByDefault ?? false })
-      .onConflictDoUpdate({ target: [userCards.userId, userCards.cardId], set: { count: sql`${userCards.count} + ${count}` } });
+      .onConflictDoUpdate({ target: [userCards.userId, userCards.cardId], set: { count: sql`${userCards.count} + ${count}` } })
+      .returning({ count: userCards.count });
+    const newCount = row!.count;
 
     const completedSubcategories = await CardsDB.claimCompletionsForCardGain(client, userId, cardId, incomeInflationRate);
-    return { previousCount, newCount: previousCount + count, completedSubcategories };
+    return { previousCount: newCount - count, newCount, completedSubcategories };
   })
 
   // unlike discardUserCards, awards no coins - this is a confiscation, not a voluntary discard.
@@ -746,7 +743,7 @@ export class CardsDB {
       .where(eq(cards.id, cardId))
       .limit(1)
       .then(a => a?.[0]);
-    if (!cardRow) return { ok: false };
+    if (!cardRow || !Number.isInteger(count) || count <= 0) return { ok: false };
 
     const [updated] = await client
       .update(userCards)
@@ -767,120 +764,23 @@ export class CardsDB {
     return { ok: true, remainingCount: updated.count };
   })
 
-  static executeTrade = maybeTransaction('executeTrade', async (
-    client,
-    userAId: number, offerA: { cardId: number; count: number }[],
-    userBId: number, offerB: { cardId: number; count: number }[],
+  // the one trade implementation: plain (not maybeTransaction-wrapped) so executeTrade and executeMixedTrade can both call it inside their own transaction without nesting one.
+  static async executeMixedTradeWithClient(
+    client: DrizzleClient,
+    userAId: number, cardOfferA: { cardId: number; count: number }[], discoOfferA: { entryId: number; count: number }[],
+    userBId: number, cardOfferB: { cardId: number; count: number }[], discoOfferB: { entryId: number; count: number }[],
     incomeInflationRate: number,
-  ) => {
+  ) {
     if (userAId === userBId) throw new Error('executeTrade: userAId and userBId must differ');
-    for (const offer of [offerA, offerB]) {
+    for (const offer of [cardOfferA, cardOfferB]) {
       const ids = offer.map(o => o.cardId);
       if (new Set(ids).size !== ids.length) throw new Error('executeTrade: an offer must not list the same cardId twice');
       if (offer.some(o => o.count <= 0)) throw new Error('executeTrade: offer counts must be positive');
     }
-
-    // pre-fetch thresholds for every offered card up front, avoiding an N+1 in decrement().
-    const allOfferedCardIds = [...offerA, ...offerB].map(o => o.cardId);
-    const thresholds = allOfferedCardIds.length
-      ? await client
-        .select({ cardId: cards.id, cativeiroThreshold: rarities.cativeiroThreshold })
-        .from(cards)
-        .innerJoin(rarities, eq(rarities.id, cards.rarityId))
-        .where(inArray(cards.id, allOfferedCardIds))
-      : [];
-    const thresholdByCardId = new Map(thresholds.map(t => [t.cardId, t.cativeiroThreshold]));
-
-    // needed so a newly-received card (no existing userCards row) respects the recipient's /autotroca default.
-    const tradeableDefaults = await client
-      .select({ id: users.id, makeCardsTradeableByDefault: users.makeCardsTradeableByDefault })
-      .from(users)
-      .where(inArray(users.id, [userAId, userBId]));
-    const defaultTradableByUserId = new Map(tradeableDefaults.map(u => [u.id, u.makeCardsTradeableByDefault]));
-
-    const decrement = async (userId: number, cardId: number, count: number) => {
-      const [row] = await client
-        .update(userCards)
-        .set({ count: sql`${userCards.count} - ${count}` })
-        .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId), gte(userCards.count, count)))
-        .returning();
-      if (!row) throw new InsufficientCardError(userId, cardId);
-      if (row.count === 0) {
-        await client.delete(userCards).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
-        return;
-      }
-
-      // no longer eligible - clear any customization.
-      const threshold = thresholdByCardId.get(cardId) ?? 0;
-      if (row.count < threshold) {
-        await client
-          .update(userCards)
-          .set({ customEmoji: null, customMediaUrl: null, customMediaType: null })
-          .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
-      }
-    };
-
-    const crossings: { userId: number; cardId: number; previousCount: number; newCount: number; completedSubcategories?: CompletedSubcategory[] }[] = [];
-
-    const increment = async (userId: number, cardId: number, count: number) => {
-      const existing = await client
-        .select()
-        .from(userCards)
-        .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)))
-        .limit(1)
-        .then(a => a?.[0]);
-
-      const previousCount = existing?.count ?? 0;
-
-      if (existing) {
-        await client
-          .update(userCards)
-          .set({ count: sql`${userCards.count} + ${count}` })
-          .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
-      } else {
-        await client.insert(userCards).values({ userId, cardId, count, tradable: defaultTradableByUserId.get(userId) ?? false });
-      }
-
-      const completedSubcategories = await CardsDB.claimCompletionsForCardGain(client, userId, cardId, incomeInflationRate);
-      crossings.push({ userId, cardId, previousCount, newCount: previousCount + count, completedSubcategories });
-    };
-
-    for (const { cardId, count } of offerA) await decrement(userAId, cardId, count);
-    for (const { cardId, count } of offerB) await decrement(userBId, cardId, count);
-    for (const { cardId, count } of offerA) await increment(userBId, cardId, count);
-    for (const { cardId, count } of offerB) await increment(userAId, cardId, count);
-
-    const trade = await client
-      .insert(trades)
-      .values({
-        user1Id: userAId,
-        user2Id: userBId,
-        cardsUser1: offerA.flatMap(o => Array(o.count).fill(o.cardId)),
-        cardsUser2: offerB.flatMap(o => Array(o.count).fill(o.cardId)),
-      })
-      .returning()
-      .then(a => a?.[0]);
-
-    return { trade, crossings };
-  })
-
-  // same as executeTrade (untouched, still the plain card-only path), but each side can also offer Discoteca entries, in one atomic transaction.
-  static executeMixedTrade = maybeTransaction('executeMixedTrade', async (
-    client,
-    userAId: number, cardOfferA: { cardId: number; count: number }[], discoOfferA: { entryId: number; count: number }[],
-    userBId: number, cardOfferB: { cardId: number; count: number }[], discoOfferB: { entryId: number; count: number }[],
-    incomeInflationRate: number,
-  ) => {
-    if (userAId === userBId) throw new Error('executeMixedTrade: userAId and userBId must differ');
-    for (const offer of [cardOfferA, cardOfferB]) {
-      const ids = offer.map(o => o.cardId);
-      if (new Set(ids).size !== ids.length) throw new Error('executeMixedTrade: an offer must not list the same cardId twice');
-      if (offer.some(o => o.count <= 0)) throw new Error('executeMixedTrade: offer counts must be positive');
-    }
     for (const offer of [discoOfferA, discoOfferB]) {
       const ids = offer.map(o => o.entryId);
-      if (new Set(ids).size !== ids.length) throw new Error('executeMixedTrade: an offer must not list the same discoteca entry twice');
-      if (offer.some(o => o.count <= 0)) throw new Error('executeMixedTrade: offer counts must be positive');
+      if (new Set(ids).size !== ids.length) throw new Error('executeTrade: an offer must not list the same discoteca entry twice');
+      if (offer.some(o => o.count <= 0)) throw new Error('executeTrade: offer counts must be positive');
     }
 
     const allOfferedCardIds = [...cardOfferA, ...cardOfferB].map(o => o.cardId);
@@ -923,22 +823,12 @@ export class CardsDB {
     const crossings: { userId: number; cardId: number; previousCount: number; newCount: number; completedSubcategories?: CompletedSubcategory[] }[] = [];
 
     const incrementCard = async (userId: number, cardId: number, count: number) => {
-      const existing = await client
-        .select()
-        .from(userCards)
-        .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)))
-        .limit(1)
-        .then(a => a?.[0]);
-
-      const previousCount = existing?.count ?? 0;
-      if (existing) {
-        await client
-          .update(userCards)
-          .set({ count: sql`${userCards.count} + ${count}` })
-          .where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
-      } else {
-        await client.insert(userCards).values({ userId, cardId, count, tradable: defaultTradableByUserId.get(userId) ?? false });
-      }
+      // previousCount comes from the upsert itself, not a separate read a concurrent grant could outdate
+      const [row] = await client.insert(userCards)
+        .values({ userId, cardId, count, tradable: defaultTradableByUserId.get(userId) ?? false })
+        .onConflictDoUpdate({ target: [userCards.userId, userCards.cardId], set: { count: sql`${userCards.count} + ${count}` } })
+        .returning({ count: userCards.count });
+      const previousCount = row!.count - count;
 
       const completedSubcategories = await CardsDB.claimCompletionsForCardGain(client, userId, cardId, incomeInflationRate);
       crossings.push({ userId, cardId, previousCount, newCount: previousCount + count, completedSubcategories });
@@ -968,7 +858,22 @@ export class CardsDB {
       .then(a => a?.[0]);
 
     return { trade, crossings };
-  })
+  }
+
+  static executeTrade = maybeTransaction('executeTrade', async (
+    client,
+    userAId: number, offerA: { cardId: number; count: number }[],
+    userBId: number, offerB: { cardId: number; count: number }[],
+    incomeInflationRate: number,
+  ) => CardsDB.executeMixedTradeWithClient(client, userAId, offerA, [], userBId, offerB, [], incomeInflationRate))
+
+  // same as executeTrade, but each side can also offer Discoteca entries, in one atomic transaction.
+  static executeMixedTrade = maybeTransaction('executeMixedTrade', async (
+    client,
+    userAId: number, cardOfferA: { cardId: number; count: number }[], discoOfferA: { entryId: number; count: number }[],
+    userBId: number, cardOfferB: { cardId: number; count: number }[], discoOfferB: { entryId: number; count: number }[],
+    incomeInflationRate: number,
+  ) => CardsDB.executeMixedTradeWithClient(client, userAId, cardOfferA, discoOfferA, userBId, cardOfferB, discoOfferB, incomeInflationRate))
 
   // Decrements one copy, deleting at 0 and clearing cativeiro customization below threshold - same shape as executeTrade's decrement(), standalone for AuditDB.revertDonation's one-card-at-a-time calls.
   static async tryDecrementOneWithClient(client: DrizzleClient, userId: number, cardId: number): Promise<boolean> {

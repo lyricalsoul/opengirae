@@ -1,4 +1,5 @@
 import { Command, CommandArgument, CommandArgumentType } from '@girae/common/commands'
+import { reportTransferFailure } from '../../services/donations/shared'
 import { DBOS } from '@dbos-inc/dbos-sdk'
 import { CardsDB } from '@girae/database/cards'
 import { DiscotecaDB, InsufficientDiscotecaEntryError } from '@girae/database/discoteca'
@@ -125,7 +126,7 @@ export default class SimpleTradeDiscoCommand extends Command {
         const who = e.userId === proposerUser.id ? proposerName : targetName
         await reply(ctx, `Não foi possível completar a troca: **${escapeMarkdown(who)}** não tem mais o item oferecido, ou ele deixou de estar trocável.`)
       } else {
-        await reply(ctx, `Não foi possível completar a troca: ${(e as Error).message}`)
+        await reportTransferFailure(ctx, 'stradedisco', 'troca', e)
       }
       return
     }

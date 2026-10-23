@@ -53,6 +53,30 @@ and when to reach for each.
 `packages/common/inbound/handler.ts`, and if one exists, resumes the waiting
 DBOS workflow via `DBOS.send` instead of being dropped.
 
+## Mini App / website conventions
+
+- **Rules shared with the server live in `@girae/database/auctionRules`** (pure, no db
+  imports, safe in the browser bundle): `computeMinimumBid` is what `placeBid`, `/leilao lance`
+  and the site's "lance mínimo" button all use. Don't re-implement a server rule in a `.svelte`
+  file; it drifted once already. Anything importable by the client must stay free of `pg`/drizzle
+  value imports.
+- **Every list goes through `createPaginatedList`** (`lib/paginatedList.svelte.ts`), which now
+  exposes `error` and always clears its loading flags; render `LoadError` (with `onRetry`) when
+  `error && items.length === 0` rather than the empty-state text, which would claim "nothing here".
+- **Any `await` on a tRPC call in a component needs a `try/catch/finally`**: the loading/busy flag
+  is reset in `finally`, or one failed request leaves a dialog or button stuck forever.
+- **Set a background image with `bgImage(url)`** (`lib/css.ts`), never a hand-built
+  `url(${...})`; an unquoted address breaks on spaces/parentheses and can inject css.
+- **`createClock()`** (`lib/clock.svelte.ts`) is the shared ticking `now`; `formatTimeLeft` /
+  `AuctionListRow` / `AuctionStatusChip` are the shared auction list pieces.
+- **An `$effect` tracks every `$state` read synchronously inside functions it calls.** An effect
+  that calls `load()` which reads `offset` re-runs whenever `offset` changes; wrap the call in
+  `untrack` when the effect should only react to its own trigger (`DonationHistoryModal`).
+- **Type-checking the website**: `bun run check` crashes under TypeScript 7 (svelte-check needs the
+  JS compiler API). Running svelte-check through a `require` hook that points `typescript` at the
+  `typescript@6` copy in `node_modules/.bun` works; expect pre-existing noise (`data` typed `{}`,
+  `strong` on `SegmentedButton`) and compare against a baseline instead of aiming for zero.
+
 ## Hooks: reacting to a domain event without coupling the DB layer to messaging
 
 For behavior that should fire whenever something happens (not whenever a
@@ -119,7 +143,11 @@ export default class MyHook {
 `services/cards/cativeiro.ts`, `services/vanity/vanityWizard.ts`,
 `services/gacha/girarClaim.ts`, `services/auctions/notifications.ts` — see
 `04-dbos.md`'s "Scheduled workflows" section for the notification-outbox
-pattern this one implements). Framework-core files that every domain
+pattern this one implements). Cross-command helpers sit beside them: `users/dm.ts`'s `dmUser` (DM a user on
+whichever platform they're linked on - use it, don't re-loop over platforms) and
+`donations/shared.ts` (`resolveDonationParties`/`confirmByAuthor` for the `/doar` family,
+`reportTransferFailure` for any donation/trade that fails unexpectedly - never echo
+`e.message` to the chat, drizzle errors carry the SQL and parameters). Framework-core files that every domain
 depends on — `commandArguments.ts`, `commands.ts`, `guards.ts`,
 `syntheticCtx.ts`, `botInfo.ts`, `supportChannel.ts` — stay flat at
 `services/` root rather than being forced into one domain folder. When adding

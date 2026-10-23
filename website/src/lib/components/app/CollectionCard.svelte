@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { bgImage } from '$lib/css';
 	import { Card, Progressbar, Chip } from 'konsta/svelte';
 	import { telegramTrpc } from '$lib/trpc/telegramClient';
 
@@ -25,7 +26,7 @@
 		{#if collection.imageUrl}
 			<div
 				class="ios:-mx-4 ios:-mt-4 ios:-mb-4 material:rounded-xl flex h-48 items-end bg-cover bg-center p-4 font-bold text-white"
-				style={`background-image: url(${collection.imageUrl})`}
+				style={bgImage(collection.imageUrl)}
 			>
 				<div class="flex items-center gap-2 text-2xl" style="text-shadow: 0 0 5px rgba(0,0,0,0.5)">
 					{collection.subcategoryName}

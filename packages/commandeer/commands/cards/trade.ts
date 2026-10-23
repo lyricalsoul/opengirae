@@ -13,6 +13,7 @@ import type { IncomingCommand } from '@girae/common/commands/types'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
 import { mention } from '@girae/common/utilities/mention'
 import { error } from '@girae/common/logger'
+import { reportTransferFailure } from '../../services/donations/shared'
 import { sideCtx } from '../../services/syntheticCtx'
 import { emitCardsNew } from '../../loaders/hooks'
 
@@ -393,7 +394,7 @@ export default class TradeCommand extends Command {
           const who = e.userId === proposerUser.id ? proposerName : targetName
           await reply(ctx, `Não foi possível completar a troca: **${escapeMarkdown(who)}** não tem mais uma das cartas oferecidas.`)
         } else {
-          await reply(ctx, `Não foi possível completar a troca: ${(e as Error).message}`)
+          await reportTransferFailure(ctx, 'trade', 'troca', e)
         }
         return
       }

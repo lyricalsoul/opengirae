@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { bgImage } from '$lib/css';
 	import { List, Checkbox, Stepper } from 'konsta/svelte';
 	import { scale, slide } from 'svelte/transition';
 
@@ -52,7 +53,7 @@
 					</div>
 				{/if}
 				{#if card.imageUrl}
-					<div class="aspect-3/4 w-12 shrink-0 rounded-lg bg-cover bg-center {readOnly && !card.tradable ? 'grayscale opacity-60' : ''}" style={`background-image: url(${card.imageUrl})`}></div>
+					<div class="aspect-3/4 w-12 shrink-0 rounded-lg bg-cover bg-center {readOnly && !card.tradable ? 'grayscale opacity-60' : ''}" style={bgImage(card.imageUrl)}></div>
 				{:else}
 					<div class="aspect-3/4 w-12 shrink-0 rounded-lg bg-black/10 dark:bg-white/10"></div>
 				{/if}

@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { TestFixtures } from "@girae/tests";
+import { TestFixtures, caught } from "@girae/tests";
 import { db } from "../../index";
 import { users } from "../../schemas/users";
 import { userCards } from "../../schemas/cards";
@@ -53,7 +53,7 @@ describe("StorefrontDB.buyCard", () => {
     const incomeRate = await EconomyDB.getIncomeInflationRate();
     const before = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]!);
 
-    await expect(StorefrontDB.buyCard(userId, cardId, storefrontId, PRICE, incomeRate)).rejects.toBeInstanceOf(StorefrontCardUnavailableError);
+    expect(await caught(StorefrontDB.buyCard(userId, cardId, storefrontId, PRICE, incomeRate))).toBeInstanceOf(StorefrontCardUnavailableError);
 
     const after = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]!);
     expect(after.coins).toBe(before.coins);
@@ -71,6 +71,6 @@ describe("StorefrontDB.buyCard", () => {
     await db.update(users).set({ coins: 200000 }).where(eq(users.id, userId));
     const incomeRate = await EconomyDB.getIncomeInflationRate();
 
-    await expect(StorefrontDB.buyCard(userId, cardId, storefrontId + 999999, PRICE, incomeRate)).rejects.toBeInstanceOf(StorefrontCardUnavailableError);
+    expect(await caught(StorefrontDB.buyCard(userId, cardId, storefrontId + 999999, PRICE, incomeRate))).toBeInstanceOf(StorefrontCardUnavailableError);
   });
 });

@@ -16,11 +16,11 @@ describe("CollectionCompletionNotifyHook.onCardsNew", () => {
   });
 
   test("no completedSubcategories on the event is a no-op", async () => {
-    await expect(CollectionCompletionNotifyHook.onCardsNew(baseEvent())).resolves.toBeUndefined();
+    await CollectionCompletionNotifyHook.onCardsNew(baseEvent());
   });
 
   test("an empty completedSubcategories array is a no-op", async () => {
-    await expect(CollectionCompletionNotifyHook.onCardsNew({ ...baseEvent(), completedSubcategories: [] })).resolves.toBeUndefined();
+    await CollectionCompletionNotifyHook.onCardsNew({ ...baseEvent(), completedSubcategories: [] });
   });
 
   test("one completed subcategory sends exactly one DM with the name and coin amount", async () => {

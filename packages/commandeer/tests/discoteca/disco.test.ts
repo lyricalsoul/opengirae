@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures, anyRarityId } from "@girae/tests";
+import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures, anyRarityId, lastReply } from "@girae/tests";
 import { DiscotecaDB } from "@girae/database/discoteca";
 import { db } from "@girae/database/index";
 import { discotecaEntries, userDiscoteca } from "@girae/database/schemas/discoteca";
@@ -25,9 +25,7 @@ describe("/disco", () => {
   test("no argument, nothing owned yet: empty-state message", async () => {
     const ctx = fakeCtx({ name: 'disco', authorId: userPlatformId, args: [], platform: 'telegram' });
     await DiscoCommand.execute(ctx, { query: undefined });
-    await new Promise(r => setTimeout(r, 1000));
-
-    const last = sentMessages[sentMessages.length - 1]!;
+    const last = await lastReply(sentMessages);
     expect(last.text ?? last.caption).toContain('Você ainda não girou nada da discoteca');
   });
 
@@ -41,13 +39,14 @@ describe("/disco", () => {
     await DiscotecaDB.addUserDiscoteca(userId, ownedEntryId);
     fx.onCleanup(async () => { await db.delete(userDiscoteca).where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, ownedEntryId))); });
 
-    // artists are ordered ascending by id, so fresh ones always land on the last page, not page 0
-    const { totalPages } = await DiscoCommand.discoPage(String(userId), 0) ?? {};
-    const lastPage = (totalPages ?? 1) - 1
-    const page = await DiscoCommand.discoPage(String(userId), lastPage);
+    // page boundaries shift with whatever else is in the db, so read every page instead of guessing which one the fresh artists land on
+    const first = await DiscoCommand.discoPage(String(userId), 0);
+    const pages = [first?.content ?? ''];
+    for (let p = 1; p < (first?.totalPages ?? 1); p++) pages.push((await DiscoCommand.discoPage(String(userId), p))?.content ?? '');
+    const content = pages.join('\n');
 
-    expect(page?.content).toContain(`\`${artistOwnedId}\`. **${ownedName}** (1/1)`);
-    expect(page?.content).toContain(`\`${artistUnownedId}\`. **${unownedName}** (0/1)`);
+    expect(content).toContain(`\`${artistOwnedId}\`. **${ownedName}** (1/1)`);
+    expect(content).toContain(`\`${artistUnownedId}\`. **${unownedName}** (0/1)`);
   });
 
   test("numeric arg resolves via the linked card id, sends the artist's banner", async () => {
@@ -60,9 +59,7 @@ describe("/disco", () => {
     sentMessages.length = 0;
     const ctx = fakeCtx({ name: 'disco', authorId: userPlatformId, args: [String(cardId)], platform: 'telegram' });
     await DiscoCommand.execute(ctx, { query: String(cardId) });
-    await new Promise(r => setTimeout(r, 1000));
-
-    const last = sentMessages[sentMessages.length - 1]!;
+    const last = await lastReply(sentMessages);
     const text = last.text ?? last.caption ?? '';
     expect(text).toContain('Test Disco Album');
     expect(last.photo).toBe("https://example.com/artist-banner.jpg");
@@ -74,9 +71,7 @@ describe("/disco", () => {
     sentMessages.length = 0;
     const ctx = fakeCtx({ name: 'disco', authorId: userPlatformId, args: ['Fuzzy Unique'], platform: 'telegram' });
     await DiscoCommand.execute(ctx, { query: 'Fuzzy Unique' });
-    await new Promise(r => setTimeout(r, 1000));
-
-    const last = sentMessages[sentMessages.length - 1]!;
+    const last = await lastReply(sentMessages);
     const text = last.text ?? last.caption ?? '';
     expect(text).toContain('Test Disco Fuzzy Unique Artist');
   });

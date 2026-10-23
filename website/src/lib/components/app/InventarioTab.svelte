@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { bgImage } from '$lib/css';
 	import { Page, Navbar, Block, BlockFooter, Segmented, SegmentedButton, Preloader, Toolbar, Button, ListInput, Toggle } from 'konsta/svelte';
 	import { telegramTrpc } from '$lib/trpc/telegramClient';
 	import { MAX_BIO_LENGTH } from '@girae/database/constants';
@@ -173,7 +174,7 @@
 			<div
 				class="aspect-3/2 w-full rounded-lg bg-cover bg-center"
 				class:opacity-50={previewLoading}
-				style={`background-image: url(${previewUrl})`}
+				style={bgImage(previewUrl)}
 			></div>
 		{:else}
 			<div class="flex aspect-3/2 w-full items-center justify-center rounded-lg bg-black/5 dark:bg-white/10">
@@ -244,7 +245,7 @@
 					onclick={() => selectItem(item)}
 					class="ios:rounded-2xl material:rounded-xl relative overflow-hidden border-2 bg-black/5 text-left transition-colors dark:bg-white/5 {isSelected(item) ? 'border-primary' : 'border-transparent'}"
 				>
-					<div class="aspect-3/1 bg-cover bg-center" style={`background-image: url(${item.itemURL})`}></div>
+					<div class="aspect-3/1 bg-cover bg-center" style={bgImage(item.itemURL)}></div>
 					<div class="p-2">
 						<div class="truncate text-sm font-bold text-black dark:text-white">{item.title}</div>
 						{#if item.id === (section === 'background' ? equippedBackgroundId : equippedStickerId)}

@@ -21,6 +21,7 @@ import { EconomyDB } from "@girae/database/economy";
 import { VanitiesDB } from "@girae/database/vanities";
 import { DiscotecaDB } from "@girae/database/discoteca";
 import type { Platform } from "@girae/common/commands/types";
+import { deleteById } from "./cascadeDelete";
 
 let cachedRarityId: number | undefined;
 
@@ -62,7 +63,7 @@ export class TestFixtures {
     this.onCleanup(async () => {
       await db.delete(userProfiles).where(eq(userProfiles.userId, id));
       await db.delete(linkedAccounts).where(eq(linkedAccounts.userId, id));
-      await db.delete(users).where(eq(users.id, id));
+      await deleteById("users", id);
     });
 
     return { id, platform, platformId };
@@ -73,14 +74,14 @@ export class TestFixtures {
     const id = row!.id;
     if (opts.cativeiroThreshold !== undefined) await CardsDB.updateRarity(id, { cativeiroThreshold: opts.cativeiroThreshold });
     if (opts.auctionBaseValue !== undefined) await CardsDB.updateRarity(id, { auctionBaseValue: opts.auctionBaseValue });
-    this.onCleanup(async () => { await db.delete(rarities).where(eq(rarities.id, id)); });
+    this.onCleanup(async () => { await deleteById("rarities", id); });
     return { id };
   }
 
   async category(opts: { name: string; emoji?: string } = { name: `Test Category ${Bun.randomUUIDv7()}` }): Promise<{ id: number }> {
     const row = await CardsDB.createCategory(opts.name, opts.emoji);
     const id = row!.id;
-    this.onCleanup(async () => { await db.delete(categories).where(eq(categories.id, id)); });
+    this.onCleanup(async () => { await deleteById("categories", id); });
     return { id };
   }
 
@@ -89,7 +90,7 @@ export class TestFixtures {
     const name = opts.name ?? `Test Genre ${Bun.randomUUIDv7()}`;
     const row = await DiscotecaDB.createGenre(name);
     const id = row!.id;
-    this.onCleanup(async () => { await db.delete(discotecaGenres).where(eq(discotecaGenres.id, id)); });
+    this.onCleanup(async () => { await deleteById("discoteca_genres", id); });
     return { id };
   }
 
@@ -99,7 +100,7 @@ export class TestFixtures {
     const genreId = opts.genreId ?? (await this.discotecaGenre()).id;
     const row = await DiscotecaDB.createSubcategory(genreId, name, opts.emoji ?? '🎵', opts.isAlbum ?? true);
     const id = row!.id;
-    this.onCleanup(async () => { await db.delete(discotecaSubcategories).where(eq(discotecaSubcategories.id, id)); });
+    this.onCleanup(async () => { await deleteById("discoteca_subcategories", id); });
     return { id };
   }
 
@@ -109,7 +110,7 @@ export class TestFixtures {
       opts.name ?? `Test Artist ${Bun.randomUUIDv7()}`,
     );
     const id = row!.id;
-    this.onCleanup(async () => { await db.delete(discotecaArtists).where(eq(discotecaArtists.id, id)); });
+    this.onCleanup(async () => { await deleteById("discoteca_artists", id); });
     return { id };
   }
 
@@ -130,14 +131,14 @@ export class TestFixtures {
       rarityId,
     });
     const id = row!.id;
-    this.onCleanup(async () => { await db.delete(discotecaEntries).where(eq(discotecaEntries.id, id)); });
+    this.onCleanup(async () => { await deleteById("discoteca_entries", id); });
     return { id };
   }
 
   async subcategory(opts: { categoryId: number; name: string }): Promise<{ id: number; categoryId: number; name: string }> {
     const row = await CardsDB.createSubcategory(opts.name, opts.categoryId);
     const id = row!.id;
-    this.onCleanup(async () => { await db.delete(subcategories).where(eq(subcategories.id, id)); });
+    this.onCleanup(async () => { await deleteById("subcategories", id); });
     return { id, categoryId: opts.categoryId, name: opts.name };
   }
 
@@ -154,7 +155,7 @@ export class TestFixtures {
       const id = row!.id;
       this.onCleanup(async () => {
         await db.delete(cardSubcategories).where(eq(cardSubcategories.cardId, id));
-        await db.delete(cards).where(eq(cards.id, id));
+        await deleteById("cards", id);
       });
       return { id };
     }
@@ -163,7 +164,7 @@ export class TestFixtures {
     // one place fixtures does a bare insert rather than calling a *DB method.
     const [row] = await db.insert(cards).values({ name: opts.name, rarityId }).returning();
     const id = row!.id;
-    this.onCleanup(async () => { await db.delete(cards).where(eq(cards.id, id)); });
+    this.onCleanup(async () => { await deleteById("cards", id); });
     return { id };
   }
 
@@ -189,7 +190,7 @@ export class TestFixtures {
       description: opts.description ?? 'test',
     });
     const id = row!.id;
-    this.onCleanup(async () => { await db.delete(storeItems).where(eq(storeItems.id, id)); });
+    this.onCleanup(async () => { await deleteById("store_items", id); });
     return { id };
   }
 

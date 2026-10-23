@@ -1,21 +1,10 @@
 import { AuctionsDB, type Auction } from '@girae/database/auctions'
 import { CardsDB } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
-import { reply, type ButtonSpec } from '@girae/common/dbos/messaging'
-import { buildCtx } from '../syntheticCtx'
+import type { ButtonSpec } from '@girae/common/dbos/messaging'
+import { dmUser } from '../users/dm'
 import { escapeMarkdown } from '@girae/common/utilities/markdown'
-import type { Platform } from '@girae/common/commands/types'
 import { EMOJI } from '../../constants'
-
-// a user can be linked on both platforms - DM whichever one they're actually reachable on, telegram first.
-async function dmUser(userId: number, displayName: string, content: string, buttons?: ButtonSpec[]) {
-  for (const platform of ['telegram', 'discord'] as Platform[]) {
-    const platformId = await UsersDB.getPlatformIdForUser(userId, platform)
-    if (!platformId) continue
-    await reply(buildCtx(platform, platformId, displayName, platformId), buttons ? { content, buttons } : content)
-    return
-  }
-}
 
 const auctionButtons = (auctionId: number): ButtonSpec[] => [
   { text: '👀 Ver leilão', runCommand: { name: 'leilao', args: [String(auctionId)] } },
@@ -32,7 +21,8 @@ export async function sendOutbidNotifications(limit = 50): Promise<void> {
   const pending = await AuctionsDB.listUnnotifiedBids(limit)
   for (const bid of pending) {
     const auctionDetails = await AuctionsDB.getAuction(bid.auctionId)
-    if (!auctionDetails) continue
+    // nothing to render (card/auction gone) - mark it anyway or it is re-read every minute forever
+    if (!auctionDetails) { await AuctionsDB.markBidNotified(bid.id); continue }
     const displayName = await displayNameFor(bid.bidderId)
     const cardName = escapeMarkdown(auctionDetails.cardName)
     await dmUser(
@@ -110,7 +100,7 @@ export async function sendResolutionNotifications(limit = 50): Promise<void> {
   const pending = await AuctionsDB.listUnnotifiedResolutions(limit)
   for (const auction of pending) {
     const card = await CardsDB.getCardWithDetails(auction.cardId)
-    if (!card) continue
+    if (!card) { await AuctionsDB.markResolutionNotified(auction.id); continue }
     await describeResolution(auction, card.name, card.rarityEmoji)
     await AuctionsDB.markResolutionNotified(auction.id)
   }
@@ -135,4 +125,11 @@ export async function sendAuctionWatchNotifications(limit = 50): Promise<void> {
     )
     await AuctionsDB.markWatchAlertNotified(alert.id)
   }
+}
+
+// every outbox runAuctionSweep drains each tick - one entry point so a dropped drain (d3e05ec lost the watch one) is caught by a test instead of silently disabling a feature.
+export async function drainAuctionOutboxes(): Promise<void> {
+  await sendOutbidNotifications()
+  await sendResolutionNotifications()
+  await sendAuctionWatchNotifications()
 }

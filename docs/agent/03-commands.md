@@ -256,6 +256,10 @@ duplicating a workflow's logic behind a "button version."
   `insert(userCards).values(` before adding another card-granting code path
   and make sure whichever one you're adding pulls this same lookup, rather
   than trusting the column default.
+- **Trades have one implementation**: `CardsDB.executeMixedTradeWithClient` (plain, takes
+  the caller's transaction). `executeTrade` and `executeMixedTrade` are thin
+  `maybeTransaction` wrappers over it - change trade behaviour there, once. Same idea in
+  `DiscotecaDB`: every "take N copies" path goes through the private `decrementEntry`.
 - **Any reply rendering a user-sized list (card/entry count) needs a cap** —
   `/doar *`/`/doardisco *` are uncapped, so `/doacoes`/`/doacoesdisco` could
   blow past Telegram's ~4096 char limit; grep `*LIST_LIMIT` for the existing
@@ -381,6 +385,34 @@ instead of trusting a diff by eye.
   await handle.getResult()
   ```
   Assert DB state after `getResult()`, not reply content (see above).
+- **Test helpers that exist so you don't hand-roll flakiness** (`@girae/tests`):
+  - `waitFor(fn, { label })` — poll until `fn` is truthy instead of a fixed
+    `setTimeout` sleep. Poll the *db row* the command changes when you can; it
+    is the only thing that doesn't depend on the reply queue. `platform: 'none'`
+    replies are dropped by the answerer (`answerer/handler.ts`), so they never
+    reach `mockTelegram()` — waiting for a message on that platform just times out.
+  - `lastReply(sentMessages)` — waits until a reply exists and the stream goes quiet, then
+    returns the newest. Use it instead of "sleep 1s, read `sentMessages.at(-1)`", which reads
+    too early under load and then sees whatever stale message was last.
+  - `awaitRecv(workflowID, n)` — resolves once a workflow is parked on its nth `DBOS.recv`
+    (a recv records a `DBOS.sleep` step before blocking). Only needed when the test mutates db
+    state *between the prompt and the click* (the TOCTOU tests). **`DBOS.send` is durable**: a
+    plain `send → getResult()` needs no wait at all, even before the workflow reaches `recv`, and
+    successive sends to one topic are consumed in order. Don't add a sleep "so it can register
+    the listener" — there is no listener to register.
+  - `caught(promise)` — returns what a promise rejected with, for
+    `expect(await caught(p)).toBeInstanceOf(X)`; use it instead of `.rejects`.
+  - `futureCutoff()` — for any "claim everything older than X" call on rows the
+    test just created. Postgres `now()` stamps `createdAt` and can sit a few ms
+    ahead of the host clock, so a plain `new Date()` cutoff misses the row now and then.
+  - `TestFixtures` teardown is FK-aware (`deleteById` falls back to a cascading
+    delete when a parent row is still referenced), so a test that creates a
+    `user_discoteca`/trade/auction row through a real `*DB` method no longer
+    orphans fixtures when it forgets its own cleanup — don't rely on that for
+    rows that outlive the fixture, though.
+  - **Never assert on global state of a shared db** (the global top-1 of a
+    ranking, "the fresh row lands on the last page", "the draw offers my fixture
+    genre"): a populated db breaks all three. Look your own fixtures up by id.
 - **Sequence hygiene**: if a test deletes rows at the current max ID for a
   table (common when the DB already has other data), reset that table's
   identity sequence afterward (`setval(pg_get_serial_sequence(...), MAX(id))`)

@@ -1,4 +1,5 @@
 import { Command, CommandArgument, CommandArgumentType } from '@girae/common/commands'
+import { reportTransferFailure } from '../../services/donations/shared'
 import { DBOS } from '@dbos-inc/dbos-sdk'
 import { CardsDB, InsufficientCardError } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
@@ -115,7 +116,7 @@ export default class SimpleTradeCommand extends Command {
         const who = e.userId === proposerUser.id ? proposerName : targetName
         await reply(ctx, `Não foi possível completar a troca: **${escapeMarkdown(who)}** não tem mais o card oferecido.`)
       } else {
-        await reply(ctx, `Não foi possível completar a troca: ${(e as Error).message}`)
+        await reportTransferFailure(ctx, 'strade', 'troca', e)
       }
       return
     }

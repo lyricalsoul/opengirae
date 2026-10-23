@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures, anyRarityId } from "@girae/tests";
+import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures, anyRarityId, lastReply } from "@girae/tests";
 import { DiscotecaDB } from "@girae/database/discoteca";
 import { db } from "@girae/database/index";
 import { discotecaEntries, discotecaEntrySubcategories } from "@girae/database/schemas/discoteca";
@@ -25,9 +25,7 @@ describe("/generos", () => {
     sentMessages.length = 0;
     const ctx = fakeCtx({ name: 'generos', authorId: userPlatformId, args: [], platform: 'telegram' });
     await GenerosCommand.execute(ctx, { genre: undefined });
-    await new Promise(r => setTimeout(r, 1000));
-
-    const last = sentMessages[sentMessages.length - 1]!;
+    const last = await lastReply(sentMessages);
     const text = last.text ?? last.caption ?? '';
     expect(text).toContain('Gêneros da discoteca');
     expect(text).toContain('Álbuns de Pop');
@@ -53,9 +51,7 @@ describe("/generos", () => {
     sentMessages.length = 0;
     const ctx = fakeCtx({ name: 'generos', authorId: userPlatformId, args: [subcategoryName], platform: 'telegram' });
     await GenerosCommand.execute(ctx, { genre: subcategory! });
-    await new Promise(r => setTimeout(r, 1000));
-
-    const last = sentMessages[sentMessages.length - 1]!;
+    const last = await lastReply(sentMessages);
     const text = last.text ?? last.caption ?? '';
     expect(text).toContain(entryName);
     expect(text).toContain('💽');
@@ -69,9 +65,7 @@ describe("/generos", () => {
     sentMessages.length = 0;
     const ctx = fakeCtx({ name: 'generos', authorId: userPlatformId, args: [subcategoryName], platform: 'telegram' });
     await GenerosCommand.execute(ctx, { genre: subcategory! });
-    await new Promise(r => setTimeout(r, 1000));
-
-    const last = sentMessages[sentMessages.length - 1]!;
+    const last = await lastReply(sentMessages);
     const text = last.text ?? last.caption ?? '';
     expect(text).toContain('Nada para mostrar com esses filtros');
   });

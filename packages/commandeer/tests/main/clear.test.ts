@@ -51,7 +51,6 @@ describe("/clear cativeiro upload cancellation", () => {
     const ctx = fakeCtx({ name: 'clear', authorId, platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(ClearCommand, { workflowID }).execute(ctx);
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: false }, 'clear:cativeiroCancel');
     await handle.getResult();
 
@@ -69,7 +68,6 @@ describe("/clear cativeiro upload cancellation", () => {
     const ctx = fakeCtx({ name: 'clear', authorId, platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(ClearCommand, { workflowID }).execute(ctx);
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: true }, 'clear:cativeiroCancel');
     await handle.getResult();
 

@@ -29,7 +29,7 @@ export const economyRouter = t.router({
 		}),
 
 	setAuctionSaleFeeRate: adminProcedure
-		.input(z.object({ rate: z.number().min(0) }))
+		.input(z.object({ rate: z.number().min(0).max(1) }))
 		.mutation(async ({ input }) => {
 			await EconomyDB.setAuctionSaleFeeRate(input.rate);
 			return EconomyDB.getState();

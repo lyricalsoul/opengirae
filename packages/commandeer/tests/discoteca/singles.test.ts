@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures, anyRarityId } from "@girae/tests";
+import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures, anyRarityId, lastReply, waitFor } from "@girae/tests";
 import { DiscotecaDB } from "@girae/database/discoteca";
 import { CardsDB } from "@girae/database/cards";
 import { EconomyDB } from "@girae/database/economy";
@@ -43,9 +43,7 @@ describe("/singles", () => {
     sentMessages.length = 0;
     const ctx = fakeCtx({ name: 'singles', authorId: userPlatformId, args: [], platform: 'telegram' });
     await SinglesCommand.execute(ctx, { query: undefined });
-    await new Promise(r => setTimeout(r, 1000));
-
-    const last = sentMessages[sentMessages.length - 1]!;
+    const last = await lastReply(sentMessages);
     const text = last.text ?? last.caption ?? '';
     expect(text).toContain('Singles da discoteca');
     expect(text).not.toContain(`<code>${albumId}</code>`);
@@ -82,9 +80,7 @@ describe("/singles", () => {
     sentMessages.length = 0;
     const ctx = fakeCtx({ name: 'singles', authorId: userPlatformId, args: [], platform: 'telegram' });
     await SinglesCommand.execute(ctx, { query: entry! });
-    await new Promise(r => setTimeout(r, 1000));
-
-    const last = sentMessages[sentMessages.length - 1]!;
+    const last = await lastReply(sentMessages);
     expect(last.method).toBe('sendMessage');
   });
 
@@ -104,9 +100,7 @@ describe("/singles", () => {
     sentMessages.length = 0;
     const ctx = fakeCtx({ name: 'singles', authorId: userPlatformId, args: [], platform: 'telegram' });
     await SinglesCommand.execute(ctx, { query: entry! });
-    await new Promise(r => setTimeout(r, 1000));
-
-    const last = sentMessages[sentMessages.length - 1]!;
+    const last = await lastReply(sentMessages);
     const text = last.text ?? last.caption ?? '';
     expect(text).toContain(`<code>${cardId}</code>`);
     expect(text).toContain('x1');
@@ -135,23 +129,22 @@ describe("/singles", () => {
     sentMessages.length = 0;
     const ctx = fakeCtx({ name: 'singles', authorId: userPlatformId, args: [], platform: 'telegram' });
     await SinglesCommand.execute(ctx, { query: (await DiscotecaDB.getEntryWithDetails(entryRow!.id))! });
-    await new Promise(r => setTimeout(r, 1000));
-
-    const last = sentMessages[sentMessages.length - 1]!;
+    const last = await lastReply(sentMessages);
     expect(last.method).toBe('sendAudio');
     expect(last.performer).toBe(artistName);
     expect(last.title).toBe(entryName);
 
     // second view should now hit the cached file_id, not the scratch file
-    const updated = await DiscotecaDB.getEntryWithDetails(entryRow!.id);
-    expect(updated?.telegramFileId).toBeTruthy();
+    // persisted by the answerer after the send completes, not before the reply is captured
+    const updated = await waitFor(async () => {
+      const row = await DiscotecaDB.getEntryWithDetails(entryRow!.id);
+      return row?.telegramFileId ? row : undefined;
+    }, { label: 'telegramFileId cached' });
 
     await rm(join(dir, 'preview.m4a'));
     sentMessages.length = 0;
-    await SinglesCommand.execute(ctx, { query: updated! });
-    await new Promise(r => setTimeout(r, 1000));
-
-    const secondSend = sentMessages[sentMessages.length - 1]!;
+    await SinglesCommand.execute(ctx, { query: updated });
+    const secondSend = await lastReply(sentMessages);
     expect(secondSend.method).toBe('sendAudio');
     expect(secondSend.audio).toBe(updated!.telegramFileId);
   });
@@ -164,9 +157,7 @@ describe("/singles", () => {
     sentMessages.length = 0;
     const ctx = fakeCtx({ name: 'singles', authorId: userPlatformId, args: [], platform: 'telegram' });
     await SinglesCommand.execute(ctx, { query: entry! });
-    await new Promise(r => setTimeout(r, 1000));
-
-    const last = sentMessages[sentMessages.length - 1]!;
+    const last = await lastReply(sentMessages);
     expect(last.method).toBe('sendMessage');
   });
 });

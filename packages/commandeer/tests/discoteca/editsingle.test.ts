@@ -50,11 +50,8 @@ describe("/editsingle", () => {
     const runCtx = fakeCtx({ name: 'editsingle', authorId: staffPlatformId, args: [String(entry!.id)], platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(EditSingleCommand, { workflowID }).execute(runCtx, { entry: { id: entry!.id } } as any);
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { action: 'changeAlbum' } }, 'discoteca:confirm');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: String(newAlbum!.id) }, 'discoteca:album');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { action: 'confirm' } }, 'discoteca:confirm');
     await handle.getResult();
 

@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { TestFixtures, mockTelegram, bootstrapCommandeerWorkers } from "@girae/tests";
+import { TestFixtures, mockTelegram, bootstrapCommandeerWorkers, waitFor } from "@girae/tests";
 import { uploadQueue } from "@girae/common/queue";
 import { db } from "@girae/database/index";
 import { cardCustomizationSubmissions } from "@girae/database/schemas/cards";
@@ -32,11 +32,9 @@ describe("uploadWorker", () => {
       ctx: { platform: 'telegram', authorId: 'test-uploader', authorName: 'Test Uploader', chatId: 'test-chat', threadId: undefined },
     });
 
-    await new Promise(r => setTimeout(r, 1500)); // let the worker pick up and process the job
-
-    const pending = await db.select().from(cardCustomizationSubmissions)
+    const pending = await waitFor(() => db.select().from(cardCustomizationSubmissions)
       .where(and(eq(cardCustomizationSubmissions.userId, userId), eq(cardCustomizationSubmissions.cardId, cardId)))
-      .then(rows => rows[0]);
+      .then(rows => rows[0]), { label: 'the worker to create the submission' });
     expect(pending).toBeTruthy();
     expect(pending?.mediaType).toBe('photo');
     expect(pending?.status).toBe('pending');

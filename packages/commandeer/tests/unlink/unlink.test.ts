@@ -17,7 +17,6 @@ const STAFF_GROUP_CHAT_ID = '-1004377125716';
 // Drives a workflow command past its first DBOS.recv, same pattern docs/agent/03-commands.md describes for /hipoteca.
 async function runUnlinkAndChooseMode(ctx: ReturnType<typeof fakeCtx>, args: { target: string }, mode: 'after' | 'before') {
   const handle = await DBOS.startWorkflow(UnlinkCommand, { workflowID: ctx.workflowIDToBeAssigned }).execute(ctx, args);
-  await new Promise(r => setTimeout(r, 500));
   await DBOS.send(ctx.workflowIDToBeAssigned, { value: mode }, 'unlink:mode');
   await handle.getResult();
 }

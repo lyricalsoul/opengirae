@@ -42,11 +42,11 @@ describe("/htroca shows a user's trade history stats", () => {
   }
 
   test("a user with no trades gets the 'nenhuma troca' reply (resolves without throwing)", async () => {
-    await expect(HtrocaCommand.execute(ctx(quietTargetPlatformId), { target: quietTargetPlatformId })).resolves.toBeUndefined();
+    await HtrocaCommand.execute(ctx(quietTargetPlatformId), { target: quietTargetPlatformId });
   });
 
   test("a user with a trade resolves without throwing and the underlying stats are correct", async () => {
-    await expect(HtrocaCommand.execute(ctx(activeTargetPlatformId), { target: activeTargetPlatformId })).resolves.toBeUndefined();
+    await HtrocaCommand.execute(ctx(activeTargetPlatformId), { target: activeTargetPlatformId });
     // per docs/agent/03-commands.md: assert underlying DB state, don't race the reply queue
     const stats = await import("@girae/database/cards").then(m => m.CardsDB.getTradeStats(activeTargetId));
     expect(stats.initiated).toBe(1);
