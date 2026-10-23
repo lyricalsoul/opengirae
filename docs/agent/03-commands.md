@@ -413,6 +413,10 @@ instead of trusting a diff by eye.
   - **Never assert on global state of a shared db** (the global top-1 of a
     ranking, "the fresh row lands on the last page", "the draw offers my fixture
     genre"): a populated db breaks all three. Look your own fixtures up by id.
+  - **CI runs on a fresh db** (migrations plus three rarities, no cards) and a dead
+    S3 placeholder (`localhost:9`). Don't rely on seeded data: the storefront
+    migration seeds nothing there, so use `seedStorefront(fx)`. Tests that write to the bucket
+    (`uploadFromUrl`, the upload worker) use `test.skipIf(!hasRealStorage)`.
 - **Sequence hygiene**: if a test deletes rows at the current max ID for a
   table (common when the DB already has other data), reset that table's
   identity sequence afterward (`setval(pg_get_serial_sequence(...), MAX(id))`)

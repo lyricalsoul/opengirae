@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { TestFixtures, caught } from "@girae/tests";
+import { TestFixtures, caught, seedStorefront } from "@girae/tests";
 import { db } from "../../index";
 import { users } from "../../schemas/users";
 import { userCards } from "../../schemas/cards";
@@ -19,7 +19,7 @@ describe("StorefrontDB.buyCard", () => {
     userId = (await fx.user({ displayName: "Test Buy Storefront Card" })).id;
     await db.update(users).set({ coins: 200000 }).where(eq(users.id, userId));
 
-    const state = await StorefrontDB.getState();
+    const state = await seedStorefront(fx);
     storefrontId = state.id;
     cardId = state.cardIds[0]!;
 

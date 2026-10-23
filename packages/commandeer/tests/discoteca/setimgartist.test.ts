@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram, fakeCtx, TestFixtures } from "@girae/tests";
+import { mockTelegram, fakeCtx, TestFixtures, hasRealStorage } from "@girae/tests";
 import { DiscotecaDB } from "@girae/database/discoteca";
 import { auditLogs } from "@girae/database/schemas/audit";
 import { db } from "@girae/database/index";
@@ -24,7 +24,7 @@ describe("/setimgartist", () => {
 
   afterAll(() => fx.cleanup());
 
-  test("uploads the replied photo and stores it as the artist's banner", async () => {
+  test.skipIf(!hasRealStorage)("uploads the replied photo and stores it as the artist's banner", async () => {
     const artist = await fx.discotecaArtist({ name: "Test Banner Target Artist" });
 
     const originalFetch = fetch;
