@@ -30,9 +30,7 @@ describe("/rep gives reputation once per day, never to yourself", () => {
   }
 
   test("giving rep to yourself is blocked and never mutates anything", async () => {
-    await expect(
-      RepCommand.execute(ctx(giverPlatformId, giverPlatformId), { target: giverPlatformId })
-    ).resolves.toBeUndefined();
+    await RepCommand.execute(ctx(giverPlatformId, giverPlatformId), { target: giverPlatformId });
 
     expect((await UsersDB.getUserById(giverId))!.hasGivenRepToday).toBe(false);
   });

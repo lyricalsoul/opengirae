@@ -1,4 +1,4 @@
-import { test, expect, describe } from "bun:test";
+import { test, expect, describe, afterAll } from "bun:test";
 import { TestFixtures, anyRarityId } from "@girae/tests";
 import { DiscotecaDB } from "../../discoteca";
 import { db } from "../../index";
@@ -7,6 +7,7 @@ import { inArray } from "drizzle-orm";
 
 describe("DiscotecaDB.getEntriesByType", () => {
   const fx = new TestFixtures();
+  afterAll(() => fx.cleanup());
 
   test("only returns entries of the requested type, with pagination and owned counts", async () => {
     const artistId = (await fx.discotecaArtist()).id;
@@ -22,7 +23,7 @@ describe("DiscotecaDB.getEntriesByType", () => {
     const userId = (await fx.user({ displayName: "Test GetByType User", platform: 'telegram', platformId: `test-getbytype-user-${Date.now()}` })).id;
     await DiscotecaDB.addUserDiscoteca(userId, albumId);
 
-    const { rows } = await DiscotecaDB.getEntriesByType('album', userId, 100, 0);
+    const { rows } = await DiscotecaDB.getEntriesByType('album', userId, 100_000, 0);
     const found = rows.find(r => r.id === albumId);
     expect(found).toBeDefined();
     expect(found!.ownedCount).toBe(1);

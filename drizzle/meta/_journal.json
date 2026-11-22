@@ -435,6 +435,13 @@
       "when": 1788322908772,
       "tag": "0061_real_madrox",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1792792007990,
+      "tag": "0062_retire_unqualifiable_bids",
+      "breakpoints": true
     }
   ]
 }

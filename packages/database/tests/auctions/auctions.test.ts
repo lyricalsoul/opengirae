@@ -4,7 +4,7 @@ import { db } from "../../index";
 import { users } from "../../schemas/users";
 import { userCards, auctions, auctionBids, auctionWatches, auctionWatchNotifications, subcategoryCompletionRewards } from "../../schemas/cards";
 import { eq, and, inArray, sql } from "drizzle-orm";
-import { AuctionsDB, type Auction } from "../../auctions";
+import { AuctionsDB, computeMinimumBid, type Auction } from "../../auctions";
 import { CardsDB } from "../../cards";
 import { EconomyDB } from "../../economy";
 import { UsersDB } from "../../users";
@@ -469,6 +469,82 @@ describe("AuctionsDB", () => {
           expect(row.status).toBe('expired');
         }
       }
+    });
+  });
+
+  describe("settlement edge cases", () => {
+    test("winning the last missing card of a collection pays the completion reward, like every other way of gaining a card", async () => {
+      const categoryId = (await fx.category({ name: `Test Leilao Completion Category ${Date.now()}` })).id;
+      const soloSubcategoryId = (await fx.subcategory({ categoryId, name: `Test Leilao Completion Sub ${Date.now()}` })).id;
+      const cardId = (await fx.card({ name: `Test Leilao Completion Card ${Date.now()}`, rarityId, subcategoryId: soloSubcategoryId })).id;
+      fx.onCleanup(async () => { await db.delete(subcategoryCompletionRewards).where(eq(subcategoryCompletionRewards.subcategoryId, soloSubcategoryId)); });
+
+      const sellerId = await freshSeller();
+      await fx.ownCard(sellerId, cardId, 1);
+      await CardsDB.setCardTradable(sellerId, cardId, true);
+      const created = await AuctionsDB.createAuction(sellerId, cardId);
+      if (!created.ok) throw new Error(`fixture setup failed: ${created.reason}`);
+
+      const bidderId = await freshSeller();
+      await AuctionsDB.placeBid(created.auction.id, bidderId, created.auction.startingBid);
+
+      await expireNow(created.auction.id);
+      await AuctionsDB.sweepExpiredAuctions(new Date());
+
+      const rewards = await db.select().from(subcategoryCompletionRewards).where(and(eq(subcategoryCompletionRewards.userId, bidderId), eq(subcategoryCompletionRewards.subcategoryId, soloSubcategoryId)));
+      expect(rewards).toHaveLength(1);
+    });
+
+    test("computeMinimumBid never exceeds the cap, so the cap price itself stays biddable", () => {
+      const base = { startingBid: 1000, bidIncrement: 500, overtimeIncrement: 2000, capPrice: 3000, expiresAt: new Date(Date.now() + 3_600_000) };
+      expect(computeMinimumBid({ ...base, currentBid: 2000 })).toBe(2500);
+      // 2800 + 500 would overshoot the 3000 cap
+      expect(computeMinimumBid({ ...base, currentBid: 2800 })).toBe(3000);
+      expect(computeMinimumBid({ ...base, currentBid: 2000, expiresAt: new Date(Date.now() + 30_000) })).toBe(3000);
+      expect(computeMinimumBid({ ...base, currentBid: null })).toBe(1000);
+    });
+  });
+
+  describe("daily limit under concurrency", () => {
+    test("parallel creates for different cards still stop at 3 per day", async () => {
+      const sellerId = await freshSeller();
+      const cardIds: number[] = [];
+      for (let i = 0; i < 5; i++) {
+        const cardId = await freshCard(`Test Leilao Parallel ${i}`);
+        await fx.ownCard(sellerId, cardId, 1);
+        await CardsDB.setCardTradable(sellerId, cardId, true);
+        cardIds.push(cardId);
+      }
+
+      const results = await Promise.all(cardIds.map(cardId => AuctionsDB.createAuction(sellerId, cardId)));
+      expect(results.filter(r => r.ok)).toHaveLength(3);
+      expect(results.filter(r => !r.ok && r.reason === 'daily_limit')).toHaveLength(2);
+    });
+  });
+
+  describe("outbid-outbox housekeeping", () => {
+    const bidRows = (auctionId: number) => db.select().from(auctionBids).where(eq(auctionBids.auctionId, auctionId)).orderBy(auctionBids.id);
+
+    test("a bidder's superseded rows are retired, an outbid row stays pending until its DM goes out, and ending the auction retires the winner's", async () => {
+      const { sellerId, cardId } = await freshTradableSellerCard("Test Leilao Housekeeping");
+      const created = await AuctionsDB.createAuction(sellerId, cardId);
+      if (!created.ok) throw new Error(`fixture setup failed: ${created.reason}`);
+      const a = created.auction;
+      const [bidderA, bidderB] = [await freshSeller(), await freshSeller()];
+
+      await AuctionsDB.placeBid(a.id, bidderA, a.startingBid);
+      await AuctionsDB.placeBid(a.id, bidderB, a.startingBid + a.bidIncrement);
+      await AuctionsDB.placeBid(a.id, bidderB, a.startingBid + 2 * a.bidIncrement, { allowSelfRebid: true });
+
+      let rows = await bidRows(a.id);
+      expect(rows[0]!.notifiedAt).toBeNull();      // A was outbid by B: its DM is still owed
+      expect(rows[1]!.notifiedAt).not.toBeNull();  // B rebid itself: this row can never qualify
+      expect(rows[2]!.notifiedAt).toBeNull();      // B leads: waits to be outbid or retired
+
+      await AuctionsDB.cancelAuction(a.id, sellerId, { asAdmin: false });
+      rows = await bidRows(a.id);
+      expect(rows[0]!.notifiedAt).toBeNull();      // A's outbid DM is not lost by the auction ending
+      expect(rows[2]!.notifiedAt).not.toBeNull();  // nobody outbid B, so nothing left to send
     });
   });
 

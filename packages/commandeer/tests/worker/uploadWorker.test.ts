@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { TestFixtures, mockTelegram, bootstrapCommandeerWorkers } from "@girae/tests";
+import { TestFixtures, mockTelegram, bootstrapCommandeerWorkers, waitFor, hasRealStorage } from "@girae/tests";
 import { uploadQueue } from "@girae/common/queue";
 import { db } from "@girae/database/index";
 import { cardCustomizationSubmissions } from "@girae/database/schemas/cards";
@@ -24,7 +24,7 @@ describe("uploadWorker", () => {
   // exercises real infra rather than mocking it - see 03-commands.md's testing conventions).
   const TEST_IMAGE_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
 
-  test("processes a queued job into a pending cativeiro submission", async () => {
+  test.skipIf(!hasRealStorage)("processes a queued job into a pending cativeiro submission", async () => {
     await uploadQueue.add('processUpload', {
       userId, cardId,
       photoUrl: TEST_IMAGE_DATA_URI,
@@ -32,11 +32,9 @@ describe("uploadWorker", () => {
       ctx: { platform: 'telegram', authorId: 'test-uploader', authorName: 'Test Uploader', chatId: 'test-chat', threadId: undefined },
     });
 
-    await new Promise(r => setTimeout(r, 1500)); // let the worker pick up and process the job
-
-    const pending = await db.select().from(cardCustomizationSubmissions)
+    const pending = await waitFor(() => db.select().from(cardCustomizationSubmissions)
       .where(and(eq(cardCustomizationSubmissions.userId, userId), eq(cardCustomizationSubmissions.cardId, cardId)))
-      .then(rows => rows[0]);
+      .then(rows => rows[0]), { label: 'the worker to create the submission' });
     expect(pending).toBeTruthy();
     expect(pending?.mediaType).toBe('photo');
     expect(pending?.status).toBe('pending');

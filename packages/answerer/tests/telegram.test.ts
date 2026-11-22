@@ -168,3 +168,22 @@ describe("sendTelegramAnswer editMessageText fallback", () => {
     }
   });
 });
+
+describe("sendTelegramAnswer sendPhoto caption cap", () => {
+  beforeEach(() => { sentMessages.length = 0; });
+
+  test("a caption over 1024 chars goes out as a bare photo plus a text message instead of a doomed sendPhoto", async () => {
+    const content = 'x'.repeat(1500);
+    await sendTelegramAnswer({ method: 'sendPhoto', chatId: '1', platform: 'telegram', content, photoUrl: 'https://example.com/a.jpg' } as any);
+
+    expect(sentMessages.map(m => m.method)).toEqual(['sendPhoto', 'sendMessage']);
+    expect(sentMessages[0]!.caption).toBeUndefined();
+    expect(sentMessages[1]!.text).toContain('x'.repeat(1500));
+  });
+
+  test("a short caption still rides on the photo", async () => {
+    await sendTelegramAnswer({ method: 'sendPhoto', chatId: '1', platform: 'telegram', content: 'oi', photoUrl: 'https://example.com/a.jpg' } as any);
+    expect(sentMessages.map(m => m.method)).toEqual(['sendPhoto']);
+    expect(sentMessages[0]!.caption).toBe('oi');
+  });
+});

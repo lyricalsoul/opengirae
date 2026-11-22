@@ -1,10 +1,17 @@
-import { test, expect, describe } from "bun:test";
+import { test, expect, describe, beforeAll, afterAll } from "bun:test";
+import { TestFixtures, seedStorefront } from "@girae/tests";
 import { StorefrontDB } from "../../storefront";
 
 describe("StorefrontDB.getState", () => {
-  test("reads the singleton row seeded by the storefront migration", async () => {
+  const fx = new TestFixtures();
+  let seeded: Awaited<ReturnType<typeof seedStorefront>>;
+
+  beforeAll(async () => { seeded = await seedStorefront(fx); });
+  afterAll(() => fx.cleanup());
+
+  test("reads the singleton storefront row", async () => {
     const state = await StorefrontDB.getState();
-    expect(state.cardIds.length).toBeGreaterThan(0);
-    expect(state.cardIds.length).toBeLessThanOrEqual(6);
+    expect(state.id).toBe(seeded.id);
+    expect(state.cardIds).toEqual(seeded.cardIds);
   });
 });

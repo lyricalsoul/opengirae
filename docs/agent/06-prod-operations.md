@@ -158,6 +158,8 @@ is doing this manual fix, not a placeholder.
 
 ## Reverting an accidental account merge (`/link`, `/unlink`)
 
+`/link` only runs in a private chat on Telegram (a code posted in a group could be redeemed by anyone in it), and the code is drawn from a CSPRNG.
+
 `/link` doesn't just attach a second platform to an account — it fully
 merges two `users` rows into one (`UsersDB.mergeUsers`): coins and
 reputation are summed, cards/wishlist/bought items are moved over, and the
@@ -184,6 +186,16 @@ have very different safety properties:
   secondary's own `linked_accounts` rows, and any marriage the merge dissolved
   (restored only if the old partner hasn't remarried since — checked against
   live state, not the snapshot).
+  **What it does *not* restore**: everything `mergeUsers` moves through
+  `MERGE_KEYED_TABLES`/`MERGE_PLAIN_REFS` (`packages/database/users.ts`) —
+  Discoteca copies and wishlist, auctions/bids/watches, storefront purchases,
+  goals, completion rewards, promo redemptions — is deliberately not in the
+  snapshot, so after an `/unlink` it stays on the main account. Those tables
+  exist in `mergeUsers` only so the final `DELETE FROM users` doesn't hit a
+  foreign key (every FK into `users` is `NO ACTION`, and a missed one made
+  `/link` abort for any account that had, say, one Discoteca item);
+  `tests/users/mergeUsersCoverage.test.ts` fails when a new FK into `users`
+  isn't covered, so add the new table to one of those two lists.
 - **🔓 Antes da atualização** calls `UsersDB.unlinkAllExcept` instead, for a
   merge from before `mergeUsers` started snapshotting (see "No
   `'users.merge'` audit log at all" below) — see that method's own doc

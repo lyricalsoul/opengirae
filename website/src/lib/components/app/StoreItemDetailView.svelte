@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { bgImage } from '$lib/css';
 	import { Page, Navbar, NavbarBackLink, Block, Button, Preloader, Dialog, DialogButton } from 'konsta/svelte';
 	import { telegramTrpc } from '$lib/trpc/telegramClient';
 
@@ -49,7 +50,11 @@
 
 	async function equip() {
 		showEquipPrompt = false;
-		await telegramTrpc.telegram.store.equip.mutate({ itemId: item.id, type: item.type });
+		try {
+			await telegramTrpc.telegram.store.equip.mutate({ itemId: item.id, type: item.type });
+		} catch {
+			// the item is still owned either way; the next refresh shows what is really equipped
+		}
 		onChanged();
 		onBack();
 	}
@@ -63,7 +68,7 @@
 	</Navbar>
 	<Block>
 		{#if previewUrl}
-			<div class="mb-4 aspect-3/2 w-full rounded-lg bg-cover bg-center" style={`background-image: url(${previewUrl})`}></div>
+			<div class="mb-4 aspect-3/2 w-full rounded-lg bg-cover bg-center" style={bgImage(previewUrl)}></div>
 		{:else}
 			<div class="mb-4 flex aspect-3/2 w-full items-center justify-center rounded-lg bg-black/5 dark:bg-white/10">
 				<Preloader />

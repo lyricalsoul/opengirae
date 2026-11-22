@@ -35,7 +35,7 @@ describe("/upload validation branches (pre-upload)", () => {
 
   test("no id given shows the upload tutorial and doesn't create a submission", async () => {
     const ctx = fakeCtx({ name: 'upload', authorId });
-    await expect(UploadCommand.execute(ctx, { card: undefined })).resolves.toBeUndefined();
+    await UploadCommand.execute(ctx, { card: undefined });
 
     const submissions = await db.select().from(cardCustomizationSubmissions).where(eq(cardCustomizationSubmissions.cardId, cardId));
     expect(submissions).toHaveLength(0);
@@ -43,7 +43,7 @@ describe("/upload validation branches (pre-upload)", () => {
 
   test("no media anywhere on the message resolves without creating a submission", async () => {
     const ctx = fakeCtx({ name: 'upload', authorId, args: [String(cardId)] });
-    await expect(UploadCommand.execute(ctx, { card })).resolves.toBeUndefined();
+    await UploadCommand.execute(ctx, { card });
 
     const submissions = await db.select().from(cardCustomizationSubmissions).where(eq(cardCustomizationSubmissions.cardId, cardId));
     expect(submissions).toHaveLength(0);
@@ -57,7 +57,7 @@ describe("/upload validation branches (pre-upload)", () => {
       replyToIsVideo: true,
       replyToFileSizeBytes: 60 * 1024 * 1024, // over the 20MB cap
     });
-    await expect(UploadCommand.execute(ctx, { card })).resolves.toBeUndefined();
+    await UploadCommand.execute(ctx, { card });
 
     const submissions = await db.select().from(cardCustomizationSubmissions).where(eq(cardCustomizationSubmissions.cardId, cardId));
     expect(submissions).toHaveLength(0);
@@ -73,7 +73,7 @@ describe("/upload validation branches (pre-upload)", () => {
       replyToPhotoUrl: 'https://example.com/big-photo.jpg',
       replyToFileSizeBytes: 60 * 1024 * 1024, // over the 20MB cap, isVideo left unset
     });
-    await expect(UploadCommand.execute(ctx, { card })).resolves.toBeUndefined();
+    await UploadCommand.execute(ctx, { card });
 
     const submissions = await db.select().from(cardCustomizationSubmissions).where(eq(cardCustomizationSubmissions.cardId, cardId));
     expect(submissions).toHaveLength(0);
@@ -89,7 +89,7 @@ describe("/upload validation branches (pre-upload)", () => {
       replyToIsVideo: true,
       replyToFileSizeBytes: 90 * 1024 * 1024, // no replyToPhotoUrl at all
     });
-    await expect(UploadCommand.execute(ctx, { card })).resolves.toBeUndefined();
+    await UploadCommand.execute(ctx, { card });
 
     const submissions = await db.select().from(cardCustomizationSubmissions).where(eq(cardCustomizationSubmissions.cardId, cardId));
     expect(submissions).toHaveLength(0);

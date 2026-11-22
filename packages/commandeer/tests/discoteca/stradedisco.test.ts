@@ -53,7 +53,6 @@ describe("/stradedisco", () => {
     const handle = await DBOS.startWorkflow(SimpleTradeDiscoCommand, { workflowID })
       .execute(ctx, { target: targetPlatformId, myEntry, theirEntry });
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: 'confirm', clickerUserId: targetPlatformId }, 'stradedisco:confirm');
     await handle.getResult();
 

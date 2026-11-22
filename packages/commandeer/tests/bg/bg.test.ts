@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures } from "@girae/tests";
+import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures, lastReply } from "@girae/tests";
 import { EconomyDB } from "@girae/database/economy";
 import { VanitiesDB } from "@girae/database/vanities";
 import BackgroundCommand from "../../commands/vanity/bg";
@@ -31,9 +31,7 @@ describe("/bg shows the inflation-adjusted price for a single item", () => {
     sentMessages.length = 0;
 
     await BackgroundCommand.execute(fakeCtx({ name: 'bg', authorId, platform: 'telegram', args: [String(itemId)] }), { item: resolvedItem as any });
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    const last = sentMessages[sentMessages.length - 1]!;
+    const last = await lastReply(sentMessages);
     const text = last.text ?? last.caption ?? '';
     expect(text).toContain('150 moedas');
     expect(text).not.toContain('100 moedas');

@@ -48,8 +48,8 @@ describe("/naotroco marks one or several cards as non-tradable", () => {
     expect(await CardsDB.isCardTradable(userId, cardAId)).toBe(false);
   });
 
-  test("a not-owned card by ID replies without throwing and marks nothing", async () => {
-    await expect(NaoTrocoCommand.execute(ctxFor([String(unownedCardId)]), { cardsRaw: String(unownedCardId) })).resolves.toBeUndefined();
+  test("a not-owned card by ID replies without throwing", async () => {
+    await NaoTrocoCommand.execute(ctxFor([String(unownedCardId)]), { cardsRaw: String(unownedCardId) });
   });
 
   test("no args shows the non-tradable-cards list instead of the usage message", async () => {

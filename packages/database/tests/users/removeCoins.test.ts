@@ -51,4 +51,11 @@ describe("UsersDB.removeCoins", () => {
     const [user] = await db.select().from(users).where(eq(users.id, userId));
     expect(user!.coins).toBe(0);
   });
+
+  test("a negative amount can't be used to mint coins", async () => {
+    await db.update(users).set({ coins: 1000 }).where(eq(users.id, userId));
+    expect(await UsersDB.removeCoins(userId, -500)).toBe(false);
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    expect(user!.coins).toBe(1000);
+  });
 });

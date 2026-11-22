@@ -85,4 +85,12 @@ describe("/dar grants coins, giros or cards to a target user", () => {
     // no throw = pass; see 03-commands.md on why not `expect(promise).resolves...`
     await DarCommand.giveCoins(ctx(['moedas', '2000', '999999999']), { amount: 2000, target: '999999999' });
   });
+
+  test("moedas: a fractional or absurdly large amount is refused before touching the db", async () => {
+    const [before] = await db.select().from(users).where(eq(users.id, targetId));
+    await DarCommand.giveCoins(ctx(['moedas', '1.5', targetPlatformId]), { amount: 1.5, target: targetPlatformId });
+    await DarCommand.giveCoins(ctx(['moedas', '1e10', targetPlatformId]), { amount: 1e10, target: targetPlatformId });
+    const [after] = await db.select().from(users).where(eq(users.id, targetId));
+    expect(after!.coins).toBe(before!.coins);
+  });
 });

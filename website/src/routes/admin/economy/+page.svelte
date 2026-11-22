@@ -155,19 +155,21 @@
 
 	// --- /leilao sale fee (kill switch lives on the Configurações page, alongside Discoteca's) ---
 
-	let saleFeePercent = $state(String(data.state.auctionSaleFeeRate * 100));
+	// rate * 100 alone shows 0.07 as 7.000000000000001
+	const toPercent = (rate: number) => String(Math.round(rate * 10000) / 100);
+	let saleFeePercent = $state(toPercent(data.state.auctionSaleFeeRate));
 	let savingAuctionFee = $state(false);
 
 	async function saveAuctionFee() {
 		const percent = Number(saleFeePercent);
-		if (isNaN(percent)) {
-			toast.error('Valor inválido');
+		if (isNaN(percent) || percent < 0 || percent > 100) {
+			toast.error('A taxa tem que ficar entre 0% e 100%');
 			return;
 		}
 		savingAuctionFee = true;
 		try {
 			const updated = await trpc().economy.setAuctionSaleFeeRate.mutate({ rate: percent / 100 });
-			saleFeePercent = String(updated.auctionSaleFeeRate * 100);
+			saleFeePercent = toPercent(updated.auctionSaleFeeRate);
 			toast.success('Taxa de venda do leilão atualizada');
 		} catch {
 			toast.error('Falha ao atualizar a taxa de venda do leilão');

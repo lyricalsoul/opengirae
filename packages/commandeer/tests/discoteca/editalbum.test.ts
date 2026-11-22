@@ -41,11 +41,8 @@ describe("/editalbum", () => {
     const runCtx = fakeCtx({ name: 'editalbum', authorId: staffPlatformId, args: [String(entry!.id)], platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(EditAlbumCommand, { workflowID }).execute(runCtx, { entry: { id: entry!.id } } as any);
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { action: 'editName' } }, 'discoteca:confirm');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: "Test Renamed Album Name" }, 'discoteca:name');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { action: 'confirm' } }, 'discoteca:confirm');
     await handle.getResult();
 
@@ -70,7 +67,6 @@ describe("/editalbum", () => {
     const runCtx = fakeCtx({ name: 'editalbum', authorId: staffPlatformId, args: [String(entry!.id)], platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(EditAlbumCommand, { workflowID }).execute(runCtx, { entry: { id: entry!.id } } as any);
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { action: 'confirm' }, messageId: 'fake-preview-msg-id' }, 'discoteca:confirm');
     await handle.getResult();
 
@@ -98,11 +94,8 @@ describe("/editalbum", () => {
     const runCtx = fakeCtx({ name: 'editalbum', authorId: staffPlatformId, args: [String(entry!.id)], platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(EditAlbumCommand, { workflowID }).execute(runCtx, { entry: { id: entry!.id } } as any);
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { action: 'addGenre' } }, 'discoteca:confirm');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: genreName }, 'discoteca:addGenre');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { action: 'confirm' } }, 'discoteca:confirm');
     await handle.getResult();
 

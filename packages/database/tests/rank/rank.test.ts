@@ -91,9 +91,10 @@ describe("RankDB", () => {
   });
 
   test("getTopByCativeiroCount counts distinct cards past cativeiroThreshold, not raw card count", async () => {
-    const [top] = await RankDB.getTopByCativeiroCount("telegram", 1, 0);
-    expect(top?.userId).toBe(catHighId);
-    expect(top?.value).toBe(3);
+    // not the global top-1: a populated db can hold a real user with more cativeiros than this fixture
+    const rows = await RankDB.getTopByCativeiroCount("telegram", 100000, 0);
+    expect(rows.find(r => r.userId === catHighId)?.value).toBe(3);
+    expect(rows.some(r => r.userId === catLowId)).toBe(false);
   });
 
   test("getCativeiroCountPosition is undefined for a user with zero cards past threshold", async () => {

@@ -73,9 +73,7 @@ describe("/addsingle", () => {
     fetch = (async () => new Response(new Uint8Array([0]))) as unknown as typeof fetch;
     const handle = await DBOS.startWorkflow(AddSingleCommand, { workflowID }).execute(runCtx, { query: 'test query' });
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { index: 0 } }, 'discoteca:pick');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { action: 'confirm' } }, 'discoteca:confirm');
     await handle.getResult();
     // @ts-expect-error bun-types declares fetch as a namespace, this reassignment is intentional
@@ -129,9 +127,7 @@ describe("/addsingle", () => {
     const runCtx = fakeCtx({ name: 'addsingle', authorId: staffPlatformId, args: ['test query'], platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(AddSingleCommand, { workflowID }).execute(runCtx, { query: 'test query' });
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { index: 0 } }, 'discoteca:pick');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { action: 'confirm' } }, 'discoteca:confirm');
     await handle.getResult();
 
@@ -173,9 +169,7 @@ describe("/addsingle", () => {
       const runCtx = fakeCtx({ name: 'addsingle', authorId: staffPlatformId, args: ['test query'], platform: 'telegram', workflowID });
       const handle = await DBOS.startWorkflow(AddSingleCommand, { workflowID }).execute(runCtx, { query: 'test query' });
 
-      await new Promise(r => setTimeout(r, 500));
       await DBOS.send(workflowID, { value: { index: 0 } }, 'discoteca:pick');
-      await new Promise(r => setTimeout(r, 500));
       await DBOS.send(workflowID, { value: { action: 'cancel' } }, 'discoteca:confirm');
       await handle.getResult();
     } finally {
@@ -215,14 +209,10 @@ describe("/addsingle", () => {
     const runCtx = fakeCtx({ name: 'addsingle', authorId: staffPlatformId, args: ['test query'], platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(AddSingleCommand, { workflowID }).execute(runCtx, { query: 'test query' });
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { index: 0 } }, 'discoteca:pick');
-    await new Promise(r => setTimeout(r, 500));
     // suggested album is "Test Wrong Album" via the track-name match - override it
     await DBOS.send(workflowID, { value: { action: 'changeAlbum' } }, 'discoteca:confirm');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: String(rightAlbum!.id) }, 'discoteca:album');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { action: 'confirm' } }, 'discoteca:confirm');
     await handle.getResult();
 

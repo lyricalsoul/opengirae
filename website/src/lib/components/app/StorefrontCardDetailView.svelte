@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { bgImage } from '$lib/css';
 	import { Sheet, BlockTitle, Block, Button, Preloader, Dialog, DialogButton } from 'konsta/svelte';
 	import { telegramTrpc } from '$lib/trpc/telegramClient';
 
@@ -27,14 +28,19 @@
 		confirming = false;
 		purchasing = true;
 		purchaseError = null;
-		const result = await telegramTrpc.telegram.storefront.buy.mutate({ cardId: card.id });
-		purchasing = false;
-		if (!result.ok) {
-			purchaseError = result.reason === 'insufficient_funds' ? 'Moedas insuficientes.' : 'Esse card não está mais disponível.';
-			return;
+		try {
+			const result = await telegramTrpc.telegram.storefront.buy.mutate({ cardId: card.id });
+			if (!result.ok) {
+				purchaseError = result.reason === 'insufficient_funds' ? 'Moedas insuficientes.' : 'Esse card não está mais disponível.';
+				return;
+			}
+			onChanged();
+			onBack();
+		} catch {
+			purchaseError = 'Não deu pra concluir a compra. Confere o seu saldo antes de tentar de novo.';
+		} finally {
+			purchasing = false;
 		}
-		onChanged();
-		onBack();
 	}
 </script>
 
@@ -43,7 +49,7 @@
 		<BlockTitle class="!justify-center !mb-4">Comprar card?</BlockTitle>
 		<Block class="flex gap-4">
 			{#if card.imageUrl}
-				<div class="aspect-3/4 w-1/3 shrink-0 rounded-lg bg-cover bg-center" style={`background-image: url(${card.imageUrl})`}></div>
+				<div class="aspect-3/4 w-1/3 shrink-0 rounded-lg bg-cover bg-center" style={bgImage(card.imageUrl)}></div>
 			{:else}
 				<div class="flex aspect-3/4 w-1/3 shrink-0 items-center justify-center rounded-lg bg-black/5 dark:bg-white/10">
 					<Preloader />

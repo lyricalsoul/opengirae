@@ -1,6 +1,8 @@
 <script lang="ts">
 	import Modal from '$lib/components/Modal.svelte';
+	import { untrack } from 'svelte';
 	import { trpc } from '$lib/trpc/client';
+	import { toast } from '$lib/stores/toast.svelte';
 
 	// createdAt/revertedAt arrive as ISO strings over the wire, despite AuditDB's Date type.
 	type HistoryRow = {
@@ -30,22 +32,31 @@
 	let offset = $state(0);
 	let loading = $state(false);
 
+	let requestId = 0;
+
 	async function load() {
 		if (userId === null) return;
+		const id = ++requestId;
 		loading = true;
 		try {
 			const result = await trpc().users.donationHistory.query({ userId, limit: pageSize, offset });
+			if (id !== requestId) return; // a newer page request superseded this one
 			rows = result.rows;
 			total = result.total;
+		} catch {
+			if (id === requestId) toast.error('Falha ao carregar o histórico de doações');
 		} finally {
-			loading = false;
+			if (id === requestId) loading = false;
 		}
 	}
 
+	// load() reads `offset` synchronously, and an $effect tracks everything it reads - so without untrack, "Próxima" changed offset, re-ran this effect, and it reset the page to 0.
 	$effect(() => {
 		if (open && userId !== null) {
-			offset = 0;
-			load();
+			untrack(() => {
+				offset = 0;
+				load();
+			});
 		}
 	});
 

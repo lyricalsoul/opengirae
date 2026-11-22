@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures } from "@girae/tests";
+import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures, awaitRecv } from "@girae/tests";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { db } from "@girae/database/index";
 import { userDiscoteca } from "@girae/database/schemas/discoteca";
@@ -54,7 +54,7 @@ describe("/doardisco (and its alias /micardisco) donate discoteca entries as a o
     const workflowID = `test-doardisco-${Bun.randomUUIDv7()}`;
     const ctx = runCtx(args, workflowID);
     const handle = await DBOS.startWorkflow(DoarDiscoCommand, { workflowID }).execute(ctx, { target: recipientPlatformId, entriesRaw: args.join(' ') });
-    await new Promise(r => setTimeout(r, 500));
+    await awaitRecv(workflowID)
     return { workflowID, handle };
   }
 
@@ -119,7 +119,6 @@ describe("/doardisco (and its alias /micardisco) donate discoteca entries as a o
     const workflowID = `test-doardisco-star-${Bun.randomUUIDv7()}`;
     const ctx = fakeCtx({ name: 'doardisco', authorId: bulkDonorPlatformId, args: ['*'], platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(DoarDiscoCommand, { workflowID }).execute(ctx, { target: recipientPlatformId, entriesRaw: '*' });
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: true }, 'doardisco:confirm');
     await handle.getResult();
 

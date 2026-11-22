@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures, mockAppleMusic, anyRarityId } from "@girae/tests";
+import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures, mockAppleMusic, anyRarityId, deleteById, awaitRecv } from "@girae/tests";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { CardsDB } from "@girae/database/cards";
 import { DiscotecaDB } from "@girae/database/discoteca";
@@ -56,9 +56,7 @@ describe("/addalbum", () => {
     const runCtx = fakeCtx({ name: 'addalbum', authorId: staffPlatformId, args: ['test query'], platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(AddAlbumCommand, { workflowID }).execute(runCtx, { query: 'test query' });
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { index: 0 } }, 'discoteca:pick');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { action: 'confirm' } }, 'discoteca:confirm');
     await handle.getResult();
 
@@ -91,7 +89,7 @@ describe("/addalbum", () => {
 
   test("backfills a pre-existing unlinked single whose name matches a track on the new album", async () => {
     const backfillArtistId = (await DiscotecaDB.getOrCreateArtist("test-artist-apple-id-backfill", "Test Backfill Artist"))!.id;
-    fx.onCleanup(async () => { await db.delete(discotecaArtists).where(eq(discotecaArtists.id, backfillArtistId)); });
+    fx.onCleanup(async () => { await deleteById('discoteca_artists', backfillArtistId); });
     const preexistingSingle = await DiscotecaDB.createEntry({
       name: "Backfill Track", artistId: backfillArtistId, appleMusicId: `test-backfill-single-${Date.now()}`, type: 'single',
       rarityId: await anyRarityId(),
@@ -117,9 +115,7 @@ describe("/addalbum", () => {
     const runCtx = fakeCtx({ name: 'addalbum', authorId: staffPlatformId, args: ['test query'], platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(AddAlbumCommand, { workflowID }).execute(runCtx, { query: 'test query' });
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { index: 0 } }, 'discoteca:pick');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { action: 'confirm' } }, 'discoteca:confirm');
     await handle.getResult();
 
@@ -161,9 +157,7 @@ describe("/addalbum", () => {
       const runCtx = fakeCtx({ name: 'addalbum', authorId: staffPlatformId, args: ['test query'], platform: 'telegram', workflowID });
       const handle = await DBOS.startWorkflow(AddAlbumCommand, { workflowID }).execute(runCtx, { query: 'test query' });
 
-      await new Promise(r => setTimeout(r, 500));
       await DBOS.send(workflowID, { value: { index: 0 } }, 'discoteca:pick');
-      await new Promise(r => setTimeout(r, 500));
       await DBOS.send(workflowID, { value: { action: 'cancel' } }, 'discoteca:confirm');
       await handle.getResult();
     } finally {
@@ -192,13 +186,9 @@ describe("/addalbum", () => {
     const runCtx = fakeCtx({ name: 'addalbum', authorId: staffPlatformId, args: ['test query'], platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(AddAlbumCommand, { workflowID }).execute(runCtx, { query: 'test query' });
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { index: 0 } }, 'discoteca:pick');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { action: 'editName' } }, 'discoteca:confirm');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: "Renamed Album" }, 'discoteca:name');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { action: 'confirm' } }, 'discoteca:confirm');
     await handle.getResult();
 
@@ -224,9 +214,8 @@ describe("/addalbum", () => {
     const runCtx = fakeCtx({ name: 'addalbum', authorId: staffPlatformId, args: ['test query'], platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(AddAlbumCommand, { workflowID }).execute(runCtx, { query: 'test query' });
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { index: 0 } }, 'discoteca:pick');
-    await new Promise(r => setTimeout(r, 500));
+    await awaitRecv(workflowID, 2); // pick consumed, parked on the confirm prompt
 
     // "Hyperpop" is unmapped at this point - map it mid-flow, like staff running /genrealias in another message
     const hyperpopGenreId = (await fx.discotecaGenre({ name: `Test Hyperpop ${Date.now()}` })).id;
@@ -235,7 +224,6 @@ describe("/addalbum", () => {
     fx.onCleanup(async () => { await db.delete(discotecaGenreAliases).where(eq(discotecaGenreAliases.id, alias!.id)); });
 
     await DBOS.send(workflowID, { value: { action: 'recheckGenres' } }, 'discoteca:confirm');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { action: 'confirm' } }, 'discoteca:confirm');
     await handle.getResult();
 
@@ -267,9 +255,7 @@ describe("/addalbum", () => {
     const runCtx = fakeCtx({ name: 'addalbum', authorId: staffPlatformId, args: ['test query'], platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(AddAlbumCommand, { workflowID }).execute(runCtx, { query: 'test query' });
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { index: 0 } }, 'discoteca:pick');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { action: 'confirm' } }, 'discoteca:confirm');
     await handle.getResult();
 
@@ -301,9 +287,7 @@ describe("/addalbum", () => {
     const runCtx = fakeCtx({ name: 'addalbum', authorId: staffPlatformId, args: ['test query'], platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(AddAlbumCommand, { workflowID }).execute(runCtx, { query: 'test query' });
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { index: 0 } }, 'discoteca:pick');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { action: 'confirm' } }, 'discoteca:confirm');
     await handle.getResult();
 
@@ -338,21 +322,15 @@ describe("/addalbum", () => {
     const runCtx = fakeCtx({ name: 'addalbum', authorId: staffPlatformId, args: ['test query'], workflowID, platform: 'telegram' });
     const handle = await DBOS.startWorkflow(AddAlbumCommand, { workflowID }).execute(runCtx, { query: 'test query' });
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { index: 0 } }, 'discoteca:pick');
-    await new Promise(r => setTimeout(r, 500));
 
     // both absent - a single comma-separated message adds both
     await DBOS.send(workflowID, { value: { action: 'addGenre' } }, 'discoteca:confirm');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: `${genreAName}, ${genreBName}` }, 'discoteca:addGenre');
-    await new Promise(r => setTimeout(r, 500));
 
     // sending B again alone removes only B, A stays
     await DBOS.send(workflowID, { value: { action: 'addGenre' } }, 'discoteca:confirm');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: genreBName }, 'discoteca:addGenre');
-    await new Promise(r => setTimeout(r, 500));
 
     await DBOS.send(workflowID, { value: { action: 'confirm' } }, 'discoteca:confirm');
     await handle.getResult();
@@ -385,20 +363,14 @@ describe("/addalbum", () => {
     const runCtx = fakeCtx({ name: 'addalbum', authorId: staffPlatformId, args: ['test query'], platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(AddAlbumCommand, { workflowID }).execute(runCtx, { query: 'test query' });
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { index: 0 } }, 'discoteca:pick');
-    await new Promise(r => setTimeout(r, 500));
 
     // an unknown genre name should be rejected without touching the loop's state
     await DBOS.send(workflowID, { value: { action: 'addGenre' } }, 'discoteca:confirm');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: "Totally Nonexistent Genre" }, 'discoteca:addGenre');
-    await new Promise(r => setTimeout(r, 500));
 
     await DBOS.send(workflowID, { value: { action: 'addGenre' } }, 'discoteca:confirm');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: manualGenreName }, 'discoteca:addGenre');
-    await new Promise(r => setTimeout(r, 500));
 
     await DBOS.send(workflowID, { value: { action: 'confirm' } }, 'discoteca:confirm');
     await handle.getResult();
@@ -431,21 +403,15 @@ describe("/addalbum", () => {
     const runCtx = fakeCtx({ name: 'addalbum', authorId: staffPlatformId, args: ['test query'], platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(AddAlbumCommand, { workflowID }).execute(runCtx, { query: 'test query' });
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { index: 0 } }, 'discoteca:pick');
-    await new Promise(r => setTimeout(r, 500));
 
     // first send: adds it
     await DBOS.send(workflowID, { value: { action: 'addGenre' } }, 'discoteca:confirm');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: toggleGenreName }, 'discoteca:addGenre');
-    await new Promise(r => setTimeout(r, 500));
 
     // second send of the same name: removes it
     await DBOS.send(workflowID, { value: { action: 'addGenre' } }, 'discoteca:confirm');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: toggleGenreName }, 'discoteca:addGenre');
-    await new Promise(r => setTimeout(r, 500));
 
     await DBOS.send(workflowID, { value: { action: 'confirm' } }, 'discoteca:confirm');
     await handle.getResult();
@@ -482,19 +448,18 @@ describe("/addalbum", () => {
     const runCtx = fakeCtx({ name: 'addalbum', authorId: staffPlatformId, args: ['test query'], platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(AddAlbumCommand, { workflowID }).execute(runCtx, { query: 'test query' });
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { index: 0 } }, 'discoteca:pick');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { action: 'linkArtistCard' } }, 'discoteca:confirm');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: String(targetCardId) }, 'discoteca:artistCard');
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: { action: 'confirm' } }, 'discoteca:confirm');
     await handle.getResult();
 
     const entry = await db.select().from(discotecaEntries).where(eq(discotecaEntries.appleMusicId, otherAlbumAppleMusicId)).then(r => r[0]);
     // LIFO cleanup: register the artist delete first so it runs *after* the entry delete below (entries.artistId FK)
-    fx.onCleanup(async () => { await db.delete(discotecaArtists).where(eq(discotecaArtists.appleMusicArtistId, otherArtistAppleMusicId)); });
+    fx.onCleanup(async () => {
+      const artist = await db.select({ id: discotecaArtists.id }).from(discotecaArtists).where(eq(discotecaArtists.appleMusicArtistId, otherArtistAppleMusicId)).then(r => r[0]);
+      if (artist) await deleteById('discoteca_artists', artist.id);
+    });
     fx.onCleanup(async () => { await db.delete(discotecaEntries).where(eq(discotecaEntries.id, entry!.id)); });
 
     const artist = await DiscotecaDB.getArtist(entry!.artistId);

@@ -4,7 +4,8 @@ import { CardsDB, InsufficientCardError } from '@girae/database/cards'
 import { UsersDB } from '@girae/database/users'
 import { EconomyDB } from '@girae/database/economy'
 import { AuditDB } from '@girae/database/audit'
-import { reply, deleteMsg } from '@girae/common/dbos/messaging'
+import { reply } from '@girae/common/dbos/messaging'
+import { resolveDonationParties, confirmByAuthor, reportTransferFailure } from '../../services/donations/shared'
 import { buildCtx } from '../../services/syntheticCtx'
 import { resolveCardByIdOrName } from '../../services/commandArguments'
 import type { IncomingCommand } from '@girae/common/commands/types'
@@ -14,7 +15,6 @@ import { emitCardsNew } from '../../loaders/hooks'
 
 const CONFIRM_EVENT = 'doar:confirm'
 const MAX_CARDS = 50
-const MAX_RECIPIENT_CARDS = 1500
 
 export default class DoarCommand extends Command {
   static override info = {
@@ -36,28 +36,9 @@ export default class DoarCommand extends Command {
       return
     }
 
-    if (args.target === ctx.message.author.id) {
-      await reply(ctx, 'Você não pode doar cartas para você mesmo! 😅')
-      return
-    }
-
-    const platform = ctx.message.platform as 'telegram' | 'discord'
-    const donor = await UsersDB.getUserByPlatformAccount(platform, ctx.message.author.id)
-    if (!donor) return
-    if (donor.isBanned) {
-      await reply(ctx, 'Você está banido de usar a Giraê e não pode doar cartas.')
-      return
-    }
-
-    const recipient = await UsersDB.getUserByPlatformAccount(platform, args.target)
-    if (!recipient) {
-      await reply(ctx, 'O usuário mencionado nunca usou a bot! Talvez você marcou a pessoa errada?')
-      return
-    }
-    if (recipient.isBanned) {
-      await reply(ctx, 'Esse usuário está banido de usar a Giraê e não pode receber cartas.')
-      return
-    }
+    const parties = await resolveDonationParties(ctx, args.target, 'cartas')
+    if (!parties) return
+    const { platform, donor, recipient } = parties
 
     let offerA: { cardId: number; count: number }[]
     let confirmContent: string
@@ -127,16 +108,7 @@ export default class DoarCommand extends Command {
       successList = `\n\n${list}`
     }
 
-    await reply(ctx, {
-      content: confirmContent,
-      eventName: CONFIRM_EVENT,
-      restricted: 'author',
-      options: [{ title: '✅ Confirmar', data: true }, { title: '❌ Cancelar', data: false }],
-    })
-
-    const confirmSelection = await DBOS.recv<{ value: boolean, messageId?: string }>(CONFIRM_EVENT)
-    if (confirmSelection?.messageId) await deleteMsg(ctx, confirmSelection.messageId)
-    if (!confirmSelection?.value) return
+    if (!(await confirmByAuthor(ctx, CONFIRM_EVENT, confirmContent))) return
 
 
     const cardCount = offerA.reduce((sum, o) => sum + o.count, 0)
@@ -149,7 +121,7 @@ export default class DoarCommand extends Command {
       if (e instanceof InsufficientCardError) {
         await reply(ctx, 'Não foi possível completar a doação: você não tem mais uma das cartas selecionadas.')
       } else {
-        await reply(ctx, `Não foi possível completar a doação: ${(e as Error).message}`)
+        await reportTransferFailure(ctx, 'doar', 'doação', e)
       }
       return
     }

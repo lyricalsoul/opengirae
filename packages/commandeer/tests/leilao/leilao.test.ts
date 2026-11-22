@@ -78,7 +78,6 @@ describe("/leilao", () => {
       const ctx = fakeCtx({ name: 'leilao', authorId: platformId, args: ['criar', String(cardId)], platform: 'telegram', workflowID });
       const handle = await run(workflowID, ctx, `criar ${cardId}`);
 
-      await new Promise(r => setTimeout(r, 500)); // let it reach DBOS.recv and register the listener
       await DBOS.send(workflowID, { value: true }, 'leilao:confirm');
       await handle.getResult();
 
@@ -100,7 +99,6 @@ describe("/leilao", () => {
       const ctx = fakeCtx({ name: 'leilao', authorId: platformId, args: ['criar', String(cardId)], platform: 'telegram', workflowID });
       const handle = await run(workflowID, ctx, `criar ${cardId}`);
 
-      await new Promise(r => setTimeout(r, 500));
       await DBOS.send(workflowID, { value: true }, 'leilao:confirm');
       await handle.getResult();
 
@@ -131,7 +129,6 @@ describe("/leilao", () => {
       const workflowID = `test-leilao-cancel-${Bun.randomUUIDv7()}`;
       const ctx = fakeCtx({ name: 'leilao', authorId: platformId, args: ['cancelar', String(created.auction.id)], platform: 'telegram', workflowID });
       const handle = await run(workflowID, ctx, `cancelar ${created.auction.id}`);
-      await new Promise(r => setTimeout(r, 500));
       await DBOS.send(workflowID, { value: true }, 'leilao:confirm');
       await handle.getResult();
 
@@ -162,7 +159,6 @@ describe("/leilao", () => {
       const workflowID = `test-leilao-cancel-noid-one-${Bun.randomUUIDv7()}`;
       const ctx = fakeCtx({ name: 'leilao', authorId: platformId, args: ['cancelar'], platform: 'telegram', workflowID });
       const handle = await run(workflowID, ctx, 'cancelar');
-      await new Promise(r => setTimeout(r, 500));
       await DBOS.send(workflowID, { value: true }, 'leilao:confirm');
       await handle.getResult();
 
@@ -220,7 +216,6 @@ describe("/leilao", () => {
       const ctx = fakeCtx({ name: 'leilao', authorId: platformId, args: ['lance', String(auction.id)], platform: 'telegram', workflowID });
       const handle = await run(workflowID, ctx, `lance ${auction.id}`);
 
-      await new Promise(r => setTimeout(r, 500));
       await DBOS.send(workflowID, { value: true }, 'leilao:confirm');
       await handle.getResult();
 
@@ -238,7 +233,6 @@ describe("/leilao", () => {
       const ctx = fakeCtx({ name: 'leilao', authorId: platformId, args: ['lance', String(auction.id)], platform: 'telegram', workflowID });
       const handle = await run(workflowID, ctx, `lance ${auction.id}`);
 
-      await new Promise(r => setTimeout(r, 500));
       await DBOS.send(workflowID, { value: false }, 'leilao:confirm');
       await handle.getResult();
 
@@ -256,7 +250,6 @@ describe("/leilao", () => {
       const ctx = fakeCtx({ name: 'leilao', authorId: platformId, args: ['lance', String(auction.id), String(auction.startingBid - 500)], platform: 'telegram', workflowID });
       const handle = await run(workflowID, ctx, `lance ${auction.id} ${auction.startingBid - 500}`);
 
-      await new Promise(r => setTimeout(r, 500));
       await DBOS.send(workflowID, { value: false }, 'leilao:confirm');
       await handle.getResult();
 
@@ -275,7 +268,6 @@ describe("/leilao", () => {
       const ctx = fakeCtx({ name: 'leilao', authorId: platformId, args: ['lance', String(auction.id), String(auction.startingBid - 500)], platform: 'telegram', workflowID });
       const handle = await run(workflowID, ctx, `lance ${auction.id} ${auction.startingBid - 500}`);
 
-      await new Promise(r => setTimeout(r, 500));
       await DBOS.send(workflowID, { value: true }, 'leilao:confirm');
       await handle.getResult();
 
@@ -310,7 +302,6 @@ describe("/leilao", () => {
       const ctx = fakeCtx({ name: 'leilao', authorId: platformId, args: ['lance', String(auction.id), `${auction.startingBid}.5`], platform: 'telegram', workflowID });
       const handle = await run(workflowID, ctx, `lance ${auction.id} ${auction.startingBid}.5`);
 
-      await new Promise(r => setTimeout(r, 500));
       await DBOS.send(workflowID, { value: false }, 'leilao:confirm');
       await handle.getResult();
 
@@ -333,7 +324,6 @@ describe("/leilao", () => {
       const ctx = fakeCtx({ name: 'leilao', authorId: platformId, args: ['lance', String(auction.id), String(higher)], platform: 'telegram', workflowID });
       const handle = await run(workflowID, ctx, `lance ${auction.id} ${higher}`);
 
-      await new Promise(r => setTimeout(r, 500));
       await DBOS.send(workflowID, { value: true }, 'leilao:confirm');
       await handle.getResult();
 
@@ -357,7 +347,6 @@ describe("/leilao", () => {
       const ctx = fakeCtx({ name: 'leilao', authorId: platformId, args: ['lance', String(auction.id), String(higher)], platform: 'telegram', workflowID });
       const handle = await run(workflowID, ctx, `lance ${auction.id} ${higher}`);
 
-      await new Promise(r => setTimeout(r, 500));
       await DBOS.send(workflowID, { value: false }, 'leilao:confirm');
       await handle.getResult();
 
@@ -383,10 +372,8 @@ describe("/leilao", () => {
       const handle = await run(workflowID, ctx, `lance ${auction.id} ${tooLow}`);
 
       // first prompt must be "invalid value, use the minimum?" - confirm it
-      await new Promise(r => setTimeout(r, 500));
       await DBOS.send(workflowID, { value: true }, 'leilao:confirm');
       // second prompt is now "you're already winning, still want to pay more (the corrected minimum)?"
-      await new Promise(r => setTimeout(r, 500));
       await DBOS.send(workflowID, { value: true }, 'leilao:confirm');
       await handle.getResult();
 
@@ -407,7 +394,6 @@ describe("/leilao", () => {
       const ctx = fakeCtx({ name: 'leilao', authorId: platformId, args: ['lance', String(auction.id), String(tooHigh)], platform: 'telegram', workflowID });
       const handle = await run(workflowID, ctx, `lance ${auction.id} ${tooHigh}`);
 
-      await new Promise(r => setTimeout(r, 500));
       await DBOS.send(workflowID, { value: true }, 'leilao:confirm');
       await handle.getResult();
 
@@ -428,7 +414,6 @@ describe("/leilao", () => {
       const ctx = fakeCtx({ name: 'leilao', authorId: platformId, args: ['lance', String(auction.id), String(tooHigh)], platform: 'telegram', workflowID });
       const handle = await run(workflowID, ctx, `lance ${auction.id} ${tooHigh}`);
 
-      await new Promise(r => setTimeout(r, 500));
       await DBOS.send(workflowID, { value: false }, 'leilao:confirm');
       await handle.getResult();
 

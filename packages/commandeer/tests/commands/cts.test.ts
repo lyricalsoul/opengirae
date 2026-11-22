@@ -31,7 +31,7 @@ describe("/cts favorite card media", () => {
 
   test("execute() doesn't throw for a user with a customized favorite card", async () => {
     const ctx = fakeCtx({ name: 'cts', authorId: platformId, platform: 'telegram' });
-    await expect(CardsListCommand.execute(ctx)).resolves.toBeUndefined();
+    await CardsListCommand.execute(ctx);
   });
 
   test("attaches the favorite card photo when the page content is short", async () => {

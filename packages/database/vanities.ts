@@ -220,6 +220,10 @@ export class VanitiesDB {
   static refundItem = maybeTransaction('refundItem', async (client, userId: number, itemId: number): Promise<
     { ok: true; title: string; refundedPrice: number } | { ok: false; reason: 'not_refundable' }
   > => {
+    // read the item first: bailing out after the delete would commit the removal without a refund
+    const [item] = await client.select().from(storeItems).where(eq(storeItems.id, itemId)).limit(1);
+    if (!item || (item.type !== 'background' && item.type !== 'sticker')) return { ok: false, reason: 'not_refundable' };
+
     const cutoff = new Date(Date.now() - REFUND_WINDOW_MS);
     const [deleted] = await client
       .delete(boughtItems)
@@ -231,10 +235,6 @@ export class VanitiesDB {
       ))
       .returning();
     if (!deleted || deleted.pricePaid == null) return { ok: false, reason: 'not_refundable' };
-
-    const [item] = await client.select().from(storeItems).where(eq(storeItems.id, itemId)).limit(1);
-    // defensive narrowing only - buyItem never lets a 'profile'-type item into boughtItems
-    if (!item || (item.type !== 'background' && item.type !== 'sticker')) return { ok: false, reason: 'not_refundable' };
 
     await EconomyDB.refundCoinsFromTreasury(client, userId, deleted.pricePaid);
 

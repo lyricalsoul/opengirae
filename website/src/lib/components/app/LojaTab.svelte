@@ -4,6 +4,7 @@
 	import StoreItemCard from './StoreItemCard.svelte';
 	import StoreItemDetailView from './StoreItemDetailView.svelte';
 	import StorefrontCardDetailView from './StorefrontCardDetailView.svelte';
+	import LoadError from './LoadError.svelte';
 	import InfiniteScrollSentinel from './InfiniteScrollSentinel.svelte';
 
 	type Item = { id: number; title: string; description: string; price: number; itemURL: string; type: 'background' | 'sticker' };
@@ -73,34 +74,55 @@
 
 	async function loadGiroTier() {
 		giroLoading = true;
-		giroTier = await telegramTrpc.telegram.store.giroTier.query();
-		giroLoading = false;
+		try {
+			giroTier = await telegramTrpc.telegram.store.giroTier.query();
+		} catch {
+			giroError = 'Não deu pra carregar os pacotes de giros.';
+		} finally {
+			giroLoading = false;
+		}
 	}
 
 	async function buyGiro() {
 		giroConfirming = false;
 		giroPurchasing = true;
 		giroError = null;
-		const result = await telegramTrpc.telegram.store.buyGiroTier.mutate();
-		giroPurchasing = false;
-		if (!result.ok) {
-			if (result.reason === 'insufficient_funds') {
-				giroError = 'Moedas insuficientes.';
-			} else {
-				await loadGiroTier(); // exhausted/race - re-fetch so the panel shows the real current state
+		try {
+			const result = await telegramTrpc.telegram.store.buyGiroTier.mutate();
+			if (!result.ok) {
+				if (result.reason === 'insufficient_funds') {
+					giroError = 'Moedas insuficientes.';
+				} else {
+					await loadGiroTier(); // exhausted/race - re-fetch so the panel shows the real current state
+				}
+				return;
 			}
-			return;
+			await loadGiroTier();
+			balance = await telegramTrpc.telegram.store.balance.query();
+		} catch {
+			giroError = 'Não deu pra concluir a compra. Confere o seu saldo antes de tentar de novo.';
+		} finally {
+			giroPurchasing = false;
 		}
-		await loadGiroTier();
-		balance = await telegramTrpc.telegram.store.balance.query();
 	}
+
+	// separate from storefrontCards.length: an empty storefront is a valid answer, and keying the effect below off "no cards yet" refetched it forever
+	let storefrontLoaded = $state(false);
+	let storefrontFailed = $state(false);
 
 	async function loadStorefront() {
 		storefrontLoading = true;
-		const result = await telegramTrpc.telegram.storefront.list.query();
-		storefrontCards = result.cards;
-		storefrontResetsAt = result.resetsAt;
-		storefrontLoading = false;
+		storefrontFailed = false;
+		try {
+			const result = await telegramTrpc.telegram.storefront.list.query();
+			storefrontCards = result.cards;
+			storefrontResetsAt = result.resetsAt;
+			storefrontLoaded = true;
+		} catch {
+			storefrontFailed = true;
+		} finally {
+			storefrontLoading = false;
+		}
 	}
 
 	function formatResetIn(resetsAt: string): string {
@@ -164,7 +186,7 @@
 	});
 
 	$effect(() => {
-		if (mode === 'cards' && storefrontCards.length === 0 && !storefrontLoading) loadStorefront();
+		if (mode === 'cards' && !storefrontLoaded && !storefrontFailed && !storefrontLoading) loadStorefront();
 	});
 
 	function isOwned(id: number) {
@@ -227,6 +249,8 @@
 					{/if}
 				</Card>
 			</Block>
+		{:else}
+			<LoadError message={giroError ?? undefined} onRetry={loadGiroTier} />
 		{/if}
 
 		<BlockTitle>
@@ -237,8 +261,12 @@
 				</span>
 			{/if}
 		</BlockTitle>
-		{#if storefrontLoading && storefrontCards.length === 0}
+		{#if storefrontLoading && !storefrontLoaded}
 			<div class="flex justify-center p-8"><Preloader /></div>
+		{:else if storefrontFailed}
+			<LoadError onRetry={loadStorefront} />
+		{:else if storefrontCards.length === 0}
+			<div class="p-8 text-center text-black/55 dark:text-white/55">Nenhuma lendária na vitrine agora.</div>
 		{:else}
 			<div class="grid grid-cols-3 gap-2 p-4">
 				{#each storefrontCards as card (card.id)}

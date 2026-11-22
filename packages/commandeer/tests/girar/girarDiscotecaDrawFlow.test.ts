@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram, bootstrapCommandeerWorkers, TestFixtures, fakeCtx } from "@girae/tests";
+import { mockTelegram, bootstrapCommandeerWorkers, TestFixtures, fakeCtx, waitFor } from "@girae/tests";
 import { db } from "@girae/database/index";
 import { users } from "@girae/database/schemas/users";
 import { userDiscoteca } from "@girae/database/schemas/discoteca";
@@ -34,11 +34,14 @@ describe("girar Discoteca draw flow (real workers)", () => {
 
   afterAll(async () => {
     await rawClient.del(`girar:active:${telegramId}:chat-${telegramId}`);
-    await db.delete(userDiscoteca).where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId)));
+    await db.delete(userDiscoteca).where(eq(userDiscoteca.userId, userId));
     await fx.cleanup();
   });
 
   const chatId = () => `chat-${telegramId}`;
+
+  const findSent = (startIndex: number, pred: (m: typeof sentMessages[number]) => boolean) =>
+    () => sentMessages.slice(startIndex).find(pred);
 
   test("draws an album, grants it, and spends a giro", async () => {
     const startIndex = sentMessages.length;
@@ -50,33 +53,26 @@ describe("girar Discoteca draw flow (real workers)", () => {
       chatId: chatId(),
       workflowID: `wf-discoteca-${Date.now()}-${Math.floor(Math.random() * 1e9)}`,
     }));
-    await new Promise(resolve => setTimeout(resolve, 1500));
 
-    const categoryPrompt = sentMessages.slice(startIndex).find(m =>
-      typeof m.text === 'string' && m.text.includes('Escolha uma categoria'));
-    expect(categoryPrompt).toBeDefined();
-    const discotecaButton = categoryPrompt!.replyMarkup?.inline_keyboard?.flat()
-      .find((b: any) => b.text?.includes('Discoteca'));
+    const categoryPrompt = await waitFor(findSent(startIndex, m => typeof m.text === 'string' && m.text.includes('Escolha uma categoria')), { label: 'category prompt' });
+    const discotecaButton = categoryPrompt.replyMarkup?.inline_keyboard?.flat().find((b: any) => b.text?.includes('Discoteca'));
     expect(discotecaButton).toBeDefined();
 
     await processCallback(discotecaButton!.callback_data, telegramId, `test-click-disco-cat-${Date.now()}`, 'telegram', chatId(), 'cat-msg-id');
-    await new Promise(resolve => setTimeout(resolve, 1500));
 
-    const genrePrompt = sentMessages.slice(startIndex).find(m =>
-      m.method === 'editMessageText' && typeof m.text === 'string' && m.text.includes('Escolha um gênero'));
-    expect(genrePrompt).toBeDefined();
-    const genreButton = genrePrompt!.replyMarkup?.inline_keyboard?.flat()
-      .find((b: any) => b.text?.includes(subcategoryName));
+    const genrePrompt = await waitFor(findSent(startIndex, m => m.method === 'editMessageText' && typeof m.text === 'string' && m.text.includes('Escolha um gênero')), { label: 'genre prompt' });
+    // the draw samples a few genres out of every album/single genre in the db, so the fixture genre isn't guaranteed to be offered - any offered one proves the flow
+    const genreButton = genrePrompt.replyMarkup?.inline_keyboard?.flat().find((b: any) => b.callback_data);
     expect(genreButton).toBeDefined();
 
     await processCallback(genreButton!.callback_data, telegramId, `test-click-genre-${Date.now()}`, 'telegram', chatId(), 'genre-msg-id');
-    await new Promise(resolve => setTimeout(resolve, 1500));
 
-    // editMessageMedia bypasses the telegramsjs mock via a raw fetch(), so assert on DB state instead.
-    const [owned] = await db.select({ count: userDiscoteca.count })
-      .from(userDiscoteca)
-      .where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId)));
-    expect(owned?.count).toBe(1);
+    // editMessageMedia bypasses the telegramsjs mock via a raw fetch(), so assert on db state instead.
+    const owned = await waitFor(async () => {
+      const rows = await db.select({ count: userDiscoteca.count }).from(userDiscoteca).where(eq(userDiscoteca.userId, userId));
+      return rows.length > 0 ? rows : undefined;
+    }, { label: 'a discoteca entry granted to the user' });
+    expect(owned.reduce((sum, r) => sum + r.count, 0)).toBe(1);
 
     const [user] = await db.select({ usedDraws: users.usedDraws }).from(users).where(eq(users.id, userId));
     expect(user?.usedDraws).toBe(1);
@@ -98,11 +94,8 @@ describe("girar Discoteca draw flow (real workers)", () => {
         chatId: otherChatId,
         workflowID: `wf-discoteca-disabled-${Date.now()}-${Math.floor(Math.random() * 1e9)}`,
       }));
-      await new Promise(resolve => setTimeout(resolve, 1500));
 
-      const categoryPrompt = sentMessages.slice(startIndex).find(m =>
-        typeof m.text === 'string' && m.text.includes('Escolha uma categoria'));
-      expect(categoryPrompt).toBeDefined();
+      const categoryPrompt = await waitFor(findSent(startIndex, m => typeof m.text === 'string' && m.text.includes('Escolha uma categoria')), { label: 'category prompt' });
       const discotecaButton = categoryPrompt!.replyMarkup?.inline_keyboard?.flat()
         .find((b: any) => b.text?.includes('Discoteca'));
       expect(discotecaButton).toBeUndefined();

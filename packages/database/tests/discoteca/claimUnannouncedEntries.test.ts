@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { TestFixtures } from "@girae/tests";
+import { TestFixtures, futureCutoff } from "@girae/tests";
 import { DiscotecaDB } from "../../discoteca";
 
 describe("DiscotecaDB.claimUnannouncedEntries", () => {
@@ -9,14 +9,14 @@ describe("DiscotecaDB.claimUnannouncedEntries", () => {
   beforeAll(async () => {
     artistId = (await fx.discotecaArtist({ name: `Test Claim Entries Artist ${Date.now()}` })).id;
     // mark the artist as already-announced first, so entries added below hit claimUnannouncedEntries's own path, not the artist-claim auto-claim.
-    await DiscotecaDB.claimUnannouncedArtists(new Date(), [artistId]);
+    await DiscotecaDB.claimUnannouncedArtists(futureCutoff(), [artistId]);
   });
 
   afterAll(() => fx.cleanup());
 
   test("claims a new entry added to an already-announced artist, grouped with rarity/artist details", async () => {
     const entryId = (await fx.discotecaEntry({ name: "Test Claim Entry New", artistId })).id;
-    const cutoff = new Date();
+    const cutoff = futureCutoff();
 
     const firstRun = await DiscotecaDB.claimUnannouncedEntries(cutoff, [entryId]);
     expect(firstRun).toHaveLength(1);
@@ -38,7 +38,7 @@ describe("DiscotecaDB.claimUnannouncedEntries", () => {
     const commonId = (await fx.discotecaEntry({ name: "Test Claim Ordered Common", rarityId: common.id, artistId })).id;
     const rareId = (await fx.discotecaEntry({ name: "Test Claim Ordered Rare", rarityId: rare.id, artistId })).id;
     const legendaryId = (await fx.discotecaEntry({ name: "Test Claim Ordered Legendary", rarityId: legendary.id, artistId })).id;
-    const cutoff = new Date();
+    const cutoff = futureCutoff();
 
     const claimed = await DiscotecaDB.claimUnannouncedEntries(cutoff, [commonId, rareId, legendaryId]);
     expect(claimed.map(c => c.id)).toEqual([legendaryId, rareId, commonId]);

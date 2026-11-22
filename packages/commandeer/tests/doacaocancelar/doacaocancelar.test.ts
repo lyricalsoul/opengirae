@@ -45,7 +45,6 @@ describe("/doacaocancelar reverts a donation and notifies the donor of what they
     const ctx = fakeCtx({ name: 'doacaocancelar', authorId: staffPlatformId, args: [String(auditLogId)], platform: 'telegram', workflowID });
     const handle = await DBOS.startWorkflow(DoacaoCancelarCommand, { workflowID }).execute(ctx, { auditLogId });
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: true }, 'doacaocancelar:confirm');
     await handle.getResult();
 

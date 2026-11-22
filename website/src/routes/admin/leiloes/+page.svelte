@@ -6,13 +6,39 @@
 
 	const STATUS_LABEL: Record<string, string> = { active: 'Ativo', sold: 'Vendido', expired: 'Expirado', cancelled: 'Cancelado' };
 
+	const PAGE_SIZE = 50;
+	type Status = 'active' | 'sold' | 'expired' | 'cancelled';
+
 	let statusFilter = $state<string>('');
 	let rows = $state(data.auctions.rows);
+	let total = $state(data.auctions.total);
 	let busyId = $state<number | null>(null);
+	let loadingMore = $state(false);
+
+	const listInput = (offset: number) => ({ limit: PAGE_SIZE, offset, ...(statusFilter ? { status: statusFilter as Status } : {}) });
 
 	async function reload() {
-		const result = await trpc().auctions.list.query(statusFilter ? { status: statusFilter as 'active' | 'sold' | 'expired' | 'cancelled' } : {});
-		rows = result.rows;
+		try {
+			const result = await trpc().auctions.list.query(listInput(0));
+			rows = result.rows;
+			total = result.total;
+		} catch {
+			toast.error('Falha ao carregar os leilões');
+		}
+	}
+
+	// the list used to stop at the first 50 with no way to see older auctions
+	async function loadMore() {
+		loadingMore = true;
+		try {
+			const result = await trpc().auctions.list.query(listInput(rows.length));
+			rows = [...rows, ...result.rows];
+			total = result.total;
+		} catch {
+			toast.error('Falha ao carregar mais leilões');
+		} finally {
+			loadingMore = false;
+		}
 	}
 
 	async function forceClose(id: number) {
@@ -25,6 +51,8 @@
 			}
 			toast.success(`Leilão #${id} fechado (${STATUS_LABEL[result.auction.status]}).`);
 			await reload();
+		} catch {
+			toast.error('Falha ao fechar o leilão');
 		} finally {
 			busyId = null;
 		}
@@ -41,6 +69,8 @@
 			}
 			toast.success(`Leilão #${id} cancelado.`);
 			await reload();
+		} catch {
+			toast.error('Falha ao cancelar o leilão');
 		} finally {
 			busyId = null;
 		}
@@ -99,4 +129,11 @@
 			{/each}
 		</tbody>
 	</table>
+</div>
+
+<div class="text-ink-dim mt-3 flex items-center justify-between text-xs">
+	<span>Mostrando {rows.length} de {total}</span>
+	{#if rows.length < total}
+		<button class="btn btn-ghost" disabled={loadingMore} onclick={loadMore}>Carregar mais</button>
+	{/if}
 </div>

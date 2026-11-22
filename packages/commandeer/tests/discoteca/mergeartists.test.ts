@@ -36,7 +36,6 @@ describe("/mergeartists", () => {
       target: { id: target.id, name: "Test Mergeartists Decline Target" },
     } as any);
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: false }, 'mergeartists:confirm');
     await handle.getResult();
 
@@ -56,7 +55,6 @@ describe("/mergeartists", () => {
       target: { id: target.id, name: "Test Mergeartists Confirm Target" },
     } as any);
 
-    await new Promise(r => setTimeout(r, 500));
     await DBOS.send(workflowID, { value: true }, 'mergeartists:confirm');
     await handle.getResult();
 

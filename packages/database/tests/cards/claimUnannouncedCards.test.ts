@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { TestFixtures } from "@girae/tests";
+import { TestFixtures, futureCutoff } from "@girae/tests";
 import { CardsDB } from "../../cards";
 
 describe("CardsDB.claimUnannouncedCards", () => {
@@ -11,14 +11,14 @@ describe("CardsDB.claimUnannouncedCards", () => {
     categoryId = (await fx.category({ name: `Test Claim Cards Category ${Date.now()}` })).id;
     subcategoryId = (await fx.subcategory({ categoryId, name: "Test Claim Cards Subcategory" })).id;
     // mark the subcategory as already-announced first, so cards added below hit claimUnannouncedCards's own path, not the subcategory-claim auto-claim.
-    await CardsDB.claimUnannouncedSubcategories(new Date(), [subcategoryId]);
+    await CardsDB.claimUnannouncedSubcategories(futureCutoff(), [subcategoryId]);
   });
 
   afterAll(() => fx.cleanup());
 
   test("claims a new card added to an already-announced subcategory, grouped with rarity/subcategory/category emoji", async () => {
     const cardId = (await fx.card({ name: "Test Claim Card New", subcategoryId })).id;
-    const cutoff = new Date();
+    const cutoff = futureCutoff();
 
     const firstRun = await CardsDB.claimUnannouncedCards(cutoff, [cardId]);
     expect(firstRun).toHaveLength(1);
@@ -41,7 +41,7 @@ describe("CardsDB.claimUnannouncedCards", () => {
     const commonCardId = (await fx.card({ name: "Test Claim Ordered Common", rarityId: common.id, subcategoryId })).id;
     const rareCardId = (await fx.card({ name: "Test Claim Ordered Rare", rarityId: rare.id, subcategoryId })).id;
     const legendaryCardId = (await fx.card({ name: "Test Claim Ordered Legendary", rarityId: legendary.id, subcategoryId })).id;
-    const cutoff = new Date();
+    const cutoff = futureCutoff();
 
     const claimed = await CardsDB.claimUnannouncedCards(cutoff, [commonCardId, rareCardId, legendaryCardId]);
     expect(claimed.map(c => c.id)).toEqual([legendaryCardId, rareCardId, commonCardId]);

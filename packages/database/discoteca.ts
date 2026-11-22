@@ -627,39 +627,35 @@ export class DiscotecaDB {
       .then(a => a?.[0]?.count);
   })
 
-  // discoteca leg of CardsDB.executeMixedTrade - mirrors executeTrade's decrement, minus cativeiro clearing (no customization columns here).
-  static async decrementForTradeWithClient(client: DrizzleClient, userId: number, entryId: number, count: number): Promise<void> {
-    // tradable=true is in the WHERE itself - closes the TOCTOU gap vs a trade finalizing after the entry was marked non-tradable.
+  // the one decrement: conditional UPDATE (so the check and the write can't race), row deleted at zero. Returns the remaining count, or null when the user doesn't have `count` (or, with requireTradable, it isn't tradable).
+  private static async decrementEntry(client: DrizzleClient, userId: number, entryId: number, count: number, opts: { requireTradable?: boolean } = {}): Promise<number | null> {
     const [row] = await client
       .update(userDiscoteca)
       .set({ count: sql`${userDiscoteca.count} - ${count}` })
       .where(and(
-        eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId),
-        gte(userDiscoteca.count, count), eq(userDiscoteca.tradable, true),
+        eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId), gte(userDiscoteca.count, count),
+        ...(opts.requireTradable ? [eq(userDiscoteca.tradable, true)] : []),
       ))
       .returning();
-    if (!row) throw new InsufficientDiscotecaEntryError(userId, entryId);
-    if (row.count === 0) {
-      await client.delete(userDiscoteca).where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId)));
-    }
+    if (!row) return null;
+    if (row.count === 0) await client.delete(userDiscoteca).where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId)));
+    return row.count;
+  }
+
+  // discoteca leg of CardsDB.executeMixedTrade - no cativeiro clearing (no customization columns here). tradable is in the WHERE itself, closing the gap vs a trade finalizing after the entry was marked non-tradable.
+  static async decrementForTradeWithClient(client: DrizzleClient, userId: number, entryId: number, count: number): Promise<void> {
+    if ((await DiscotecaDB.decrementEntry(client, userId, entryId, count, { requireTradable: true })) === null) throw new InsufficientDiscotecaEntryError(userId, entryId);
   }
 
   static async incrementWithClient(client: DrizzleClient, userId: number, entryId: number, count: number): Promise<void> {
-    const existing = await client
-      .select()
-      .from(userDiscoteca)
-      .where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId)))
-      .limit(1)
-      .then(a => a?.[0]);
-
-    if (existing) {
-      await client
-        .update(userDiscoteca)
-        .set({ count: sql`${userDiscoteca.count} + ${count}` })
-        .where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId)));
-    } else {
-      await client.insert(userDiscoteca).values({ userId, entryId, count });
-    }
+    // one upsert, not select-then-insert: two concurrent grants of the same entry would otherwise both take the insert branch
+    await client
+      .insert(userDiscoteca)
+      .values({ userId, entryId, count })
+      .onConflictDoUpdate({
+        target: [userDiscoteca.userId, userDiscoteca.entryId],
+        set: { count: sql`${userDiscoteca.count} + ${count}`, updatedAt: sql`now()` },
+      });
   }
 
   static getOwnedEntryQuantities = maybeTransaction('getOwnedEntryQuantities', async (client, userId: number, entryIds: number[]) => {
@@ -689,15 +685,7 @@ export class DiscotecaDB {
 
   // deliberately NOT gated on tradable, unlike decrementForTradeWithClient - donations bypass the trade-only flag, same as CardsDB.executeTrade's card decrement.
   static async decrementForDonationWithClient(client: DrizzleClient, userId: number, entryId: number, count: number): Promise<void> {
-    const [row] = await client
-      .update(userDiscoteca)
-      .set({ count: sql`${userDiscoteca.count} - ${count}` })
-      .where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId), gte(userDiscoteca.count, count)))
-      .returning();
-    if (!row) throw new InsufficientDiscotecaEntryError(userId, entryId);
-    if (row.count === 0) {
-      await client.delete(userDiscoteca).where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId)));
-    }
+    if ((await DiscotecaDB.decrementEntry(client, userId, entryId, count)) === null) throw new InsufficientDiscotecaEntryError(userId, entryId);
   }
 
   // one-sided transfer (recipient offer empty) - stays here rather than CardsDB.executeMixedTrade, which would wrongly require tradable.
@@ -713,16 +701,7 @@ export class DiscotecaDB {
 
   // mirrors CardsDB.tryDecrementOneWithClient, minus cativeiro clearing - used by AuditDB.revertDiscotecaDonation.
   static async tryDecrementOneWithClient(client: DrizzleClient, userId: number, entryId: number): Promise<boolean> {
-    const [row] = await client
-      .update(userDiscoteca)
-      .set({ count: sql`${userDiscoteca.count} - 1` })
-      .where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId), gte(userDiscoteca.count, 1)))
-      .returning();
-    if (!row) return false;
-    if (row.count === 0) {
-      await client.delete(userDiscoteca).where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId)));
-    }
-    return true;
+    return (await DiscotecaDB.decrementEntry(client, userId, entryId, 1)) !== null;
   }
 
   static async getEntryRarityIdWithClient(client: DrizzleClient, entryId: number): Promise<number | null> {
@@ -779,18 +758,10 @@ export class DiscotecaDB {
       const row = ownedById.get(entryId)!;
       const reward = calculateCardDiscardReward(row.rarityName, qty, incomeInflationRate);
 
-      const [updated] = await client
-        .update(userDiscoteca)
-        .set({ count: sql`${userDiscoteca.count} - ${qty}` })
-        .where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId), gte(userDiscoteca.count, qty)))
-        .returning();
-      if (!updated) throw new InsufficientDiscotecaEntryError(userId, entryId);
+      const remaining = await DiscotecaDB.decrementEntry(client, userId, entryId, qty);
+      if (remaining === null) throw new InsufficientDiscotecaEntryError(userId, entryId);
 
-      if (updated.count === 0) {
-        await client.delete(userDiscoteca).where(and(eq(userDiscoteca.userId, userId), eq(userDiscoteca.entryId, entryId)));
-      }
-
-      results.push({ entryId, remainingCount: updated.count, coinsAwarded: reward });
+      results.push({ entryId, remainingCount: remaining, coinsAwarded: reward });
       totalCoinsAwarded += reward;
     }
 

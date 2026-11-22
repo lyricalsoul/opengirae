@@ -57,4 +57,12 @@ describe("CardsDB.removeUserCards", () => {
     const [row] = await db.select().from(userCards).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
     expect(row?.count).toBe(3);
   });
+
+  test("a negative count is refused instead of adding copies", async () => {
+    const before = await db.select().from(userCards).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+    const result = await CardsDB.removeUserCards(userId, cardId, -2);
+    expect(result.ok).toBe(false);
+    const after = await db.select().from(userCards).where(and(eq(userCards.userId, userId), eq(userCards.cardId, cardId)));
+    expect(after[0]?.count).toBe(before[0]?.count);
+  });
 });

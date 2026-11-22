@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures } from "@girae/tests";
+import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures, awaitRecv } from "@girae/tests";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { DiscotecaDB } from "@girae/database/discoteca";
 import { db } from "@girae/database/index";
@@ -60,7 +60,7 @@ describe("/doarclcdisco donates every discoteca entry a user owns from one artis
     const ctx = runCtx([recipientPlatformId, artistArg], workflowID);
     const artist = await DiscotecaDB.getArtist(parseInt(artistArg, 10));
     const handle = await DBOS.startWorkflow(DoarClcDiscoCommand, { workflowID }).execute(ctx, { target: recipientPlatformId, artist: artist! });
-    await new Promise(r => setTimeout(r, 500));
+    await awaitRecv(workflowID)
     return { workflowID, handle };
   }
 
@@ -101,7 +101,6 @@ describe("/doarclcdisco donates every discoteca entry a user owns from one artis
     const ctx = runCtx([recipientPlatformId, String(emptyArtistId)], workflowID);
     const artist = await DiscotecaDB.getArtist(emptyArtistId);
     const handle = await DBOS.startWorkflow(DoarClcDiscoCommand, { workflowID }).execute(ctx, { target: recipientPlatformId, artist: artist! });
-    await new Promise(r => setTimeout(r, 500));
     await handle.getResult();
   });
 

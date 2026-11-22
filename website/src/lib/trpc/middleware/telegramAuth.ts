@@ -2,6 +2,7 @@ import { t } from '$lib/trpc/t';
 import { TRPCError } from '@trpc/server';
 import { validate, parse } from '@tma.js/init-data-node';
 import { env } from '$env/dynamic/private';
+import { authBypassEnabled } from './authBypass';
 import { UsersDB } from '@girae/database/users';
 
 export async function requireUser(telegramId: string) {
@@ -24,8 +25,7 @@ function resolveTgUser(initData: string | null): { id: number } | undefined {
 const DEV_BYPASS_TELEGRAM_ID = 1889562226;
 
 export const telegramProcedure = t.procedure.use(({ ctx, next }) => {
-	const bypassed = env.BYPASS_TELEGRAM_AUTH_DO_NOT_USE_THIS_IN_PROD_PRETTY_PLEASE === '1';
-	const tgUser = resolveTgUser(ctx.tmaInitData) ?? (bypassed ? { id: DEV_BYPASS_TELEGRAM_ID } : undefined);
+	const tgUser = resolveTgUser(ctx.tmaInitData) ?? (authBypassEnabled() ? { id: DEV_BYPASS_TELEGRAM_ID } : undefined);
 	if (!tgUser) throw new TRPCError({ code: 'UNAUTHORIZED' });
 
 	return next({ ctx: { ...ctx, tgUser } });

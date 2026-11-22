@@ -1,5 +1,5 @@
 import { test, expect, describe, afterAll } from "bun:test";
-import { TestFixtures } from "@girae/tests";
+import { TestFixtures, futureCutoff } from "@girae/tests";
 import { DiscotecaDB } from "../../discoteca";
 import { db } from "../../index";
 import { discotecaEntries } from "../../schemas/discoteca";
@@ -15,7 +15,7 @@ describe("DiscotecaDB.claimUnannouncedArtists", () => {
   test("claims an artist older than cutoff along with its entries, but only once", async () => {
     const artistId = (await fx.discotecaArtist({ name: "Test Claim Artist" })).id;
     const entryId = (await fx.discotecaEntry({ name: "Test Claim Entry", artistId })).id;
-    const cutoff = new Date();
+    const cutoff = futureCutoff();
 
     const firstRun = await DiscotecaDB.claimUnannouncedArtists(cutoff, [artistId]);
     expect(firstRun).toHaveLength(1);
@@ -30,7 +30,7 @@ describe("DiscotecaDB.claimUnannouncedArtists", () => {
   test("an artist's entries claimed this way are excluded from claimUnannouncedEntries", async () => {
     const artistId = (await fx.discotecaArtist({ name: "Test Claim Artist 2" })).id;
     const entryId = (await fx.discotecaEntry({ name: "Test Claim Entry 2", artistId })).id;
-    const cutoff = new Date();
+    const cutoff = futureCutoff();
 
     await DiscotecaDB.claimUnannouncedArtists(cutoff, [artistId]);
     const entryRows = await DiscotecaDB.claimUnannouncedEntries(cutoff, [entryId]);
@@ -40,7 +40,7 @@ describe("DiscotecaDB.claimUnannouncedArtists", () => {
   test("includes an entry moved in (via mergeArtists) from an artist already announced before", async () => {
     const oldArtistId = (await fx.discotecaArtist({ name: "Test Claim Artist Old" })).id;
     const entryId = (await fx.discotecaEntry({ name: "Test Claim Moved Entry", artistId: oldArtistId })).id;
-    const cutoff = new Date();
+    const cutoff = futureCutoff();
     // announce it once under the old artist so its discoteca_entries.announcedAt is already set
     await DiscotecaDB.claimUnannouncedArtists(cutoff, [oldArtistId]);
 
@@ -49,7 +49,7 @@ describe("DiscotecaDB.claimUnannouncedArtists", () => {
     fx.onCleanup(async () => { await db.delete(discotecaEntries).where(eq(discotecaEntries.id, entryId)); });
     await DiscotecaDB.mergeArtists(oldArtistId, newArtistId); // deletes oldArtistId, moves the entry onto newArtistId
 
-    const claimed = await DiscotecaDB.claimUnannouncedArtists(new Date(), [newArtistId]);
+    const claimed = await DiscotecaDB.claimUnannouncedArtists(futureCutoff(), [newArtistId]);
     expect(claimed).toHaveLength(1);
     expect(claimed[0]?.entries.map(e => e.id)).toEqual([entryId]);
   });

@@ -52,7 +52,7 @@ describe("/troco marks one or several cards as tradable", () => {
   });
 
   test("a not-owned card by ID replies without throwing and marks nothing", async () => {
-    await expect(TrocoCommand.execute(ctxFor([String(unownedCardId)]), { cardsRaw: String(unownedCardId) })).resolves.toBeUndefined();
+    await TrocoCommand.execute(ctxFor([String(unownedCardId)]), { cardsRaw: String(unownedCardId) });
     expect(await CardsDB.isCardTradable(userId, unownedCardId)).toBe(false);
   });
 
@@ -67,7 +67,7 @@ describe("/troco marks one or several cards as tradable", () => {
 
   test("a bulk request with nothing owned replies without throwing", async () => {
     const raw = `${unownedCardId} 999999999`;
-    await expect(TrocoCommand.execute(ctxFor(raw.split(' ')), { cardsRaw: raw })).resolves.toBeUndefined();
+    await TrocoCommand.execute(ctxFor(raw.split(' ')), { cardsRaw: raw });
   });
 
   test("no args shows the tradable-cards list instead of the usage message", async () => {
@@ -105,7 +105,7 @@ describe("/troco with no tradable cards", () => {
   test("execute() with no args doesn't throw", async () => {
     await import("@girae/answerer/index");
     const ctx = fakeCtx({ name: 'troco', authorId, platform: 'telegram' });
-    await expect(TrocoCommand.execute(ctx, {})).resolves.toBeUndefined();
+    await TrocoCommand.execute(ctx, {});
   });
 });
 
@@ -248,6 +248,6 @@ describe("/troco list privacy", () => {
 
   test("execute() with no args, replying to a private user, doesn't throw and doesn't leak the list", async () => {
     const ctx = fakeCtx({ name: 'troco', authorId: viewerAuthorId, platform: 'telegram', replyToAuthorId: targetAuthorId });
-    await expect(TrocoCommand.execute(ctx, {})).resolves.toBeUndefined();
+    await TrocoCommand.execute(ctx, {});
   });
 });

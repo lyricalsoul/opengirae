@@ -9,6 +9,7 @@ export function createPaginatedList<T, R extends { rows: T[]; total: number }>(
 	let loading = $state(false);
 
 	let resetLoading = $state(false);
+	let error = $state<unknown>(null);
 	let requestId = 0;
 
 	async function load(reset: boolean) {
@@ -17,14 +18,23 @@ export function createPaginatedList<T, R extends { rows: T[]; total: number }>(
 		loading = true;
 		if (reset) resetLoading = true;
 		const nextOffset = reset ? 0 : offset;
-		const result = await fetcher(nextOffset);
-		if (id !== requestId) return;
-		items = reset ? result.rows : [...items, ...result.rows];
-		total = result.total;
-		offset = nextOffset + result.rows.length;
-		onResult?.(result);
-		loading = false;
-		resetLoading = false;
+		error = null;
+		try {
+			const result = await fetcher(nextOffset);
+			if (id !== requestId) return;
+			items = reset ? result.rows : [...items, ...result.rows];
+			total = result.total;
+			offset = nextOffset + result.rows.length;
+			onResult?.(result);
+		} catch (e) {
+			// without this a failed fetch left the spinner (or the "loading more" sentinel) up forever
+			if (id === requestId) error = e;
+		} finally {
+			if (id === requestId) {
+				loading = false;
+				resetLoading = false;
+			}
+		}
 	}
 
 	return {
@@ -34,6 +44,7 @@ export function createPaginatedList<T, R extends { rows: T[]; total: number }>(
 		set total(value: number) { total = value; },
 		get loading() { return loading; },
 		get resetLoading() { return resetLoading; },
+		get error() { return error; },
 		reset: () => load(true),
 		loadMore: () => load(false),
 	};

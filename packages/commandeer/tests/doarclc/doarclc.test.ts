@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures } from "@girae/tests";
+import { mockTelegram, bootstrapCommandeerWorkers, fakeCtx, TestFixtures, awaitRecv } from "@girae/tests";
 import { DBOS } from "@dbos-inc/dbos-sdk";
 import { CardsDB } from "@girae/database/cards";
 import { db } from "@girae/database/index";
@@ -58,7 +58,7 @@ describe("/doarclc donates every card a user owns in a collection as a one-sided
     const ctx = runCtx([recipientPlatformId, subcategoryArg], workflowID);
     const subcategory = await CardsDB.getSubcategory(parseInt(subcategoryArg, 10));
     const handle = await DBOS.startWorkflow(DoarClcCommand, { workflowID }).execute(ctx, { target: recipientPlatformId, subcategory: subcategory! });
-    await new Promise(r => setTimeout(r, 500));
+    await awaitRecv(workflowID)
     return { workflowID, handle };
   }
 
@@ -100,8 +100,7 @@ describe("/doarclc donates every card a user owns in a collection as a one-sided
     const ctx = runCtx([recipientPlatformId, String(emptySubcategoryId)], workflowID);
     const subcategory = await CardsDB.getSubcategory(emptySubcategoryId);
     const handle = await DBOS.startWorkflow(DoarClcCommand, { workflowID }).execute(ctx, { target: recipientPlatformId, subcategory: subcategory! });
-    await new Promise(r => setTimeout(r, 500));
-    await expect(handle.getResult()).resolves.toBeUndefined();
+    await handle.getResult();
   });
 
   test("donating to yourself resolves without throwing and moves nothing", async () => {
@@ -109,7 +108,7 @@ describe("/doarclc donates every card a user owns in a collection as a one-sided
     await fx.ownCard(donorId, cardAId, 1);
     const ctx = fakeCtx({ name: 'doarclc', authorId: donorPlatformId, args: [donorPlatformId, String(subcategoryId)], platform: 'telegram' });
     const subcategory = await CardsDB.getSubcategory(subcategoryId);
-    await expect(DoarClcCommand.execute(ctx, { target: donorPlatformId, subcategory: subcategory! })).resolves.toBeUndefined();
+    await DoarClcCommand.execute(ctx, { target: donorPlatformId, subcategory: subcategory! });
     expect(await ownedCount(donorId, cardAId)).toBe(before + 1);
   });
 

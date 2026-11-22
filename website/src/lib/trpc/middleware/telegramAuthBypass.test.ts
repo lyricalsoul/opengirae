@@ -6,6 +6,7 @@ mock.module("$env/dynamic/private", () => ({
 	env: {
 		TELEGRAM_TOKEN: "test-token-not-a-real-secret",
 		BYPASS_TELEGRAM_AUTH_DO_NOT_USE_THIS_IN_PROD_PRETTY_PLEASE: "1",
+		ORIGIN: "http://localhost:5173",
 	},
 }));
 
@@ -17,7 +18,7 @@ describe("telegramProcedure with the dev bypass flag set", () => {
 		whoAmI: telegramProcedure.query(({ ctx }) => ctx.tgUser),
 	});
 
-	test("falls back to the fixed dev user (telegram id 1) when there's no initData", async () => {
+	test("falls back to the fixed dev user when there's no initData", async () => {
 		const caller = router.createCaller({ tmaInitData: null });
 		const tgUser = await caller.whoAmI();
 		expect(tgUser).toEqual({ id: 1889562226 });
@@ -30,5 +31,21 @@ describe("telegramProcedure with the dev bypass flag set", () => {
 		const caller = router.createCaller({ tmaInitData: INVALID_INIT_DATA });
 		const tgUser = await caller.whoAmI();
 		expect(tgUser).toEqual({ id: 1889562226 }); // invalid signature still falls through to the bypass, not through to a fake tgUser
+	});
+});
+
+describe("authBypassEnabled", () => {
+	test("is on for the flag plus a localhost ORIGIN, off for the flag with a real deployment's ORIGIN", async () => {
+		const { env } = await import("$env/dynamic/private");
+		const { authBypassEnabled } = await import("./authBypass");
+		expect(authBypassEnabled()).toBe(true);
+
+		const original = env.ORIGIN;
+		try {
+			(env as Record<string, string>).ORIGIN = "https://girae.io";
+			expect(authBypassEnabled()).toBe(false);
+		} finally {
+			(env as Record<string, string>).ORIGIN = original!;
+		}
 	});
 });

@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
-import { TestFixtures } from "@girae/tests";
+import { TestFixtures, caught } from "@girae/tests";
 import { db } from "../../index";
 import { users } from "../../schemas/users";
 import { eq } from "drizzle-orm";
@@ -48,5 +48,27 @@ describe("UsersDB.transferCoins moves coins between users without touching the t
 
     const [recipient] = await db.select().from(users).where(eq(users.id, recipientId));
     expect(recipient!.coins).toBe(1000);
+  });
+
+  test("a non-positive amount is refused instead of reversing the transfer", async () => {
+    await db.update(users).set({ coins: 500 }).where(eq(users.id, senderId));
+    await db.update(users).set({ coins: 500 }).where(eq(users.id, recipientId));
+
+    expect(await UsersDB.transferCoins(senderId, recipientId, -300)).toBe(false);
+    expect(await UsersDB.transferCoins(senderId, recipientId, 0)).toBe(false);
+
+    const [sender] = await db.select().from(users).where(eq(users.id, senderId));
+    const [recipient] = await db.select().from(users).where(eq(users.id, recipientId));
+    expect([sender!.coins, recipient!.coins]).toEqual([500, 500]);
+  });
+
+  test("a recipient that doesn't exist rolls the debit back instead of burning the coins", async () => {
+    await db.update(users).set({ coins: 500 }).where(eq(users.id, senderId));
+
+    const err = await caught(UsersDB.transferCoins(senderId, 2_000_000_000, 100));
+    expect(String(err)).toContain('does not exist');
+
+    const [sender] = await db.select().from(users).where(eq(users.id, senderId));
+    expect(sender!.coins).toBe(500);
   });
 });

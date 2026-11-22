@@ -19,15 +19,15 @@ describe("DiscotecaDB.getEntriesByType filters", () => {
     const user = await fx.user({ displayName: "Test Filter User" });
     await DiscotecaDB.addUserDiscoteca(user.id, owned.id);
 
-    const ownedOnly = await DiscotecaDB.getEntriesByType('single', user.id, 100, 0, { ownedFilter: 'owned' });
+    const ownedOnly = await DiscotecaDB.getEntriesByType('single', user.id, 100_000, 0, { ownedFilter: 'owned' });
     expect(ownedOnly.rows.map(r => r.id)).toContain(owned.id);
     expect(ownedOnly.rows.map(r => r.id)).not.toContain(unowned.id);
 
-    const unownedOnly = await DiscotecaDB.getEntriesByType('single', user.id, 100, 0, { ownedFilter: 'missing' });
+    const unownedOnly = await DiscotecaDB.getEntriesByType('single', user.id, 100_000, 0, { ownedFilter: 'missing' });
     expect(unownedOnly.rows.map(r => r.id)).toContain(unowned.id);
     expect(unownedOnly.rows.map(r => r.id)).not.toContain(owned.id);
 
-    const byRarity = await DiscotecaDB.getEntriesByType('single', user.id, 100, 0, { rarityNames: [rarities[0]!.name] });
+    const byRarity = await DiscotecaDB.getEntriesByType('single', user.id, 100_000, 0, { rarityNames: [rarities[0]!.name] });
     expect(byRarity.rows.map(r => r.id)).toContain(owned.id);
   });
 });
