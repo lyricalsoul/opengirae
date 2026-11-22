@@ -10,6 +10,7 @@ export const FILTERS: FilterDef<CardRow>[] = [
   { id: '3', emoji: '🥉', description: 'com raridade comum', match: c => c.rarityName === 'Comum' },
   { id: '4', emoji: '🥈', description: 'com raridade rara', match: c => c.rarityName === 'Raro' },
   { id: '5', emoji: '🥇', description: 'com raridade lendária', match: c => c.rarityName === 'Lendário' },
+  { id: '6', emoji: '🔁', description: 'repetidas', match: c => c.ownedCount > 1 },
 ]
 
 const RARITY_NAME_BY_FILTER_ID: Record<string, string> = { '3': 'Comum', '4': 'Raro', '5': 'Lendário' }
@@ -30,14 +31,16 @@ export async function loadSubcategoryCollection(rawArg: string, viewerTelegramId
   const ownedActive = active.includes('1')
   const missingActive = active.includes('2')
   const rarityFilterIds = ['3', '4', '5'].filter(id => active.includes(id))
-  const impossible = (ownedActive && missingActive) || rarityFilterIds.length > 1
+  const duplicatesOnly = active.includes('6')
+  // a card you don't own can't be a duplicate - same contradiction shape as owned+missing together
+  const impossible = (ownedActive && missingActive) || rarityFilterIds.length > 1 || (duplicatesOnly && missingActive)
 
   const ownedFilter = ownedActive ? 'owned' as const : missingActive ? 'missing' as const : undefined
   const rarityName = rarityFilterIds[0] ? RARITY_NAME_BY_FILTER_ID[rarityFilterIds[0]] : undefined
 
   const [stats, rows] = await Promise.all([
-    CardsDB.getSubcategoryStats(subcategoryId, viewer.id, { ownedFilter, rarityName }),
-    impossible ? Promise.resolve([]) : CardsDB.getCardsInSubcategoryForUserFiltered(subcategoryId, viewer.id, { ownedFilter, rarityName, limit: pageSize, offset: page * pageSize }),
+    CardsDB.getSubcategoryStats(subcategoryId, viewer.id, { ownedFilter, rarityName, duplicatesOnly }),
+    impossible ? Promise.resolve([]) : CardsDB.getCardsInSubcategoryForUserFiltered(subcategoryId, viewer.id, { ownedFilter, rarityName, duplicatesOnly, limit: pageSize, offset: page * pageSize }),
   ])
 
   return {

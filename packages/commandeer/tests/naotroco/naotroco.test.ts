@@ -1,15 +1,23 @@
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
 import { mockTelegram, fakeCtx, TestFixtures } from "@girae/tests";
 import { CardsDB } from "@girae/database/cards";
-import NaoTrocoCommand from "../../commands/cards/naotroco";
+import NaoTrocoCommand, { renderPage } from "../../commands/cards/naotroco";
 
-mockTelegram();
+const { sentMessages } = mockTelegram();
 
-describe("/naotroco marks one or several cards as not tradable", () => {
+async function waitForSentMessage(minLength: number, timeoutMs = 5000): Promise<void> {
+  const startTime = Date.now();
+  while (sentMessages.length < minLength) {
+    if (Date.now() - startTime > timeoutMs) throw new Error(`Timeout waiting for sentMessages.length >= ${minLength}`);
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+}
+
+describe("/naotroco marks one or several cards as non-tradable", () => {
   const fx = new TestFixtures();
   const authorId = "test-naotroco-author";
   let userId: number;
-  let cardAId: number, cardBId: number, cardCId: number, unownedCardId: number;
+  let cardAId: number, cardBId: number, unownedCardId: number;
 
   beforeAll(async () => {
     await import("@girae/answerer/index");
@@ -20,13 +28,13 @@ describe("/naotroco marks one or several cards as not tradable", () => {
 
     cardAId = (await fx.card({ name: `Test NaoTroco Card A ${Date.now()}`, subcategoryId })).id;
     cardBId = (await fx.card({ name: `Test NaoTroco Card B ${Date.now()}`, subcategoryId })).id;
-    cardCId = (await fx.card({ name: `Test NaoTroco Card C ${Date.now()}`, subcategoryId })).id;
     unownedCardId = (await fx.card({ name: `Test NaoTroco Unowned ${Date.now()}`, subcategoryId })).id;
 
     await fx.ownCard(userId, cardAId, 1);
     await fx.ownCard(userId, cardBId, 1);
-    await fx.ownCard(userId, cardCId, 1);
-    await CardsDB.setAllUserCardsTradable(userId, true);
+    // tradable by default, exactly what /naotroco flips to false
+    await CardsDB.setCardTradable(userId, cardAId, true);
+    await CardsDB.setCardTradable(userId, cardBId, true);
   });
 
   afterAll(() => fx.cleanup());
@@ -35,7 +43,7 @@ describe("/naotroco marks one or several cards as not tradable", () => {
     return fakeCtx({ name: 'naotroco', authorId, args, platform: 'telegram' });
   }
 
-  test("marks a single card not-tradable by ID", async () => {
+  test("marks a single card non-tradable by ID", async () => {
     await NaoTrocoCommand.execute(ctxFor([String(cardAId)]), { cardsRaw: String(cardAId) });
     expect(await CardsDB.isCardTradable(userId, cardAId)).toBe(false);
   });
@@ -44,11 +52,46 @@ describe("/naotroco marks one or several cards as not tradable", () => {
     await NaoTrocoCommand.execute(ctxFor([String(unownedCardId)]), { cardsRaw: String(unownedCardId) });
   });
 
-  test("marks multiple owned cards not-tradable in one command, skipping a not-owned ID", async () => {
-    const raw = `${cardBId} ${cardCId} ${unownedCardId}`;
-    await NaoTrocoCommand.execute(ctxFor(raw.split(' ')), { cardsRaw: raw });
+  test("no args shows the non-tradable-cards list instead of the usage message", async () => {
+    const startIndex = sentMessages.length;
+    await NaoTrocoCommand.execute(ctxFor([]), {});
+    await waitForSentMessage(startIndex + 1);
 
-    expect(await CardsDB.isCardTradable(userId, cardBId)).toBe(false);
-    expect(await CardsDB.isCardTradable(userId, cardCId)).toBe(false);
+    const msg = sentMessages[sentMessages.length - 1]!;
+    const content = msg.text ?? msg.content ?? "";
+    expect(content).toContain("Lista de não trocáveis");
+    expect(content).not.toContain("Uso:");
+  });
+
+  test("the list includes a card just marked non-tradable and excludes one still tradable", async () => {
+    const page = await renderPage(`:${userId}`, 0);
+    expect(page?.content).toContain('Test NaoTroco Card A');
+    expect(page?.content).not.toContain('Test NaoTroco Card B');
+  });
+});
+
+describe("/naotroco with no non-tradable cards", () => {
+  const fx = new TestFixtures();
+  const authorId = `test-naotroco-list-empty-${Date.now()}`;
+  let userId: number;
+
+  beforeAll(async () => {
+    userId = (await fx.user({ displayName: "Test NaoTroco List Empty", platform: 'telegram', platformId: authorId })).id;
+  });
+
+  afterAll(() => fx.cleanup());
+
+  test("shows the empty-state message, no pagination", async () => {
+    const page = await renderPage(`:${userId}`, 0);
+    expect(page?.content).toContain('_Nenhum card encontrado._');
+    expect(page?.content).toContain('`0` cards na lista.');
+    expect(page?.hasNext).toBe(false);
+    expect(page?.totalPages).toBe(1);
+  });
+
+  test("execute() with no args doesn't throw", async () => {
+    await import("@girae/answerer/index");
+    const ctx = fakeCtx({ name: 'naotroco', authorId, platform: 'telegram' });
+    await expect(NaoTrocoCommand.execute(ctx, {})).resolves.toBeUndefined();
   });
 });

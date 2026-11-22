@@ -18,6 +18,7 @@ const FILTERS: FilterDef<OwnedCardRow>[] = [
   { id: '1', emoji: '🥉', description: 'com raridade comum', match: c => c.rarityName === 'Comum' },
   { id: '2', emoji: '🥈', description: 'com raridade rara', match: c => c.rarityName === 'Raro' },
   { id: '3', emoji: '🥇', description: 'com raridade lendária', match: c => c.rarityName === 'Lendário' },
+  { id: '4', emoji: '🔁', description: 'repetidas', match: c => c.ownedCount > 1 },
 ]
 
 const CATEGORY_BUTTONS_PER_ROW = 6

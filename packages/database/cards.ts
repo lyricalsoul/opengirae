@@ -1216,7 +1216,7 @@ export class CardsDB {
 
   static getCardsInSubcategoryForUserFiltered = maybeTransaction('getCardsInSubcategoryForUserFiltered', async (
     client, subcategoryId: number, userId: number,
-    opts: { ownedFilter?: 'owned' | 'missing'; rarityName?: string; limit: number; offset: number },
+    opts: { ownedFilter?: 'owned' | 'missing'; rarityName?: string; duplicatesOnly?: boolean; limit: number; offset: number },
   ) => {
     // a card the user is currently /leiloar-ing still counts as "owned" here, even though its
     // stock physically left userCards for the duration - see docs/agent/02-architecture.md's
@@ -1228,6 +1228,8 @@ export class CardsDB {
     if (opts.ownedFilter === 'owned') conditions.push(ownedCondition);
     if (opts.ownedFilter === 'missing') conditions.push(sql`NOT ${ownedCondition}`);
     if (opts.rarityName) conditions.push(eq(rarities.name, opts.rarityName));
+    // same "duplicate" definition as getDuplicateCards - raw userCards.count, no in-auction adjustment
+    if (opts.duplicatesOnly) conditions.push(sql`COALESCE(${userCards.count}, 0) > 1`);
 
     return await client
       .select({
@@ -1255,7 +1257,7 @@ export class CardsDB {
 
   static getSubcategoryStats = maybeTransaction('getSubcategoryStats', async (
     client, subcategoryId: number, userId: number,
-    opts: { ownedFilter?: 'owned' | 'missing'; rarityName?: string },
+    opts: { ownedFilter?: 'owned' | 'missing'; rarityName?: string; duplicatesOnly?: boolean },
   ) => {
     const inAuctionExpr = sql`EXISTS (SELECT 1 FROM ${auctions} WHERE ${auctions.sellerId} = ${userId} AND ${auctions.cardId} = ${cards.id} AND ${auctions.status} = 'active')`;
     const ownedCondition = sql`(COALESCE(${userCards.count}, 0) > 0 OR ${inAuctionExpr})`;
@@ -1264,6 +1266,7 @@ export class CardsDB {
     if (opts.ownedFilter === 'owned') filterConditions.push(ownedCondition);
     if (opts.ownedFilter === 'missing') filterConditions.push(sql`NOT ${ownedCondition}`);
     if (opts.rarityName) filterConditions.push(eq(rarities.name, opts.rarityName));
+    if (opts.duplicatesOnly) filterConditions.push(sql`COALESCE(${userCards.count}, 0) > 1`);
     const filterWhere = filterConditions.length > 0 ? and(...filterConditions) : sql`true`;
 
     const [row] = await client
@@ -1592,6 +1595,24 @@ export class CardsDB {
     await client.insert(wishlist).values({ userId, cardId, position: nextPosition }).onConflictDoNothing();
   })
 
+  // bulk addToWishlist - returns only the cards actually inserted, skipping ones already on the list
+  static addManyToWishlist = maybeTransaction('addManyToWishlist', async (client, userId: number, cardIds: number[]) => {
+    if (cardIds.length === 0) return [];
+
+    const nextPosition = await client
+      .select({ max: sql<number>`COALESCE(MAX(${wishlist.position}), -1) + 1` })
+      .from(wishlist)
+      .where(eq(wishlist.userId, userId))
+      .then(a => a?.[0]?.max ?? 0);
+
+    const inserted = await client
+      .insert(wishlist)
+      .values(cardIds.map((cardId, i) => ({ userId, cardId, position: nextPosition + i })))
+      .onConflictDoNothing()
+      .returning({ cardId: wishlist.cardId });
+    return inserted.map(r => r.cardId);
+  })
+
   static reorderWishlist = maybeTransaction('reorderWishlist', async (client, userId: number, orderedCardIds: number[]) => {
     for (let index = 0; index < orderedCardIds.length; index++) {
       await client.update(wishlist).set({ position: index }).where(and(eq(wishlist.userId, userId), eq(wishlist.cardId, orderedCardIds[index]!)))
@@ -1834,6 +1855,30 @@ export class CardsDB {
       .leftJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
       .leftJoin(categories, eq(categories.id, subcategories.categoryId))
       .where(and(eq(userCards.userId, userId), eq(userCards.tradable, true)))
+      .orderBy(desc(cards.rarityId), cards.id);
+  })
+
+  static getUserNonTradableCards = maybeTransaction('getUserNonTradableCards', async (client, userId: number) => {
+    return await client
+      .select({
+        id: cards.id,
+        name: cards.name,
+        imageUrl: cards.imageUrl,
+        rarityName: rarities.name,
+        rarityEmoji: rarities.emoji,
+        categoryId: categories.id,
+        categoryName: categories.name,
+        categoryEmoji: categories.emoji,
+        subcategoryName: subcategories.name,
+        ownedCount: userCards.count,
+      })
+      .from(userCards)
+      .innerJoin(cards, eq(cards.id, userCards.cardId))
+      .innerJoin(rarities, eq(rarities.id, cards.rarityId))
+      .leftJoin(cardSubcategories, and(eq(cardSubcategories.cardId, cards.id), eq(cardSubcategories.isMain, true)))
+      .leftJoin(subcategories, eq(subcategories.id, cardSubcategories.subcategoryId))
+      .leftJoin(categories, eq(categories.id, subcategories.categoryId))
+      .where(and(eq(userCards.userId, userId), eq(userCards.tradable, false)))
       .orderBy(desc(cards.rarityId), cards.id);
   })
 

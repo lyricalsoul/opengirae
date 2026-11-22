@@ -42,6 +42,9 @@ export interface DittoProfileData {
   hideEmojis?: boolean
 }
 
+// without this, a hung Ditto leaves the whole command stuck forever with no reply and no error
+const GENERATE_TIMEOUT_MS = 15_000
+
 export async function generateProfileImage(data: DittoProfileData, overlays?: string[]): Promise<{ url: string } | null> {
   if (!process.env.DITTO_URL) return null
 
@@ -60,6 +63,7 @@ export async function generateProfileImage(data: DittoProfileData, overlays?: st
       },
       image_pack: "girae",
     }),
+    signal: AbortSignal.timeout(GENERATE_TIMEOUT_MS),
   })
     .then(async (r) => {
       if (!r.ok) {
@@ -106,6 +110,7 @@ export async function generateTradeImage(data: DittoTradeData): Promise<{ url: s
       data,
       image_pack: "girae",
     }),
+    signal: AbortSignal.timeout(GENERATE_TIMEOUT_MS),
   })
     .then(async (r) => {
       if (!r.ok) {
@@ -147,6 +152,7 @@ export async function generateWishlistImage(cards: DittoWishlistCard[]): Promise
       data: cards,
       image_pack: "girae",
     }),
+    signal: AbortSignal.timeout(GENERATE_TIMEOUT_MS),
   })
     .then(async (r) => {
       if (!r.ok) {
